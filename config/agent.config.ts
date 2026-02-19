@@ -34,3 +34,10 @@ export function resolveTypeKey(nb: string, type: string): NotebookType | undefin
   const key = `${nb}.${type}` as NotebookType;
   return key in TYPE_MAP ? key : undefined;
 }
+
+export const LLM_CONFIG = {
+  endpoint: process.env.LLM_ENDPOINT ?? 'http://localhost:1234/v1',
+  model: process.env.LLM_MODEL ?? 'local',
+  maxTokens: 512,
+  temperature: 0.3,
+} as const;

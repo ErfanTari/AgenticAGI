@@ -102,6 +102,13 @@ export function getMaxNumber(nb: string, type: string): number {
   return match ? parseInt(match[1], 10) : 0;
 }
 
+export function getNotebookCounts(): Array<{ nb: string; count: number }> {
+  const d = getDb();
+  return d.prepare(
+    'SELECT nb, COUNT(*) as count FROM index_entries GROUP BY nb ORDER BY nb'
+  ).all() as Array<{ nb: string; count: number }>;
+}
+
 export function closeDatabase(): void {
   if (db) {
     db.close();

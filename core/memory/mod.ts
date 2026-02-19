@@ -8,7 +8,7 @@ export type {
   FetchResult,
 } from './types.js';
 
-export { initDatabase, getDb, closeDatabase, getEntryByCode, queryEntries } from './index.js';
+export { initDatabase, getDb, closeDatabase, getEntryByCode, queryEntries, getNotebookCounts } from './index.js';
 export { generateCode, parseCode } from './codegen.js';
 export { createEntry } from './write.js';
 export { fetchByCode } from './fetch.js';
