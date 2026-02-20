@@ -5,7 +5,7 @@ import { getNotebookCounts } from './memory/mod.js';
 const SYSTEM_PROMPT = `You are a knowledgeable personal assistant with access to a structured memory system.
 Answer based on the provided memory context. Be concise and direct.
 If the memory context doesn't contain enough information, say so honestly.
-Reference entries by their code (e.g., WHO.CT-0001) when relevant.`;
+Reference entries by their code (e.g., WHO.CT-000001) when relevant.`;
 
 export function getIndexSummary(): string {
   const rows = getNotebookCounts();

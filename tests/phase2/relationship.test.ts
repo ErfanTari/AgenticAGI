@@ -88,18 +88,18 @@ describe('addRelationship', () => {
 
   it('throws when from_code does not exist', () => {
     expect(() => addRelationship({
-      from_code: 'WHO.CT-9999',
+      from_code: 'WHO.CT-999999',
       relation: 'owns',
       to_code: projectCode,
-    })).toThrow('Entry not found: WHO.CT-9999');
+    })).toThrow('Entry not found: WHO.CT-999999');
   });
 
   it('throws when to_code does not exist', () => {
     expect(() => addRelationship({
       from_code: contactCode,
       relation: 'owns',
-      to_code: 'WHAT.PJ-9999',
-    })).toThrow('Entry not found: WHAT.PJ-9999');
+      to_code: 'WHAT.PJ-999999',
+    })).toThrow('Entry not found: WHAT.PJ-999999');
   });
 });
 
@@ -224,7 +224,7 @@ describe('traverse', () => {
 describe('Phase 2 acceptance', () => {
   it('answers "what does contact own?" from table only, no file reads', () => {
     // This is the CLAUDE.md Phase 2 acceptance test:
-    // query "what does WHO.CT-0001 own?" → returns project from table only
+    // query "what does WHO.CT-000001 own?" → returns project from table only
     const owned = getRelationshipsFrom(contactCode, 'owns');
 
     expect(owned.length).toBe(1);

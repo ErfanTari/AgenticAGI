@@ -42,6 +42,11 @@ export function initDatabase(dbPath?: string): Database.Database {
 
     CREATE INDEX IF NOT EXISTS idx_from ON relationships(from_code);
     CREATE INDEX IF NOT EXISTS idx_to   ON relationships(to_code);
+
+    CREATE TABLE IF NOT EXISTS counters (
+      type    TEXT PRIMARY KEY,
+      current INTEGER NOT NULL DEFAULT 0
+    );
   `);
 
   return db;
@@ -91,15 +96,24 @@ export function queryEntries(filter: QueryFilter): IndexEntry[] {
   return d.prepare(`SELECT * FROM index_entries ${where}`).all(params) as IndexEntry[];
 }
 
-export function getMaxNumber(nb: string, type: string): number {
+/**
+ * Atomically increment and return the next counter value for a given type key.
+ * Uses a single SQLite transaction to prevent race conditions and avoids
+ * the lexicographic sort bug that getMaxNumber() had.
+ */
+export function nextCounter(typeKey: string): number {
   const d = getDb();
-  const row = d.prepare(
-    'SELECT code FROM index_entries WHERE nb = @nb AND type = @type ORDER BY code DESC LIMIT 1'
-  ).get({ nb, type }) as { code: string } | undefined;
-
-  if (!row) return 0;
-  const match = row.code.match(/-(\d+)$/);
-  return match ? parseInt(match[1], 10) : 0;
+  const run = d.transaction(() => {
+    d.prepare(
+      `INSERT INTO counters (type, current) VALUES (@type, 1)
+       ON CONFLICT(type) DO UPDATE SET current = current + 1`
+    ).run({ type: typeKey });
+    const row = d.prepare(
+      'SELECT current FROM counters WHERE type = @type'
+    ).get({ type: typeKey }) as { current: number };
+    return row.current;
+  });
+  return run();
 }
 
 export function getNotebookCounts(): Array<{ nb: string; count: number }> {

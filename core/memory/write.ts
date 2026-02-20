@@ -3,7 +3,7 @@ import path from 'node:path';
 import { PATHS, TYPE_MAP, resolveTypeKey } from '../../config/agent.config.js';
 import type { IndexEntry, CreateEntryInput } from './types.js';
 import { generateCode } from './codegen.js';
-import { insertEntry } from './index.js';
+import { getDb, insertEntry } from './index.js';
 
 function sanitizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -38,28 +38,36 @@ function buildMarkdown(entry: Omit<IndexEntry, 'path'>, body: string): string {
 }
 
 export function createEntry(input: CreateEntryInput): IndexEntry {
-  const code = generateCode(input.nb, input.type);
-  const updated = new Date().toISOString().slice(0, 10);
+  const d = getDb();
 
-  const entryData: Omit<IndexEntry, 'path'> = {
-    code,
-    nb: input.nb,
-    type: input.type,
-    name: input.name,
-    status: input.status,
-    updated,
-    summary: input.summary,
-  };
+  // Generate code + insert index row in a single transaction
+  // This prevents race conditions: counter increment and insert are atomic
+  const run = d.transaction(() => {
+    const code = generateCode(input.nb, input.type);
+    const updated = new Date().toISOString().slice(0, 10);
 
-  const filePath = resolveEntryPath(input.nb, input.type, code, input.name);
-  const markdown = buildMarkdown(entryData, input.body);
+    const entryData: Omit<IndexEntry, 'path'> = {
+      code,
+      nb: input.nb,
+      type: input.type,
+      name: input.name,
+      status: input.status,
+      updated,
+      summary: input.summary,
+    };
 
-  // File-before-SQLite: write file first, then index
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, markdown, 'utf-8');
+    const filePath = resolveEntryPath(input.nb, input.type, code, input.name);
+    const markdown = buildMarkdown(entryData, input.body);
 
-  const entry: IndexEntry = { ...entryData, path: filePath };
-  insertEntry(entry);
+    // File-before-SQLite: write file first, then index
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, markdown, 'utf-8');
 
-  return entry;
+    const entry: IndexEntry = { ...entryData, path: filePath };
+    insertEntry(entry);
+
+    return entry;
+  });
+
+  return run();
 }

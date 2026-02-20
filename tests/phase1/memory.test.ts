@@ -39,7 +39,7 @@ afterAll(() => {
 
 describe('parseCode', () => {
   it('parses a valid code', () => {
-    const result = parseCode('WHO.CT-0024');
+    const result = parseCode('WHO.CT-000024');
     expect(result).toEqual({ nb: 'WHO', type: 'CT', number: 24 });
   });
 
@@ -52,9 +52,9 @@ describe('parseCode', () => {
 });
 
 describe('generateCode', () => {
-  it('generates the first code as 0001', () => {
+  it('generates the first code as 000001', () => {
     const code = generateCode('WHO', 'CT');
-    expect(code).toBe('WHO.CT-0001');
+    expect(code).toBe('WHO.CT-000001');
   });
 
   it('throws for invalid notebook+type', () => {
@@ -73,8 +73,8 @@ describe('createEntry', () => {
       body: '## Communication\n- email: erfan@anatolia.com',
     });
 
-    // Code matches pattern
-    expect(entry.code).toMatch(/^WHO\.CT-\d{4}$/);
+    // Code matches pattern (6-digit padding)
+    expect(entry.code).toMatch(/^WHO\.CT-\d{6}$/);
 
     // File exists on disk
     expect(fs.existsSync(entry.path)).toBe(true);
@@ -135,7 +135,7 @@ describe('fetchByCode', () => {
   });
 
   it('returns undefined for a nonexistent code', () => {
-    const result = fetchByCode('WHO.CT-9999');
+    const result = fetchByCode('WHO.CT-999999');
     expect(result).toBeUndefined();
   });
 });

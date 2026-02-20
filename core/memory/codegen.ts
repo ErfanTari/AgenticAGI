@@ -1,7 +1,7 @@
 import { resolveTypeKey } from '../../config/agent.config.js';
-import { getMaxNumber } from './index.js';
+import { nextCounter } from './index.js';
 
-const CODE_REGEX = /^([A-Z]+)\.([A-Z]+)-(\d{4,})$/;
+const CODE_REGEX = /^([A-Z]+)\.([A-Z]+)-(\d{6,})$/;
 
 export function parseCode(code: string): { nb: string; type: string; number: number } | undefined {
   const match = code.match(CODE_REGEX);
@@ -13,8 +13,7 @@ export function generateCode(nb: string, type: string): string {
   const key = resolveTypeKey(nb, type);
   if (!key) throw new Error(`Invalid notebook+type: ${nb}.${type}`);
 
-  const maxNum = getMaxNumber(nb, type);
-  const next = maxNum + 1;
-  const padded = String(next).padStart(4, '0');
+  const next = nextCounter(key);
+  const padded = String(next).padStart(6, '0');
   return `${nb}.${type}-${padded}`;
 }

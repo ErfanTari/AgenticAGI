@@ -89,14 +89,14 @@ Every memory entry has a universal code. Format:
 [NOTEBOOK].[TYPE]-[NUMBER]
 
 Examples:
-WHO.CT-0024     → Contact number 24
-WHAT.PJ-0003    → Project number 3
-WHEN.CA-0118    → Calendar event 118
-HOW.PR-0012     → Procedure number 12
-WHY.QU-0013     → Open question 13
-WHY.MT-0004     → Meta reflection 4
-NOW.TD-0041     → Todo item 41
-PLAN.PL-0007    → Planning entry 7
+WHO.CT-000024   → Contact number 24
+WHAT.PJ-000003  → Project number 3
+WHEN.CA-000118  → Calendar event 118
+HOW.PR-000012   → Procedure number 12
+WHY.QU-000013   → Open question 13
+WHY.MT-000004   → Meta reflection 4
+NOW.TD-000041   → Todo item 41
+PLAN.PL-000007  → Planning entry 7
 ```
 
 ### Type Reference
@@ -126,13 +126,13 @@ PLAN.PL-0007    → Planning entry 7
 
 ## SQLite Schema
 
-Two tables. Nothing more until justified.
+Three tables. Nothing more until justified.
 
 ### Table: index_entries
 
 ```sql
 CREATE TABLE index_entries (
-  code      TEXT PRIMARY KEY,   -- e.g. WHO.CT-0024
+  code      TEXT PRIMARY KEY,   -- e.g. WHO.CT-000024
   nb        TEXT NOT NULL,      -- e.g. WHO  (indexed for fast filter)
   type      TEXT NOT NULL,      -- e.g. CT   (indexed for fast filter)
   name      TEXT NOT NULL,      -- human readable name
@@ -151,9 +151,9 @@ CREATE INDEX idx_status ON index_entries(status);
 
 ```sql
 CREATE TABLE relationships (
-  from_code  TEXT NOT NULL,   -- e.g. WHO.CT-0025
+  from_code  TEXT NOT NULL,   -- e.g. WHO.CT-000025
   relation   TEXT NOT NULL,   -- e.g. supplies | owns | works_for | blocks | refers
-  to_code    TEXT NOT NULL,   -- e.g. WHO.CT-0024
+  to_code    TEXT NOT NULL,   -- e.g. WHO.CT-000024
   note       TEXT,            -- optional human note about this relationship
   created    TEXT NOT NULL,   -- ISO date string
 
@@ -164,6 +164,19 @@ CREATE TABLE relationships (
 CREATE INDEX idx_from ON relationships(from_code);
 CREATE INDEX idx_to   ON relationships(to_code);
 ```
+
+### Table: counters
+
+```sql
+CREATE TABLE counters (
+  type    TEXT PRIMARY KEY,   -- e.g. "WHO.CT"
+  current INTEGER NOT NULL DEFAULT 0
+);
+```
+
+Used by the code generator. Each type key (e.g. `WHO.CT`) gets an atomic counter
+that is incremented inside a SQLite transaction when a new entry is created.
+This prevents the lexicographic sort bug and race conditions.
 
 ### What SQLite is NOT used for
 - Do not store full content in SQLite
@@ -179,7 +192,7 @@ The header is machine-readable. The body is human-readable.
 
 ```markdown
 ---
-code: WHO.CT-0024
+code: WHO.CT-000024
 nb: WHO
 type: CT
 name: Erfan Tari
@@ -199,8 +212,8 @@ summary: Owner, developer, ceramic specialist
 - Thinks architecturally before diving into detail
 
 ## Projects
-- Owns WHAT.PJ-0003 (Activation X-Ray)
-- Owns WHAT.PJ-0002 (meeting_local)
+- Owns WHAT.PJ-000003 (Activation X-Ray)
+- Owns WHAT.PJ-000002 (meeting_local)
 
 ## Notes
 - Deep interest in AI interpretability
@@ -209,7 +222,7 @@ summary: Owner, developer, ceramic specialist
 
 ### Rules for markdown files
 - Frontmatter header is always present and always complete
-- References to other entries always use their code (e.g. WHAT.PJ-0003)
+- References to other entries always use their code (e.g. WHAT.PJ-000003)
 - Never duplicate information that lives in another file — use a code reference instead
 - Body content is written for a human to read, not just for the agent
 
@@ -231,7 +244,7 @@ Follow this order strictly. Do not skip steps.
    → NO: continue
 
 3. Can the relationship table answer it?
-   (e.g. "what does WHO.CT-0025 own?" → WHERE from_code='WHO.CT-0025')
+   (e.g. "what does WHO.CT-000025 own?" → WHERE from_code='WHO.CT-000025')
    → YES: query relationships, follow codes. Done.
    → NO: continue
 
@@ -330,7 +343,7 @@ Each phase must work cleanly before the next begins.
 - Relationship reader (query by from_code or to_code)
 - Bidirectional traversal (follow a chain of relationships)
 
-**Done when:** agent can answer "what does WHO.CT-0024 own?" using only the relationships table, no file reads.
+**Done when:** agent can answer "what does WHO.CT-000024 own?" using only the relationships table, no file reads.
 
 ### Phase 3 — Agent Core Loop
 - Receive message
@@ -429,16 +442,16 @@ Before marking a phase complete, verify:
 
 **Phase 1:**
 ```
-create entry → WHO.CT-0001 written to SQLite and markdown
-fetch WHO.CT-0001 → returns correct file path
+create entry → WHO.CT-000001 written to SQLite and markdown
+fetch WHO.CT-000001 → returns correct file path
 query "active contacts" → returns list with summaries
 total time → under 50ms
 ```
 
 **Phase 2:**
 ```
-add relationship WHO.CT-0001 owns WHAT.PJ-0001
-query "what does WHO.CT-0001 own?" → returns WHAT.PJ-0001 from table only
+add relationship WHO.CT-000001 owns WHAT.PJ-000001
+query "what does WHO.CT-000001 own?" → returns WHAT.PJ-000001 from table only
 no file reads triggered
 ```
 
