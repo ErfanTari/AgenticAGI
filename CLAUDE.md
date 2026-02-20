@@ -496,6 +496,12 @@ If any of these are failing — stop adding features and fix the foundation.
 
 ---
 
+## Known Gaps (non-blocking)
+
+- **Resolver step-attempt logging:** The 5-step query flow executes in the correct order (verified by tests), but does not emit per-step diagnostic logs. Useful for debugging but not a functional requirement. Defer to Phase 4 or add when needed for troubleshooting.
+
+---
+
 *This document is the source of truth for this project.
 Update it when architecture decisions change.
 Do not let implementation drift from it silently.*
