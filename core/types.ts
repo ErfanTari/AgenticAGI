@@ -6,7 +6,7 @@ export type Intent =
   | 'memory_query'
   | 'relationship_query'
   | 'memory_write'
-  | 'search'
+  | 'web_search'
   | 'general';
 
 export interface Classification {
@@ -37,4 +37,6 @@ export interface AgentResponse {
   reply: string;
   intent: Intent;
   resolved: ResolvedMemory | null;
+  created?: IndexEntry;
+  error?: string;
 }

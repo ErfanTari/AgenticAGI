@@ -1,4 +1,4 @@
-import type { Message, ResolvedMemory } from './types.js';
+import type { Message, ResolvedMemory, Intent } from './types.js';
 import type { Skill } from './skills/types.js';
 import { getNotebookCounts } from './memory/mod.js';
 
@@ -7,13 +7,33 @@ Answer based on the provided memory context. Be concise and direct.
 If the memory context doesn't contain enough information, say so honestly.
 Reference entries by their code (e.g., WHO.CT-000001) when relevant.`;
 
+const MAX_TOKENS = 1500;
+const HARD_CEILING = 2000;
+
+const SUMMARY_INTENTS: Set<string> = new Set(['summary', 'overview']);
+const SUMMARY_PATTERNS = [
+  /\bwhat\s+do\s+you\s+know\b/i,
+  /\bshow\s+me\s+a\s+summary\b/i,
+  /\boverview\b/i,
+  /\bhow\s+many\s+entries\b/i,
+  /\bnotebook\s+counts?\b/i,
+];
+
 export function getIndexSummary(): string {
   const rows = getNotebookCounts();
   if (rows.length === 0) return 'Memory is empty.';
   return 'Memory index: ' + rows.map(r => `${r.nb}: ${r.count} entries`).join(', ');
 }
 
-function formatResolved(resolved: ResolvedMemory | null): string {
+function needsSummary(intent: Intent, userMessage?: string): boolean {
+  if (SUMMARY_INTENTS.has(intent)) return true;
+  if (userMessage) {
+    return SUMMARY_PATTERNS.some(p => p.test(userMessage));
+  }
+  return false;
+}
+
+function formatResolved(resolved: ResolvedMemory | null, summaryOnly?: boolean): string {
   if (!resolved || resolved.entries.length === 0) return '';
 
   const parts: string[] = ['## Resolved Memory'];
@@ -22,7 +42,7 @@ function formatResolved(resolved: ResolvedMemory | null): string {
     parts.push(`- [${entry.code}] ${entry.name} (${entry.status}): ${entry.summary}`);
   }
 
-  if (resolved.contents.length > 0) {
+  if (!summaryOnly && resolved.contents.length > 0) {
     parts.push('\n## Full Content');
     for (const content of resolved.contents) {
       parts.push(content);
@@ -49,23 +69,62 @@ export function buildContext(
   resolved: ResolvedMemory | null,
   history: Message[],
   skills: Skill[],
+  intent?: Intent,
 ): Message[] {
-  const systemParts = [
-    SYSTEM_PROMPT,
-    getIndexSummary(),
-    formatResolved(resolved),
-    formatSkills(skills),
-  ].filter(Boolean);
+  const systemParts = [SYSTEM_PROMPT];
+
+  // Only include notebook counts for summary/overview queries (BUG 4)
+  if (needsSummary(intent ?? 'general', userMessage)) {
+    systemParts.push(getIndexSummary());
+  }
+
+  systemParts.push(formatResolved(resolved));
+  systemParts.push(formatSkills(skills));
+
+  const systemContent = systemParts.filter(Boolean).join('\n\n');
 
   const messages: Message[] = [
-    { role: 'system', content: systemParts.join('\n\n') },
+    { role: 'system', content: systemContent },
   ];
 
-  // Last 6 turns (12 messages: user + assistant pairs)
-  const recentHistory = history.slice(-12);
+  // Start with last 6 turns (12 messages)
+  let recentHistory = history.slice(-12);
   messages.push(...recentHistory);
-
   messages.push({ role: 'user', content: userMessage });
+
+  // Token ceiling guard (BUG 5)
+  let tokens = estimateTokens(messages);
+
+  if (tokens > MAX_TOKENS) {
+    // Step 1: Reduce history to 3 turns (6 messages)
+    messages.length = 1; // keep system prompt
+    recentHistory = history.slice(-6);
+    messages.push(...recentHistory);
+    messages.push({ role: 'user', content: userMessage });
+    tokens = estimateTokens(messages);
+  }
+
+  if (tokens > MAX_TOKENS) {
+    // Step 2: Trim memory to summaries only (no full content)
+    const summaryResolved = formatResolved(resolved, true);
+    const trimmedSystem = [SYSTEM_PROMPT, summaryResolved, formatSkills(skills)]
+      .filter(Boolean).join('\n\n');
+    messages[0] = { role: 'system', content: trimmedSystem };
+    tokens = estimateTokens(messages);
+  }
+
+  if (tokens > HARD_CEILING) {
+    // Step 3: Truncate user input to ~500 tokens (2000 chars)
+    const lastIdx = messages.length - 1;
+    const userContent = messages[lastIdx].content;
+    if (userContent.length > 2000) {
+      messages[lastIdx] = {
+        role: 'user',
+        content: userContent.slice(0, 2000) + '\n\n[input truncated — too long]',
+      };
+      console.warn(`Token ceiling hit: input truncated from ${userContent.length} chars`);
+    }
+  }
 
   return messages;
 }
