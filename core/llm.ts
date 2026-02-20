@@ -3,7 +3,7 @@ import type { Message } from './types.js';
 
 /**
  * Call the primary LLM (Mac Studio / OpenAI-compatible endpoint).
- * Timeout is tiered by model size (72b/70b=60s, 7b=10s, small=5s, default=15s).
+ * Timeout is tiered by model size (70B+=90s, 7B-14B=20s, 1B-4B=10s, default=20s).
  * On timeout, logs a warning with model name so caller knows what happened.
  */
 async function callPrimary(messages: Message[]): Promise<string> {

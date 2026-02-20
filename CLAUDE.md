@@ -496,6 +496,26 @@ If any of these are failing — stop adding features and fix the foundation.
 
 ---
 
+## Performance Targets
+
+LLM response times depend on model size. These are the realistic targets
+for local inference on Mac Studio hardware:
+
+| Model size | Acceptable response | Warning threshold | Abort timeout |
+|------------|--------------------:|------------------:|--------------:|
+| 70B+       | under 60s           | over 45s          | 90000ms (90s) |
+| 7B–14B     | under 10s           | —                 | 20000ms (20s) |
+| 1B–4B      | under 5s            | —                 | 10000ms (10s) |
+
+These timeouts are configured in `config/agent.config.ts` (`getTimeoutForModel`).
+The primary LLM call in `core/llm.ts` uses the configured timeout and logs
+a warning when the model is still processing near the threshold.
+
+Non-LLM operations (memory reads, SQLite queries, file fetches) should
+complete in under 50ms. If they don't, fix the foundation before adding features.
+
+---
+
 ## Known Gaps (non-blocking)
 
 - **Resolver step-attempt logging:** The 5-step query flow executes in the correct order (verified by tests), but does not emit per-step diagnostic logs. Useful for debugging but not a functional requirement. Defer to Phase 4 or add when needed for troubleshooting.

@@ -7,18 +7,19 @@ Answer based on the provided memory context. Be concise and direct.
 If the memory context doesn't contain enough information, say so honestly.
 Reference entries by their code (e.g., WHO.CT-000001) when relevant.
 
-Valid notebook codes: WHO, WHAT, WHEN, HOW, WHY, NOW, PLAN
-Valid type codes:
-  WHO: CT (contact), ORG (organization)
-  WHAT: PJ (project), KN (knowledge)
-  WHEN: CA (calendar), DL (deadline)
-  HOW: PR (procedure)
-  WHY: MT (meta), QU (question)
-  NOW: TD (todo), RP (report)
-  PLAN: PL (planning)
+Valid memory entry codes follow this format: [NOTEBOOK].[TYPE]-[NUMBER]
 
-Never invent type codes outside this list.
-If uncertain, use the closest valid type.`;
+Valid notebooks and their types:
+WHO: CT (contact), ORG (organization)
+WHAT: PJ (project), KN (knowledge)
+WHEN: CA (calendar), DL (deadline)
+HOW: PR (procedure)
+WHY: MT (meta reflection), QU (open question)
+NOW: TD (todo), RP (report)
+PLAN: PL (planning entry)
+
+Never use a type code not listed above.
+Never invent new type codes.`;
 
 const MAX_TOKENS = 1500;
 const HARD_CEILING = 2000;
