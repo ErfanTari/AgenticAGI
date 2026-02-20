@@ -39,4 +39,5 @@ export interface AgentResponse {
   resolved: ResolvedMemory | null;
   created?: IndexEntry;
   error?: string;
+  notifications?: Array<{ type: string; entries: IndexEntry[]; message: string }>;
 }

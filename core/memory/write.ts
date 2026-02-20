@@ -3,7 +3,7 @@ import path from 'node:path';
 import { PATHS, TYPE_MAP, resolveTypeKey, EMBEDDING_CONFIG } from '../../config/agent.config.js';
 import type { IndexEntry, CreateEntryInput } from './types.js';
 import { generateCode } from './codegen.js';
-import { getDb, insertEntry } from './index.js';
+import { getDb, insertEntry, getEntryByCode } from './index.js';
 import { indexContent } from './fts.js';
 import { chunkMarkdown } from './chunks.js';
 import { storeChunks, fetchEmbeddings } from './embeddings.js';
@@ -87,6 +87,32 @@ export function createEntry(input: CreateEntryInput): IndexEntry {
   scheduleEmbedding(entry.code);
 
   return entry;
+}
+
+export function updateEntry(code: string, updates: { status?: string; summary?: string }): IndexEntry {
+  const entry = getEntryByCode(code);
+  if (!entry) throw new Error(`Entry not found: ${code}`);
+
+  const updated = new Date().toISOString().slice(0, 10);
+  const newStatus = updates.status ?? entry.status;
+  const newSummary = updates.summary ?? entry.summary;
+
+  const d = getDb();
+  d.prepare(
+    'UPDATE index_entries SET status = ?, summary = ?, updated = ? WHERE code = ?'
+  ).run(newStatus, newSummary, updated, code);
+
+  // Update markdown frontmatter on disk
+  if (fs.existsSync(entry.path)) {
+    const content = fs.readFileSync(entry.path, 'utf-8');
+    const newContent = content
+      .replace(/^status: .+$/m, `status: ${newStatus}`)
+      .replace(/^summary: .+$/m, `summary: ${newSummary}`)
+      .replace(/^updated: .+$/m, `updated: ${updated}`);
+    fs.writeFileSync(entry.path, newContent, 'utf-8');
+  }
+
+  return { ...entry, status: newStatus, summary: newSummary, updated };
 }
 
 /**
