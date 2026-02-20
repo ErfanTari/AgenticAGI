@@ -39,7 +39,7 @@ export function resolveTypeKey(nb: string, type: string): NotebookType | undefin
 
 function getTimeoutForModel(modelName: string): number {
   const lower = modelName.toLowerCase();
-  if (/72b|70b|32b|80b/.test(lower)) return 30000;
+  if (/72b|70b|32b|80b/.test(lower)) return 60000;
   if (/7b|8b|13b|14b/.test(lower)) return 10000;
   if (/1b|2b|3b|4b/.test(lower)) return 5000;
   return 15000;

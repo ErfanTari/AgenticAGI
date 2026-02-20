@@ -3,11 +3,20 @@ import type { Message } from './types.js';
 
 /**
  * Call the primary LLM (Mac Studio / OpenAI-compatible endpoint).
- * Timeout is tiered by model size (72b=30s, 7b=10s, small=5s, default=15s).
+ * Timeout is tiered by model size (72b/70b=60s, 7b=10s, small=5s, default=15s).
+ * On timeout, logs a warning with model name so caller knows what happened.
  */
 async function callPrimary(messages: Message[]): Promise<string> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), LLM_CONFIG.timeoutMs);
+  const timeoutMs = LLM_CONFIG.timeoutMs;
+  const timer = setTimeout(() => {
+    console.warn(
+      '[llm] Still thinking — %s is processing a complex query. Timeout after %ds.',
+      LLM_CONFIG.model,
+      timeoutMs / 1000,
+    );
+    controller.abort();
+  }, timeoutMs);
 
   try {
     const response = await fetch(LLM_CONFIG.endpoint, {
@@ -79,7 +88,7 @@ async function callAnthropic(messages: Message[]): Promise<string> {
  *
  * Flow:
  * 1. Try primary (Mac Studio) with tiered timeout based on model size
- * 2. If unreachable → fall back to Anthropic API
+ * 2. If unreachable or times out → fall back to Anthropic API
  * 3. Log which provider handled the request + response time
  * 4. Never crash — callers catch the final throw
  */
@@ -94,7 +103,7 @@ export async function callLLM(messages: Message[]): Promise<string> {
       return result;
     } catch (err) {
       const elapsed = Math.round(performance.now() - start);
-      console.warn('[llm] Primary unreachable after %dms: %s — trying fallback', elapsed, String(err));
+      console.warn('[llm] Primary failed after %dms: %s — trying fallback', elapsed, String(err));
     }
   }
 
