@@ -1,9 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { PATHS, TYPE_MAP, resolveTypeKey } from '../../config/agent.config.js';
+import { PATHS, TYPE_MAP, resolveTypeKey, EMBEDDING_CONFIG } from '../../config/agent.config.js';
 import type { IndexEntry, CreateEntryInput } from './types.js';
 import { generateCode } from './codegen.js';
 import { getDb, insertEntry } from './index.js';
+import { indexContent } from './fts.js';
+import { chunkMarkdown } from './chunks.js';
+import { storeChunks, fetchEmbeddings } from './embeddings.js';
 
 function sanitizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -66,8 +69,61 @@ export function createEntry(input: CreateEntryInput): IndexEntry {
     const entry: IndexEntry = { ...entryData, path: filePath };
     insertEntry(entry);
 
+    // Index content for FTS5 BM25 search (sync, inside transaction)
+    indexContent(code, input.nb, `${input.name} ${input.summary} ${input.body}`);
+
+    // Store chunks for vector search (sync, inside transaction)
+    const chunks = chunkMarkdown(code, markdown);
+    if (chunks.length > 0) {
+      storeChunks(chunks);
+    }
+
     return entry;
   });
 
-  return run();
+  const entry = run();
+
+  // Schedule embedding computation — fire-and-forget, best-effort
+  scheduleEmbedding(entry.code);
+
+  return entry;
+}
+
+/**
+ * Fire-and-forget embedding computation for stored chunks.
+ * Only runs when EMBEDDING_CONFIG is set. Failures are silently ignored.
+ */
+function scheduleEmbedding(code: string): void {
+  if (!EMBEDDING_CONFIG) return;
+
+  // Use queueMicrotask to avoid blocking the sync return
+  queueMicrotask(async () => {
+    try {
+      const { getDb: getDatabase } = await import('./index.js');
+      const d = getDatabase();
+      const rows = d.prepare(
+        'SELECT id, text FROM chunks WHERE code = ? AND embedding IS NULL'
+      ).all(code) as Array<{ id: number; text: string }>;
+
+      if (rows.length === 0) return;
+
+      const texts = rows.map(r => r.text);
+      const embeddings = await fetchEmbeddings(texts, EMBEDDING_CONFIG!);
+
+      const stmt = d.prepare('UPDATE chunks SET embedding = ? WHERE id = ?');
+      const updateAll = d.transaction(() => {
+        for (let i = 0; i < rows.length; i++) {
+          const buf = Buffer.from(
+            embeddings[i].buffer,
+            embeddings[i].byteOffset,
+            embeddings[i].byteLength,
+          );
+          stmt.run(buf, rows[i].id);
+        }
+      });
+      updateAll();
+    } catch {
+      console.log('[embed] Embedding server unreachable — using BM25 only');
+    }
+  });
 }

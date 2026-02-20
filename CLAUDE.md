@@ -500,6 +500,16 @@ If any of these are failing — stop adding features and fix the foundation.
 
 - **Resolver step-attempt logging:** The 5-step query flow executes in the correct order (verified by tests), but does not emit per-step diagnostic logs. Useful for debugging but not a functional requirement. Defer to Phase 4 or add when needed for troubleshooting.
 
+## Known Gap: Embedding Model Migration
+
+If the embedding model is changed in .env,
+all existing embeddings in the chunks table become invalid.
+Different models produce incompatible vector spaces.
+To rebuild: `DELETE FROM chunks;` then restart agent.
+Agent will re-embed all entries on next write or query.
+A migration script will be added in a future phase.
+Do not change EMBEDDING_MODEL without rebuilding the index.
+
 ---
 
 *This document is the source of truth for this project.

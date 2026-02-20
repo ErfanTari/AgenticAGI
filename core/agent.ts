@@ -4,8 +4,9 @@ import { resolveQuery } from './resolver.js';
 import { buildContext } from './context.js';
 import { callLLM } from './llm.js';
 import { getSkillsForIntent } from './skills/registry.js';
-import { createEntry } from './memory/mod.js';
+import { createEntry, hybridSearch } from './memory/mod.js';
 import { addRelationship } from './memory/relationships.js';
+import { fetchByCode } from './memory/mod.js';
 
 const WRITE_SYSTEM_PROMPT = `You are a memory writing assistant. Extract structured data from the user's request and return ONLY valid JSON.
 Return a JSON object with these fields:
@@ -187,7 +188,26 @@ export async function processMessage(
   }
 
   // 5. Resolve memory (5-step query flow)
-  const resolved = resolveQuery(classification);
+  let resolved = resolveQuery(classification);
+
+  // 5b. Step 5: Hybrid search fallback for vague queries
+  // At this point, only code_fetch, memory_query, relationship_query, general remain
+  if (resolved === null && classification.intent !== 'code_fetch') {
+    try {
+      const searchResults = await hybridSearch(message, { nb: classification.nb });
+      if (searchResults.length > 0) {
+        const entries = searchResults.map(r => r.entry);
+        const contents: string[] = [];
+        for (const entry of entries) {
+          const fetched = fetchByCode(entry.code);
+          if (fetched) contents.push(fetched.content);
+        }
+        resolved = { step: 5, entries, contents, relationships: [] };
+      }
+    } catch {
+      // Search failed — fall through to not-found guard
+    }
+  }
 
   // 6. Deterministic not-found guard
   if (resolved === null) {

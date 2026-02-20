@@ -35,9 +35,43 @@ export function resolveTypeKey(nb: string, type: string): NotebookType | undefin
   return key in TYPE_MAP ? key : undefined;
 }
 
+// --- LLM (primary) ---
+
+function getTimeoutForModel(modelName: string): number {
+  const lower = modelName.toLowerCase();
+  if (/72b|70b|32b|80b/.test(lower)) return 30000;
+  if (/7b|8b|13b|14b/.test(lower)) return 10000;
+  if (/1b|2b|3b|4b/.test(lower)) return 5000;
+  return 15000;
+}
+
+const _llmModel = process.env.LLM_MODEL ?? '';
+
 export const LLM_CONFIG = {
-  endpoint: process.env.LLM_ENDPOINT ?? 'http://localhost:1234/v1',
-  model: process.env.LLM_MODEL ?? 'local',
+  endpoint: process.env.LLM_ENDPOINT ?? '',
+  model: _llmModel,
   maxTokens: 512,
   temperature: 0.3,
-} as const;
+  timeoutMs: getTimeoutForModel(_llmModel),
+};
+
+export const EMBEDDING_TIMEOUT_MS = 5000;
+
+// --- LLM (fallback) ---
+export const LLM_FALLBACK_CONFIG = process.env.LLM_FALLBACK_PROVIDER
+  ? {
+      provider: process.env.LLM_FALLBACK_PROVIDER,
+      model: process.env.LLM_FALLBACK_MODEL ?? '',
+      apiKey: process.env.ANTHROPIC_API_KEY ?? '',
+      endpoint: process.env.ANTHROPIC_ENDPOINT ?? '',
+    }
+  : null;
+
+// --- Embedding (Step 5 search only) ---
+export const EMBEDDING_CONFIG = process.env.EMBEDDING_ENDPOINT
+  ? {
+      endpoint: process.env.EMBEDDING_ENDPOINT,
+      model: process.env.EMBEDDING_MODEL ?? '',
+      dimensions: Number(process.env.EMBEDDING_DIMENSIONS ?? '768'),
+    }
+  : null;

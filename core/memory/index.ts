@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PATHS } from '../../config/agent.config.js';
 import type { IndexEntry, QueryFilter } from './types.js';
+import { initFTS } from './fts.js';
+import { initChunksTable } from './embeddings.js';
 
 let db: Database.Database | null = null;
 
@@ -48,6 +50,10 @@ export function initDatabase(dbPath?: string): Database.Database {
       current INTEGER NOT NULL DEFAULT 0
     );
   `);
+
+  // Phase 4: Initialize FTS5 and chunks tables
+  initFTS();
+  initChunksTable();
 
   return db;
 }

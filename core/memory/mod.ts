@@ -12,5 +12,12 @@ export { initDatabase, getDb, closeDatabase, getEntryByCode, queryEntries, getNo
 export { generateCode, parseCode } from './codegen.js';
 export { createEntry } from './write.js';
 export { fetchByCode } from './fetch.js';
-export { search } from './search.js';
 export { addRelationship, getRelationshipsFrom, getRelationshipsTo, getRelationships, traverse } from './relationships.js';
+
+// Phase 4: Hybrid search
+export { hybridSearch, reciprocalRankFusion } from './search.js';
+export type { SearchResult } from './search.js';
+export { initFTS, indexContent, searchBM25, sanitizeFTSQuery } from './fts.js';
+export { chunkMarkdown } from './chunks.js';
+export type { Chunk } from './chunks.js';
+export { initChunksTable, storeChunks, cosineSimilarity, fetchEmbeddings, searchVectors } from './embeddings.js';
