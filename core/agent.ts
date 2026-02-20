@@ -1,13 +1,11 @@
 import type { Message, LLMHandler, AgentResponse, Classification } from './types.js';
-import type { IndexEntry } from './memory/types.js';
 import { classifyIntent } from './intent.js';
 import { resolveQuery } from './resolver.js';
-import { buildContext, estimateTokens } from './context.js';
+import { buildContext } from './context.js';
 import { callLLM } from './llm.js';
 import { getSkillsForIntent } from './skills/registry.js';
 import { createEntry } from './memory/mod.js';
 import { addRelationship } from './memory/relationships.js';
-import { parseCode } from './memory/codegen.js';
 
 const WRITE_SYSTEM_PROMPT = `You are a memory writing assistant. Extract structured data from the user's request and return ONLY valid JSON.
 Return a JSON object with these fields:
@@ -26,8 +24,6 @@ Respond with ONLY the JSON object, no extra text.`;
 function inferWriteData(message: string, classification: Classification): {
   nb: string; type: string; name: string; status: string; summary: string; body: string;
 } | null {
-  const lower = message.toLowerCase();
-
   // Determine notebook + type from classification or message content
   let nb = classification.nb;
   let type = classification.type;
