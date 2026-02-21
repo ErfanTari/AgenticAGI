@@ -7,6 +7,7 @@ export type Intent =
   | 'relationship_query'
   | 'memory_write'
   | 'web_search'
+  | 'skill'
   | 'general';
 
 export interface Classification {
@@ -17,6 +18,8 @@ export interface Classification {
   status?: string;
   name?: string;
   relation?: string;
+  skill?: string;
+  skillInput?: Record<string, unknown>;
 }
 
 export interface Message {
