@@ -15,25 +15,33 @@ const WRITE_PATTERNS = [
 
 // --- Web search patterns (now routes to skill) ---
 const WEB_SEARCH_PATTERNS = [
-  /\bsearch\s+the\s+web\b/i,
+  /\bsearch\s+(the\s+)?web\b/i,
+  /\blook\s+up\b/i,
+  /\bfind\s+online\b/i,
   /\bsearch\s+for\b/i,
-  /\blook\s+up\s+online\b/i,
-  /\bgoogle\b/i,
   /\bsearch\s+online\b/i,
   /\bweb\s+search\b/i,
+  /\bgoogle\b/i,
+  /\blatest\s+news\b/i,
+  /\bcurrent\s+info\b/i,
+  /\bfind\s+online\s+resources?\b/i,
 ];
 
 // --- Calculator patterns ---
 const CALCULATOR_PATTERNS = [
-  /\bwhat\s+is\s+\d/i,
-  /\bcalculate\b/i,
+  /\bcalculat/i,
   /\bcompute\b/i,
-  /\d+\s*[\+\-\*\/\^%]\s*\d+/,
-  /\b\d+\s+(plus|minus|times|divided\s+by|multiplied\s+by)\s+\d+/i,
-  /\b\d+\s+(divided|multiplied)\s+by\s+\d+/i,
+  /\bwhat\s+is\s+[\d(]/i,
+  /\bhow\s+much\s+is\b/i,
+  /\d+\s*[\+\-\*\/]\s*\d/,
+  /\d+\s+percent\s+of\b/i,
+  /\btimes\b/i,
+  /\bdivided\s+by\b/i,
+  /\bmultiplied\s+by\b/i,
+  /\bplus\b/i,
+  /\bminus\b/i,
   /\bsquare\s+root\s+of\b/i,
   /\bsqrt\b/i,
-  /\bpercentage\s+of\b/i,
   /\b\d+\s*%\s*of\s*\d+/i,
 ];
 
@@ -41,7 +49,8 @@ const CALCULATOR_PATTERNS = [
 const FILE_READER_PATTERNS = [
   /\bread\s+(the\s+)?file\b/i,
   /\bopen\s+(the\s+)?file\b/i,
-  /\bload\s+(the\s+)?file\b/i,
+  /\bload\s+(the\s+)?(file|contents?\s+of)\b/i,
+  /\bshow\s+(me\s+)?the\s+file\b/i,
   /\bshow\s+(me\s+)?(the\s+)?(contents?\s+of\s+)?\/[\w.\-/]+/i,
   /\bread\s+\/[\w.\-/]+/i,
   /\bcat\s+\/[\w.\-/]+/i,
@@ -236,9 +245,17 @@ function detectSkill(message: string): { skill: string; skillInput: Record<strin
 }
 
 function extractMathExpression(message: string): string | null {
+  // "X percent of Y" → "X / 100 * Y"
+  const percentOf = message.match(/(\d+(?:\.\d+)?)\s+percent\s+of\s+(\d+(?:\.\d+)?)/i);
+  if (percentOf) return `${percentOf[1]} / 100 * ${percentOf[2]}`;
+
+  // "X% of Y" → "X / 100 * Y"
+  const pctMatch = message.match(/(\d+(?:\.\d+)?)\s*%\s*of\s*(\d+(?:\.\d+)?)/i);
+  if (pctMatch) return `${pctMatch[1]} / 100 * ${pctMatch[2]}`;
+
   // "what is X divided by Y" → "X / Y" (check word-form FIRST, most specific)
   const wordMath = message.match(
-    /(?:what\s+is\s+)?(\d+(?:\.\d+)?)\s+(plus|minus|times|divided\s+by|multiplied\s+by)\s+(\d+(?:\.\d+)?)/i
+    /(?:(?:what|how\s+much)\s+is\s+)?(\d+(?:\.\d+)?)\s+(plus|minus|times|divided\s+by|multiplied\s+by)\s+(\d+(?:\.\d+)?)/i
   );
   if (wordMath) {
     const ops: Record<string, string> = {
@@ -258,13 +275,8 @@ function extractMathExpression(message: string): string | null {
   if (calcMatch) return calcMatch[1].trim();
 
   // Direct math expression with explicit operator: "2 + 2", "144 / 12"
-  // Requires an actual operator between numbers (not just digits next to digits)
   const directMath = message.match(/(\d+(?:\.\d+)?\s*[\+\-\*\/\^%]\s*\d+(?:\.\d+)?(?:\s*[\+\-\*\/\^%]\s*\d+(?:\.\d+)?)*)/);
   if (directMath) return directMath[1].trim();
-
-  // Percentage: "X% of Y"
-  const pctMatch = message.match(/(\d+(?:\.\d+)?)\s*%\s*of\s*(\d+(?:\.\d+)?)/i);
-  if (pctMatch) return `${pctMatch[1]} / 100 * ${pctMatch[2]}`;
 
   return null;
 }
@@ -284,11 +296,14 @@ function extractFilePath(message: string): string | null {
 function extractSearchQuery(message: string): string {
   // Strip trigger phrases, keep the rest as query
   return message
-    .replace(/\bsearch\s+the\s+web\s+(for\s+)?/i, '')
+    .replace(/\bsearch\s+(the\s+)?web\s+(for\s+)?/i, '')
     .replace(/\bsearch\s+(for|online)\s+/i, '')
-    .replace(/\blook\s+up\s+online\s+/i, '')
+    .replace(/\blook\s+up\s+/i, '')
+    .replace(/\bfind\s+online\s+(resources?\s+(for|on|about)\s+)?/i, '')
     .replace(/\bgoogle\s+/i, '')
     .replace(/\bweb\s+search\s+(for\s+)?/i, '')
+    .replace(/\blatest\s+news\s+(on|about)?\s*/i, '')
+    .replace(/\bcurrent\s+info\s+(on|about)?\s*/i, '')
     .trim();
 }
 

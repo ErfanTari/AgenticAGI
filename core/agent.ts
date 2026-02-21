@@ -11,11 +11,6 @@ import { fetchByCode } from './memory/mod.js';
 import { startHeartbeat, stopHeartbeat } from './heartbeat.js';
 import { getDb } from './memory/index.js';
 
-// Self-register MCP skills on import
-import './skills/tools/calculator.js';
-import './skills/tools/file_reader.js';
-import './skills/tools/web_search.js';
-
 // FIX 1: Processing flag — heartbeat checks this to skip when agent is busy
 export let isProcessingMessage = false;
 

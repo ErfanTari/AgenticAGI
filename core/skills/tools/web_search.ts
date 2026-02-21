@@ -1,5 +1,4 @@
 import type { MCPSkill, SkillResult } from '../types.js';
-import { registerSkill } from '../registry.js';
 
 interface DDGResponse {
   AbstractText?: string;
@@ -64,5 +63,4 @@ const webSearchSkill: MCPSkill = {
   },
 };
 
-registerSkill(webSearchSkill);
 export default webSearchSkill;

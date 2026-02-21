@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { MCPSkill, SkillResult } from '../types.js';
-import { registerSkill } from '../registry.js';
 
 const MAX_CHARS = 50000;
 
@@ -57,5 +56,4 @@ const fileReaderSkill: MCPSkill = {
   },
 };
 
-registerSkill(fileReaderSkill);
 export default fileReaderSkill;

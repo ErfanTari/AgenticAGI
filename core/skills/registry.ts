@@ -3,6 +3,11 @@ import type { Skill, MCPSkill } from './types.js';
 import { memoryReadSkill } from './memory_read.js';
 import { memoryWriteSkill } from './memory_write.js';
 
+// Import MCP skill defaults
+import calculatorSkill from './tools/calculator.js';
+import fileReaderSkill from './tools/file_reader.js';
+import webSearchSkill from './tools/web_search.js';
+
 // --- MCP Skill Registry (Map-based) ---
 
 const registry = new Map<string, MCPSkill>();
@@ -24,6 +29,11 @@ export function getSkillDescriptions(): string {
     .map(s => `${s.name}: ${s.description}`)
     .join('\n');
 }
+
+// Register built-in skills once, after all imports resolved
+registerSkill(calculatorSkill);
+registerSkill(fileReaderSkill);
+registerSkill(webSearchSkill);
 
 // --- Legacy skill loading (used by context builder) ---
 
