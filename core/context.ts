@@ -84,6 +84,7 @@ export function buildContext(
   history: Message[],
   skills: Skill[],
   intent?: Intent,
+  skillOutput?: string,
 ): Message[] {
   const systemParts = [SYSTEM_PROMPT];
 
@@ -94,6 +95,11 @@ export function buildContext(
 
   systemParts.push(formatResolved(resolved));
   systemParts.push(formatSkills(skills));
+
+  // Inject skill output into context
+  if (skillOutput) {
+    systemParts.push('## Skill Output\n' + skillOutput);
+  }
 
   const systemContent = systemParts.filter(Boolean).join('\n\n');
 

@@ -4,9 +4,29 @@ import { resolveQuery } from './resolver.js';
 import { buildContext } from './context.js';
 import { callLLM } from './llm.js';
 import { getSkillsForIntent } from './skills/registry.js';
+import { runSkill } from './skills/runner.js';
 import { createEntry, hybridSearch } from './memory/mod.js';
 import { addRelationship } from './memory/relationships.js';
 import { fetchByCode } from './memory/mod.js';
+import { startHeartbeat, stopHeartbeat } from './heartbeat.js';
+import { getDb } from './memory/index.js';
+
+// Self-register MCP skills on import
+import './skills/tools/calculator.js';
+import './skills/tools/file_reader.js';
+import './skills/tools/web_search.js';
+
+// FIX 1: Processing flag — heartbeat checks this to skip when agent is busy
+export let isProcessingMessage = false;
+
+// FIX 1: Agent lifecycle
+export function startAgent(): void {
+  startHeartbeat();
+}
+
+export function stopAgent(): void {
+  stopHeartbeat();
+}
 
 const WRITE_SYSTEM_PROMPT = `You are a memory writing assistant. Extract structured data from the user's request and return ONLY valid JSON.
 Return a JSON object with these fields:
@@ -104,12 +124,41 @@ export async function processMessage(
   history: Message[],
   options?: { llmHandler?: LLMHandler },
 ): Promise<AgentResponse> {
+  isProcessingMessage = true;
+  try {
+    return await _processMessage(message, history, options);
+  } finally {
+    isProcessingMessage = false;
+  }
+}
+
+async function _processMessage(
+  message: string,
+  history: Message[],
+  options?: { llmHandler?: LLMHandler },
+): Promise<AgentResponse> {
+  // FIX 3: Drain heartbeat_queue — surface findings to user
+  let findingsPrefix = '';
+  try {
+    const d = getDb();
+    const unseen = d.prepare(
+      'SELECT * FROM heartbeat_queue WHERE seen = 0'
+    ).all() as Array<{ id: number; code: string; message: string; seen: number; created: string }>;
+
+    if (unseen.length > 0) {
+      findingsPrefix = '\u{1F4CB} While you were away:\n' + unseen.map(r => r.message).join('\n') + '\n\n';
+      d.prepare('UPDATE heartbeat_queue SET seen = 1').run();
+    }
+  } catch {
+    // Queue not available yet — ignore
+  }
+
   // 1. Classify intent
   const classification = classifyIntent(message);
 
   // 2. Greeting — no memory, no LLM
   if (classification.intent === 'greeting') {
-    return { reply: 'Hello! How can I help you today?', intent: 'greeting', resolved: null };
+    return { reply: findingsPrefix + 'Hello! How can I help you today?', intent: 'greeting', resolved: null };
   }
 
   // 3. Memory write — extract data and write to memory
@@ -149,7 +198,7 @@ export async function processMessage(
       const inferred = inferWriteData(message, classification);
       if (!inferred) {
         return {
-          reply: 'I could not determine what to create. Please specify a name and type (e.g., "create a contact named John Smith").',
+          reply: findingsPrefix + 'I could not determine what to create. Please specify a name and type (e.g., "create a contact named John Smith").',
           intent: 'memory_write',
           resolved: null,
         };
@@ -179,14 +228,14 @@ export async function processMessage(
       }
 
       return {
-        reply: `Created ${entry.code} — ${entry.name} (${writeData.nb}.${writeData.type})`,
+        reply: findingsPrefix + `Created ${entry.code} — ${entry.name} (${writeData.nb}.${writeData.type})`,
         intent: 'memory_write',
         resolved: { step: 0, entries: [entry], contents: [], relationships: [] },
         created: entry,
       };
     } catch (err) {
       return {
-        reply: `Failed to create entry: ${String(err)}`,
+        reply: findingsPrefix + `Failed to create entry: ${String(err)}`,
         intent: 'memory_write',
         resolved: null,
         error: String(err),
@@ -194,9 +243,39 @@ export async function processMessage(
     }
   }
 
-  // 4. Web search — not yet implemented
+  // 4. Skill execution — calculator, file_reader, web_search
+  if (classification.intent === 'skill' && classification.skill) {
+    const skillResult = await runSkill(classification.skill, classification.skillInput ?? {});
+
+    if (!skillResult.success) {
+      return {
+        reply: findingsPrefix + `I couldn't complete that: ${skillResult.error}`,
+        intent: 'skill',
+        resolved: null,
+        error: skillResult.error,
+      };
+    }
+
+    // Pass skill output through context builder and LLM
+    const skillContext = buildContext(
+      message, null, history, [],
+      'skill',
+      skillResult.output,
+    );
+
+    try {
+      const handler = options?.llmHandler ?? callLLM;
+      const reply = await handler(skillContext);
+      return { reply: findingsPrefix + reply, intent: 'skill', resolved: null };
+    } catch (error) {
+      // If LLM fails, return raw skill output
+      return { reply: findingsPrefix + skillResult.output, intent: 'skill', resolved: null };
+    }
+  }
+
+  // 4b. Legacy web_search fallback (backward compat)
   if (classification.intent === 'web_search') {
-    return { reply: 'Web search not yet implemented.', intent: 'web_search', resolved: null };
+    return { reply: findingsPrefix + 'Web search not yet implemented.', intent: 'web_search', resolved: null };
   }
 
   // 5. Resolve memory (5-step query flow)
@@ -224,13 +303,13 @@ export async function processMessage(
   // 6. Deterministic not-found guard
   if (resolved === null) {
     if (classification.intent === 'code_fetch') {
-      return { reply: 'Entry not found.', intent: classification.intent, resolved: null };
+      return { reply: findingsPrefix + 'Entry not found.', intent: classification.intent, resolved: null };
     }
     if ((classification.intent === 'memory_query' || classification.intent === 'relationship_query') && classification.nb) {
-      return { reply: `No entries found in ${classification.nb} notebook.`, intent: classification.intent, resolved: null };
+      return { reply: findingsPrefix + `No entries found in ${classification.nb} notebook.`, intent: classification.intent, resolved: null };
     }
     if (classification.intent === 'memory_query' || classification.intent === 'relationship_query') {
-      return { reply: 'No matching entries found.', intent: classification.intent, resolved: null };
+      return { reply: findingsPrefix + 'No matching entries found.', intent: classification.intent, resolved: null };
     }
     // 'general' intent — allowed to pass to LLM without resolved memory
   }
@@ -245,10 +324,10 @@ export async function processMessage(
   try {
     const handler = options?.llmHandler ?? callLLM;
     const reply = await handler(messages);
-    return { reply, intent: classification.intent, resolved };
+    return { reply: findingsPrefix + reply, intent: classification.intent, resolved };
   } catch (error) {
     return {
-      reply: 'I could not reach the language model. Please check that it is running.',
+      reply: findingsPrefix + 'I could not reach the language model. Please check that it is running.',
       intent: classification.intent,
       resolved,
       error: String(error),

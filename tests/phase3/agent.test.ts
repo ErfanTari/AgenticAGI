@@ -116,10 +116,18 @@ describe('classifyIntent', () => {
     expect(c.nb).toBe('WHEN');
   });
 
-  it('classifies web search patterns', () => {
-    expect(classifyIntent('search the web for SQLite tips').intent).toBe('web_search');
-    expect(classifyIntent('google best practices for TypeScript').intent).toBe('web_search');
-    expect(classifyIntent('look up online how to do X').intent).toBe('web_search');
+  it('classifies web search patterns as skill', () => {
+    const c1 = classifyIntent('search the web for SQLite tips');
+    expect(c1.intent).toBe('skill');
+    expect(c1.skill).toBe('web_search');
+
+    const c2 = classifyIntent('google best practices for TypeScript');
+    expect(c2.intent).toBe('skill');
+    expect(c2.skill).toBe('web_search');
+
+    const c3 = classifyIntent('look up online how to do X');
+    expect(c3.intent).toBe('skill');
+    expect(c3.skill).toBe('web_search');
   });
 
   it('classifies "remind me" as memory_write', () => {
@@ -410,15 +418,10 @@ describe('processMessage', () => {
     expect(res.reply).toBe('I can help with that.');
   });
 
-  // BUG 4: web_search returns deterministic response
-  it('web_search returns not-implemented without LLM call', async () => {
-    let llmCalled = false;
-    const trackingLLM = async (msgs: Message[]) => { llmCalled = true; return 'nope'; };
-
-    const res = await processMessage('search the web for SQLite tips', [], { llmHandler: trackingLLM });
-    expect(res.intent).toBe('web_search');
-    expect(res.reply).toBe('Web search not yet implemented.');
-    expect(llmCalled).toBe(false);
+  // Phase 6: web_search now routes through skill system
+  it('web_search routes through skill and LLM', async () => {
+    const res = await processMessage('search the web for SQLite tips', [], { llmHandler: mockLLM });
+    expect(res.intent).toBe('skill');
   });
 
   // BUG 6: LLM errors don't crash

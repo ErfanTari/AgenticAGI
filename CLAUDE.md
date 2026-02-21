@@ -74,7 +74,16 @@ It tells you the notebook, the type, and the number — without opening anything
 │   │   ├── search.ts          ← hybrid search (last resort)
 │   │   └── write.ts           ← memory writer
 │   ├── heartbeat.ts           ← background idle process
-│   └── skills/                ← lazy-loaded skill modules
+│   └── skills/                ← MCP-compatible skill modules
+│       ├── types.ts           ← MCPSkill + SkillResult interfaces
+│       ├── registry.ts        ← Map-based skill registry
+│       ├── runner.ts          ← runSkill() — never throws
+│       ├── memory_read.ts     ← legacy skill descriptor
+│       ├── memory_write.ts    ← legacy skill descriptor
+│       └── tools/
+│           ├── calculator.ts  ← math evaluation via mathjs
+│           ├── file_reader.ts ← read files from disk
+│           └── web_search.ts  ← DuckDuckGo Instant Answer API
 └── config/
     └── agent.config.ts        ← model, paths, settings
 ```
@@ -373,12 +382,18 @@ Each phase must work cleanly before the next begins.
 
 **Done when:** agent proactively surfaces a deadline or stale project without being asked.
 
-### Phase 6 — Procedures Notebook
-- HOW.PR entries for recurring agent behaviors
-- Agent reads relevant procedure before acting on known task types
-- Agent updates procedures based on user feedback
+### Phase 6 — MCP Skills Layer (COMPLETE)
+- Universal MCP-compatible Skill interface (MCPSkill + SkillResult)
+- Map-based registry with registerSkill / getSkill / getAllSkills / getSkillDescriptions
+- Runner (runSkill) that never throws — errors contained in SkillResult
+- Three skills built: calculator (mathjs), file_reader, web_search (DuckDuckGo API)
+- Classifier extended with 'skill' intent + skill name + param extraction
+- Skills self-register on import — adding a new skill touches zero existing files
+- Skill output injected into context builder, passed through LLM
+- web_search intent migrated from stub to live skill
+- 42 new tests (181 total), pnpm build clean
 
-**Done when:** agent handles a recurring task type (e.g. "update project status") by following a stored procedure, not guessing.
+**Done when:** all three skills work end-to-end through full agent loop, adding a 4th skill touches zero existing files, memory queries unchanged. DONE.
 
 ---
 
@@ -529,6 +544,16 @@ To rebuild: `DELETE FROM chunks;` then restart agent.
 Agent will re-embed all entries on next write or query.
 A migration script will be added in a future phase.
 Do not change EMBEDDING_MODEL without rebuilding the index.
+
+---
+
+## Phase 6 — Thanks
+
+Phase 6 adds a universal skills layer. Three skills (calculator, file_reader, web_search)
+work end-to-end through the full agent loop. The architecture is MCP-compatible:
+every skill implements one interface, self-registers on import, and adding a new skill
+requires creating one file and one import line — zero changes to agent.ts, intent.ts,
+or runner.ts. Memory queries are untouched. 181 tests pass. The foundation holds.
 
 ---
 

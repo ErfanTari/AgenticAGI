@@ -1,4 +1,5 @@
 import type { Classification, Intent } from './types.js';
+import { getSkillDescriptions } from './skills/registry.js';
 
 const CODE_REGEX = /\b([A-Z]+\.[A-Z]+-\d{6,})\b/g;
 
@@ -12,7 +13,7 @@ const WRITE_PATTERNS = [
   /\bnew\s+(contact|project|todo|task|event|deadline|procedure|plan)\b/i,
 ];
 
-// --- Web search patterns ---
+// --- Web search patterns (now routes to skill) ---
 const WEB_SEARCH_PATTERNS = [
   /\bsearch\s+the\s+web\b/i,
   /\bsearch\s+for\b/i,
@@ -20,6 +21,30 @@ const WEB_SEARCH_PATTERNS = [
   /\bgoogle\b/i,
   /\bsearch\s+online\b/i,
   /\bweb\s+search\b/i,
+];
+
+// --- Calculator patterns ---
+const CALCULATOR_PATTERNS = [
+  /\bwhat\s+is\s+\d/i,
+  /\bcalculate\b/i,
+  /\bcompute\b/i,
+  /\d+\s*[\+\-\*\/\^%]\s*\d+/,
+  /\b\d+\s+(plus|minus|times|divided\s+by|multiplied\s+by)\s+\d+/i,
+  /\b\d+\s+(divided|multiplied)\s+by\s+\d+/i,
+  /\bsquare\s+root\s+of\b/i,
+  /\bsqrt\b/i,
+  /\bpercentage\s+of\b/i,
+  /\b\d+\s*%\s*of\s*\d+/i,
+];
+
+// --- File reader patterns ---
+const FILE_READER_PATTERNS = [
+  /\bread\s+(the\s+)?file\b/i,
+  /\bopen\s+(the\s+)?file\b/i,
+  /\bload\s+(the\s+)?file\b/i,
+  /\bshow\s+(me\s+)?(the\s+)?(contents?\s+of\s+)?\/[\w.\-/]+/i,
+  /\bread\s+\/[\w.\-/]+/i,
+  /\bcat\s+\/[\w.\-/]+/i,
 ];
 
 // --- WHO patterns ---
@@ -182,6 +207,94 @@ function extractName(message: string): string | undefined {
   return undefined;
 }
 
+// --- Skill detection ---
+
+function detectSkill(message: string): { skill: string; skillInput: Record<string, unknown> } | null {
+  // Web search detection — highest priority among skills (replaces old web_search intent)
+  if (matchesAny(message, WEB_SEARCH_PATTERNS)) {
+    const query = extractSearchQuery(message);
+    return { skill: 'web_search', skillInput: { query } };
+  }
+
+  // File reader detection — before calculator to avoid path numbers matching math
+  if (matchesAny(message, FILE_READER_PATTERNS)) {
+    const filePath = extractFilePath(message);
+    if (filePath) {
+      return { skill: 'file_reader', skillInput: { path: filePath } };
+    }
+  }
+
+  // Calculator detection
+  if (matchesAny(message, CALCULATOR_PATTERNS)) {
+    const expression = extractMathExpression(message);
+    if (expression) {
+      return { skill: 'calculator', skillInput: { expression } };
+    }
+  }
+
+  return null;
+}
+
+function extractMathExpression(message: string): string | null {
+  // "what is X divided by Y" → "X / Y" (check word-form FIRST, most specific)
+  const wordMath = message.match(
+    /(?:what\s+is\s+)?(\d+(?:\.\d+)?)\s+(plus|minus|times|divided\s+by|multiplied\s+by)\s+(\d+(?:\.\d+)?)/i
+  );
+  if (wordMath) {
+    const ops: Record<string, string> = {
+      'plus': '+', 'minus': '-', 'times': '*',
+      'divided by': '/', 'multiplied by': '*',
+    };
+    const op = ops[wordMath[2].toLowerCase()] ?? wordMath[2];
+    return `${wordMath[1]} ${op} ${wordMath[3]}`;
+  }
+
+  // "square root of X"
+  const sqrtMatch = message.match(/square\s+root\s+of\s+(\d+(?:\.\d+)?)/i);
+  if (sqrtMatch) return `sqrt(${sqrtMatch[1]})`;
+
+  // "calculate X" or "compute X"
+  const calcMatch = message.match(/(?:calculate|compute)\s+(.+)/i);
+  if (calcMatch) return calcMatch[1].trim();
+
+  // Direct math expression with explicit operator: "2 + 2", "144 / 12"
+  // Requires an actual operator between numbers (not just digits next to digits)
+  const directMath = message.match(/(\d+(?:\.\d+)?\s*[\+\-\*\/\^%]\s*\d+(?:\.\d+)?(?:\s*[\+\-\*\/\^%]\s*\d+(?:\.\d+)?)*)/);
+  if (directMath) return directMath[1].trim();
+
+  // Percentage: "X% of Y"
+  const pctMatch = message.match(/(\d+(?:\.\d+)?)\s*%\s*of\s*(\d+(?:\.\d+)?)/i);
+  if (pctMatch) return `${pctMatch[1]} / 100 * ${pctMatch[2]}`;
+
+  return null;
+}
+
+function extractFilePath(message: string): string | null {
+  // Absolute path
+  const absPath = message.match(/(\/[\w.\-/]+)/);
+  if (absPath) return absPath[1];
+
+  // Relative path with extension
+  const relPath = message.match(/([\w.\-/]+\.\w+)/);
+  if (relPath) return relPath[1];
+
+  return null;
+}
+
+function extractSearchQuery(message: string): string {
+  // Strip trigger phrases, keep the rest as query
+  return message
+    .replace(/\bsearch\s+the\s+web\s+(for\s+)?/i, '')
+    .replace(/\bsearch\s+(for|online)\s+/i, '')
+    .replace(/\blook\s+up\s+online\s+/i, '')
+    .replace(/\bgoogle\s+/i, '')
+    .replace(/\bweb\s+search\s+(for\s+)?/i, '')
+    .trim();
+}
+
+// Expose getSkillDescriptions for external use (e.g., tests verifying registry awareness)
+export { getSkillDescriptions };
+
 export function classifyIntent(message: string): Classification {
   const codes = extractCodes(message);
   const relation = extractRelation(message);
@@ -191,6 +304,8 @@ export function classifyIntent(message: string): Classification {
   let intent: Intent;
   let nb: string | undefined;
   let type: string | undefined;
+  let skill: string | undefined;
+  let skillInput: Record<string, unknown> | undefined;
 
   // Priority 1: Contains a valid code
   if (codes.length > 0 && relation) {
@@ -215,21 +330,26 @@ export function classifyIntent(message: string): Classification {
     nb = detected.nb;
     type = detected.type;
   }
-  // Priority 4: Web search
-  else if (matchesAny(message, WEB_SEARCH_PATTERNS)) {
-    intent = 'web_search';
-  }
-  // Priority 5: Notebook-specific read patterns
+  // Priority 4: Skill detection (web_search, calculator, file_reader)
+  // Checked BEFORE notebook patterns — same priority position web_search had before
   else {
-    const detected = detectNotebook(message);
-    nb = detected.nb;
-    type = detected.type;
-    if (nb || type || status || name) {
-      intent = 'memory_query';
+    const skillMatch = detectSkill(message);
+    if (skillMatch) {
+      intent = 'skill';
+      skill = skillMatch.skill;
+      skillInput = skillMatch.skillInput;
     } else {
-      intent = 'general';
+      // Priority 5: Notebook-specific read patterns
+      const detected = detectNotebook(message);
+      nb = detected.nb;
+      type = detected.type;
+      if (nb || type || status || name) {
+        intent = 'memory_query';
+      } else {
+        intent = 'general';
+      }
     }
   }
 
-  return { intent, codes, nb, type, status, name, relation };
+  return { intent, codes, nb, type, status, name, relation, skill, skillInput };
 }
