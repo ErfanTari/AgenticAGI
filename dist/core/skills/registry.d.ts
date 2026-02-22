@@ -1,3 +1,14 @@
 import type { Intent } from '../types.js';
 import type { Skill } from './types.js';
+import { registerSkill, getSkill, getAllSkills, getSkillDescriptions } from './store.js';
+import './tools/calculator.js';
+import './tools/file_reader.js';
+import './tools/file_writer.js';
+import './tools/web_fetch.js';
+import './tools/web_search.js';
+import './tools/shell_runner.js';
+import './tools/task_planner.js';
+import './tools/log_analyzer.js';
+import './tools/code_editor.js';
+export { registerSkill, getSkill, getAllSkills, getSkillDescriptions };
 export declare function getSkillsForIntent(intent: Intent): Skill[];

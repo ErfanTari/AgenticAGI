@@ -19,6 +19,7 @@ Never use a type code not listed above.
 Never invent new type codes.`;
 const MAX_TOKENS = 1500;
 const HARD_CEILING = 2000;
+const MAX_SKILL_OUTPUT_CHARS = 3000;
 const SUMMARY_INTENTS = new Set(['summary', 'overview']);
 const SUMMARY_PATTERNS = [
     /\bwhat\s+do\s+you\s+know\b/i,
@@ -67,14 +68,26 @@ function formatSkills(skills) {
         return '';
     return 'Available capabilities: ' + skills.map(s => s.description).join('; ');
 }
-export function buildContext(userMessage, resolved, history, skills, intent) {
+function formatSkillOutput(skillOutput) {
+    if (!skillOutput)
+        return '';
+    if (skillOutput.length <= MAX_SKILL_OUTPUT_CHARS) {
+        return '## Skill Output\n' + skillOutput;
+    }
+    return '## Skill Output\n'
+        + skillOutput.slice(0, MAX_SKILL_OUTPUT_CHARS)
+        + `\n\n[skill output truncated at ${MAX_SKILL_OUTPUT_CHARS} characters]`;
+}
+export function buildContext(userMessage, resolved, history, skills, intent, skillOutput) {
     const systemParts = [SYSTEM_PROMPT];
+    const formattedSkillOutput = formatSkillOutput(skillOutput);
     // Only include notebook counts for summary/overview queries (BUG 4)
     if (needsSummary(intent ?? 'general', userMessage)) {
         systemParts.push(getIndexSummary());
     }
     systemParts.push(formatResolved(resolved));
     systemParts.push(formatSkills(skills));
+    systemParts.push(formattedSkillOutput);
     const systemContent = systemParts.filter(Boolean).join('\n\n');
     const messages = [
         { role: 'system', content: systemContent },
@@ -96,7 +109,7 @@ export function buildContext(userMessage, resolved, history, skills, intent) {
     if (tokens > MAX_TOKENS) {
         // Step 2: Trim memory to summaries only (no full content)
         const summaryResolved = formatResolved(resolved, true);
-        const trimmedSystem = [SYSTEM_PROMPT, summaryResolved, formatSkills(skills)]
+        const trimmedSystem = [SYSTEM_PROMPT, summaryResolved, formatSkills(skills), formattedSkillOutput]
             .filter(Boolean).join('\n\n');
         messages[0] = { role: 'system', content: trimmedSystem };
         tokens = estimateTokens(messages);

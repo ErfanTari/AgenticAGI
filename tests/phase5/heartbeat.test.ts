@@ -12,10 +12,10 @@ import {
 } from '../../core/memory/mod.js';
 import {
   runHeartbeat,
-  checkUpcomingEvents,
+  checkDeadlines,
   checkOverdueTodos,
   checkStaleQuestions,
-  checkStalePlans,
+  checkPlanCalibration,
   checkStaleProjects,
 } from '../../core/heartbeat.js';
 import { PATHS } from '../../config/agent.config.js';
@@ -27,6 +27,26 @@ const TEST_MEMORY = path.join(TEST_DIR, 'memory');
 
 const origDb = PATHS.db;
 const origMemory = PATHS.memory;
+
+function freshDb(): { dir: string; cleanup: () => void } {
+  const dir = path.join(os.tmpdir(), `agentic-agi-t-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+  const dbPath = path.join(dir, 'memory.sqlite');
+  const memPath = path.join(dir, 'memory');
+  closeDatabase();
+  (PATHS as Record<string, string>).db = dbPath;
+  (PATHS as Record<string, string>).memory = memPath;
+  initDatabase(dbPath);
+  return {
+    dir,
+    cleanup() {
+      closeDatabase();
+      fs.rmSync(dir, { recursive: true, force: true });
+      (PATHS as Record<string, string>).db = TEST_DB;
+      (PATHS as Record<string, string>).memory = TEST_MEMORY;
+      initDatabase(TEST_DB);
+    },
+  };
+}
 
 beforeAll(() => {
   (PATHS as Record<string, string>).db = TEST_DB;
@@ -102,24 +122,80 @@ describe('updateEntry', () => {
   });
 });
 
-// --- checkUpcomingEvents ---
+// --- checkDeadlines ---
 
-describe('checkUpcomingEvents', () => {
+describe('checkDeadlines', () => {
   it('returns null when no upcoming events', () => {
-    expect(checkUpcomingEvents()).toBeNull();
+    const { cleanup } = freshDb();
+    expect(checkDeadlines()).toBeNull();
+    cleanup();
   });
 
-  it('returns notification for upcoming WHEN entries', () => {
+  it('returns notification for upcoming WHEN entries with due_date today', () => {
+    const { cleanup } = freshDb();
+    const todayStr = new Date().toISOString().split('T')[0];
+
     createEntry({
       nb: 'WHEN', type: 'CA', name: 'Team Meeting',
       status: 'upcoming', summary: 'Weekly sync', body: 'At 10am',
+      due_date: todayStr,
     });
 
-    const result = checkUpcomingEvents();
+    const result = checkDeadlines();
     expect(result).not.toBeNull();
     expect(result!.type).toBe('upcoming_event');
-    expect(result!.entries.length).toBeGreaterThan(0);
+    expect(result!.entries.length).toBe(1);
     expect(result!.message).toContain('upcoming event');
+    cleanup();
+  });
+
+  it('returns notification for upcoming WHEN entries with due_date tomorrow', () => {
+    const { cleanup } = freshDb();
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+    createEntry({
+      nb: 'WHEN', type: 'CA', name: 'Tomorrow Meeting',
+      status: 'upcoming', summary: 'Sync', body: 'At 10am',
+      due_date: tomorrowStr,
+    });
+
+    const result = checkDeadlines();
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('upcoming_event');
+    expect(result!.entries.length).toBe(1);
+    cleanup();
+  });
+
+  it('does NOT flag deadlines with due_date far in the future', () => {
+    const { cleanup } = freshDb();
+    const nextMonth = new Date();
+    nextMonth.setDate(nextMonth.getDate() + 30);
+
+    createEntry({
+      nb: 'WHEN', type: 'DL', name: 'Far Deadline',
+      status: 'upcoming', summary: 'Not due yet', body: 'Details',
+      due_date: nextMonth.toISOString().split('T')[0],
+    });
+
+    expect(checkDeadlines()).toBeNull();
+    cleanup();
+  });
+
+  it('does NOT flag deadlines with due_date in the past (yesterday)', () => {
+    const { cleanup } = freshDb();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    createEntry({
+      nb: 'WHEN', type: 'DL', name: 'Past Deadline',
+      status: 'upcoming', summary: 'Already passed', body: 'Details',
+      due_date: yesterday.toISOString().split('T')[0],
+    });
+
+    expect(checkDeadlines()).toBeNull();
+    cleanup();
   });
 });
 
@@ -127,34 +203,43 @@ describe('checkUpcomingEvents', () => {
 
 describe('checkOverdueTodos', () => {
   it('returns null when no overdue todos', () => {
-    // Create a fresh todo — updated today, won't be overdue
+    const { cleanup } = freshDb();
+
+    // Create a todo with no due_date — should not trigger
     createEntry({
       nb: 'NOW', type: 'TD', name: 'Fresh Todo',
       status: 'open', summary: 'Just created', body: 'Body',
     });
 
-    // Fresh todo should not trigger overdue (updated = today)
-    // Only existing old entries would trigger. We test with manual date manipulation below.
-    // This verifies the "no false positives" case.
-    const result = checkOverdueTodos();
-    // May or may not be null depending on prior test entries — the key test is below
-    if (result) {
-      expect(result.type).toBe('overdue_todo');
-    }
+    expect(checkOverdueTodos()).toBeNull();
+    cleanup();
   });
 
-  it('detects and marks overdue todos with old updated date', () => {
+  it('returns null for todo with due_date in the future', () => {
+    const { cleanup } = freshDb();
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    createEntry({
+      nb: 'NOW', type: 'TD', name: 'Future Todo',
+      status: 'open', summary: 'Not overdue yet', body: 'Body',
+      due_date: tomorrow.toISOString().split('T')[0],
+    });
+
+    expect(checkOverdueTodos()).toBeNull();
+    cleanup();
+  });
+
+  it('detects and marks overdue todos with past due_date', () => {
+    const { cleanup } = freshDb();
+    const fiveDaysAgo = new Date();
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
     const entry = createEntry({
       nb: 'NOW', type: 'TD', name: 'Old Todo',
       status: 'open', summary: 'Should be overdue', body: 'Body',
+      due_date: fiveDaysAgo.toISOString().split('T')[0],
     });
-
-    // Manually backdate the entry in SQLite to 5 days ago
-    const d = getDb();
-    const oldDate = new Date();
-    oldDate.setDate(oldDate.getDate() - 5);
-    const oldDateStr = oldDate.toISOString().slice(0, 10);
-    d.prepare('UPDATE index_entries SET updated = ? WHERE code = ?').run(oldDateStr, entry.code);
 
     const result = checkOverdueTodos();
     expect(result).not.toBeNull();
@@ -165,6 +250,7 @@ describe('checkOverdueTodos', () => {
     // Verify status was changed to 'overdue'
     const fromDb = getEntryByCode(entry.code);
     expect(fromDb!.status).toBe('overdue');
+    cleanup();
   });
 });
 
@@ -172,12 +258,10 @@ describe('checkOverdueTodos', () => {
 
 describe('checkStaleQuestions', () => {
   it('returns null when no stale questions', () => {
-    // Any existing WHY.QU entries were just created, so not stale
+    const { cleanup } = freshDb();
     const result = checkStaleQuestions();
-    // Either null or only has genuinely stale entries
-    if (result) {
-      expect(result.type).toBe('stale_question');
-    }
+    expect(result).toBeNull();
+    cleanup();
   });
 
   it('detects stale open questions older than 3 days', () => {
@@ -199,14 +283,13 @@ describe('checkStaleQuestions', () => {
   });
 });
 
-// --- checkStalePlans ---
+// --- checkPlanCalibration ---
 
-describe('checkStalePlans', () => {
+describe('checkPlanCalibration', () => {
   it('returns null when no stale plans', () => {
-    const result = checkStalePlans();
-    if (result) {
-      expect(result.type).toBe('stale_plan');
-    }
+    const { cleanup } = freshDb();
+    expect(checkPlanCalibration()).toBeNull();
+    cleanup();
   });
 
   it('detects stale planning entries older than 7 days', () => {
@@ -221,7 +304,7 @@ describe('checkStalePlans', () => {
     d.prepare('UPDATE index_entries SET updated = ? WHERE code = ?')
       .run(oldDate.toISOString().slice(0, 10), entry.code);
 
-    const result = checkStalePlans();
+    const result = checkPlanCalibration();
     expect(result).not.toBeNull();
     expect(result!.type).toBe('stale_plan');
     expect(result!.entries.some(e => e.code === entry.code)).toBe(true);
@@ -232,10 +315,9 @@ describe('checkStalePlans', () => {
 
 describe('checkStaleProjects', () => {
   it('returns null when no stale projects', () => {
-    const result = checkStaleProjects();
-    if (result) {
-      expect(result.type).toBe('stale_project');
-    }
+    const { cleanup } = freshDb();
+    expect(checkStaleProjects()).toBeNull();
+    cleanup();
   });
 
   it('detects stale active projects older than 7 days', () => {
@@ -260,118 +342,190 @@ describe('checkStaleProjects', () => {
 // --- runHeartbeat ---
 
 describe('runHeartbeat', () => {
-  it('returns HeartbeatResult with ran_at date', () => {
-    const result = runHeartbeat();
+  it('returns HeartbeatResult with ran_at date', async () => {
+    const { cleanup } = freshDb();
+    const result = await runHeartbeat();
     expect(result.ran_at).toBe(new Date().toISOString().slice(0, 10));
     expect(Array.isArray(result.notifications)).toBe(true);
+    expect(Array.isArray(result.created)).toBe(true);
+    cleanup();
   });
 
-  it('creates WHY.MT entry when findings exist', () => {
-    // Create an overdue todo to ensure findings
-    const todo = createEntry({
+  it('creates one WHY.MT entry per notification', async () => {
+    const { cleanup } = freshDb();
+    const twoDaysAgo = new Date();
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    const twoDaysAgoStr = twoDaysAgo.toISOString().split('T')[0];
+
+    // Create overdue todo (needs due_date in the past)
+    createEntry({
       nb: 'NOW', type: 'TD', name: 'Heartbeat Test Todo',
       status: 'open', summary: 'Will be overdue', body: 'Body',
+      due_date: twoDaysAgoStr,
     });
 
-    const d = getDb();
-    const oldDate = new Date();
-    oldDate.setDate(oldDate.getDate() - 3);
-    d.prepare('UPDATE index_entries SET updated = ? WHERE code = ?')
-      .run(oldDate.toISOString().slice(0, 10), todo.code);
+    // Create stale question (needs updated in the past)
+    const q = createEntry({
+      nb: 'WHY', type: 'QU', name: 'Stale Q',
+      status: 'open', summary: 'Old question', body: 'Body',
+    });
+    const fiveDaysAgo = new Date();
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    getDb().prepare('UPDATE index_entries SET updated = ? WHERE code = ?')
+      .run(fiveDaysAgo.toISOString().split('T')[0], q.code);
 
-    const result = runHeartbeat();
-    expect(result.notifications.length).toBeGreaterThan(0);
-    expect(result.created).not.toBeNull();
-    expect(result.created!.nb).toBe('WHY');
-    expect(result.created!.type).toBe('MT');
-    expect(result.created!.name).toContain('Heartbeat');
+    const result = await runHeartbeat();
+    expect(result.notifications.length).toBe(2);
+    expect(result.created.length).toBe(2);
 
-    // Verify the WHY.MT file exists
-    expect(fs.existsSync(result.created!.path)).toBe(true);
-    const content = fs.readFileSync(result.created!.path, 'utf-8');
-    expect(content).toContain('Findings');
+    // Each created entry is a WHY.MT
+    for (const entry of result.created) {
+      expect(entry.nb).toBe('WHY');
+      expect(entry.type).toBe('MT');
+      expect(entry.name).toContain('Heartbeat');
+      expect(fs.existsSync(entry.path)).toBe(true);
+      const content = fs.readFileSync(entry.path, 'utf-8');
+      expect(content).toContain('Findings');
+    }
+    cleanup();
   });
 
-  it('returns null created when no findings on clean DB', () => {
-    // Close and set up a completely fresh database
-    closeDatabase();
-    const cleanDir = path.join(os.tmpdir(), `agentic-agi-clean-${Date.now()}`);
-    const cleanDb = path.join(cleanDir, 'memory.sqlite');
-    const cleanMemory = path.join(cleanDir, 'memory');
-    (PATHS as Record<string, string>).db = cleanDb;
-    (PATHS as Record<string, string>).memory = cleanMemory;
-    initDatabase(cleanDb);
-
-    const result = runHeartbeat();
+  it('returns empty created array when no findings on clean DB', async () => {
+    const { cleanup } = freshDb();
+    const result = await runHeartbeat();
     expect(result.notifications).toEqual([]);
-    expect(result.created).toBeNull();
-
-    // Clean up and restore test DB
-    closeDatabase();
-    fs.rmSync(cleanDir, { recursive: true, force: true });
-    (PATHS as Record<string, string>).db = TEST_DB;
-    (PATHS as Record<string, string>).memory = TEST_MEMORY;
-    initDatabase(TEST_DB);
+    expect(result.created).toEqual([]);
+    cleanup();
   });
 });
 
 // --- Acceptance test ---
 
 describe('acceptance', () => {
-  it('overdue TODO triggers heartbeat notification + WHY.MT creation', () => {
-    // Close and set up a fresh database for this acceptance test
-    closeDatabase();
-    const acceptDir = path.join(os.tmpdir(), `agentic-agi-accept-${Date.now()}`);
-    const acceptDb = path.join(acceptDir, 'memory.sqlite');
-    const acceptMemory = path.join(acceptDir, 'memory');
-    (PATHS as Record<string, string>).db = acceptDb;
-    (PATHS as Record<string, string>).memory = acceptMemory;
-    initDatabase(acceptDb);
+  it('overdue TODO triggers heartbeat notification + WHY.MT creation', async () => {
+    const { cleanup } = freshDb();
+    const twoDaysAgo = new Date();
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
 
-    // Create a todo and backdate it
     const todo = createEntry({
       nb: 'NOW', type: 'TD', name: 'Buy groceries',
       status: 'open', summary: 'Need milk and eggs', body: '- Milk\n- Eggs',
+      due_date: twoDaysAgo.toISOString().split('T')[0],
     });
 
-    const d = getDb();
-    const twoDaysAgo = new Date();
-    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-    d.prepare('UPDATE index_entries SET updated = ? WHERE code = ?')
-      .run(twoDaysAgo.toISOString().slice(0, 10), todo.code);
-
-    // Run heartbeat
-    const result = runHeartbeat();
+    const result = await runHeartbeat();
 
     // Notification exists for overdue todo
     const overdue = result.notifications.find(n => n.type === 'overdue_todo');
     expect(overdue).toBeDefined();
     expect(overdue!.entries.some(e => e.code === todo.code)).toBe(true);
 
-    // WHY.MT entry was created
-    expect(result.created).not.toBeNull();
-    expect(result.created!.nb).toBe('WHY');
-    expect(result.created!.type).toBe('MT');
+    // WHY.MT entry was created for this notification
+    expect(result.created.length).toBeGreaterThan(0);
+    const mtEntry = result.created.find(e => e.summary.includes('overdue'));
+    expect(mtEntry).toBeDefined();
+    expect(mtEntry!.nb).toBe('WHY');
+    expect(mtEntry!.type).toBe('MT');
 
     // Todo status was changed to overdue
     const updated = getEntryByCode(todo.code);
     expect(updated!.status).toBe('overdue');
+    cleanup();
+  });
+});
 
-    // Clean up and restore test DB
-    closeDatabase();
-    fs.rmSync(acceptDir, { recursive: true, force: true });
-    (PATHS as Record<string, string>).db = TEST_DB;
-    (PATHS as Record<string, string>).memory = TEST_MEMORY;
-    initDatabase(TEST_DB);
+// --- FIX 3: Heartbeat queue ---
+
+describe('heartbeat_queue', () => {
+  it('inserts one queue row per notification', async () => {
+    const { cleanup } = freshDb();
+    const twoDaysAgo = new Date();
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    const fiveDaysAgo = new Date();
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    // Trigger 1: overdue todo
+    createEntry({
+      nb: 'NOW', type: 'TD', name: 'Queue Todo',
+      status: 'open', summary: 'Will trigger queue', body: 'Body',
+      due_date: twoDaysAgo.toISOString().split('T')[0],
+    });
+
+    // Trigger 2: stale question
+    const q = createEntry({
+      nb: 'WHY', type: 'QU', name: 'Queue Question',
+      status: 'open', summary: 'Old question', body: 'Body',
+    });
+    getDb().prepare('UPDATE index_entries SET updated = ? WHERE code = ?')
+      .run(fiveDaysAgo.toISOString().split('T')[0], q.code);
+
+    const result = await runHeartbeat();
+    expect(result.notifications.length).toBe(2);
+    expect(result.created.length).toBe(2);
+
+    // Queue should have one row per notification
+    const d = getDb();
+    const unseen = d.prepare('SELECT * FROM heartbeat_queue WHERE seen = 0').all() as Array<{
+      id: number; code: string; message: string; seen: number; created: string;
+    }>;
+    expect(unseen.length).toBe(2);
+
+    // Each queue row maps to a created WHY.MT entry
+    for (let i = 0; i < result.created.length; i++) {
+      expect(unseen[i].code).toBe(result.created[i].code);
+      expect(unseen[i].seen).toBe(0);
+    }
+
+    // Mark as seen
+    d.prepare('UPDATE heartbeat_queue SET seen = 1').run();
+    const afterMark = d.prepare('SELECT * FROM heartbeat_queue WHERE seen = 0').all();
+    expect(afterMark.length).toBe(0);
+    cleanup();
+  });
+
+  it('does NOT insert queue row when no findings', async () => {
+    const { cleanup } = freshDb();
+    const result = await runHeartbeat();
+    expect(result.created).toEqual([]);
+
+    const d = getDb();
+    const rows = d.prepare('SELECT * FROM heartbeat_queue').all();
+    expect(rows.length).toBe(0);
+    cleanup();
+  });
+});
+
+// --- FIX 2: Error isolation ---
+
+describe('error isolation', () => {
+  it('one check failing does not stop other checks', async () => {
+    const { cleanup } = freshDb();
+    const fiveDaysAgo = new Date();
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    // Create an overdue todo so checkOverdueTodos has findings
+    createEntry({
+      nb: 'NOW', type: 'TD', name: 'Isolation Test',
+      status: 'open', summary: 'Will survive isolation', body: 'Body',
+      due_date: fiveDaysAgo.toISOString().split('T')[0],
+    });
+
+    // Run heartbeat — even if checkDeadlines or others have issues,
+    // checkOverdueTodos should still produce its notification
+    const result = await runHeartbeat();
+    const overdue = result.notifications.find(n => n.type === 'overdue_todo');
+    expect(overdue).toBeDefined();
+    expect(overdue!.entries.length).toBeGreaterThan(0);
+    cleanup();
   });
 });
 
 // --- Performance ---
 
 describe('performance', () => {
-  it('full heartbeat completes in under 100ms', () => {
+  it('full heartbeat completes in under 100ms', async () => {
     const start = performance.now();
-    runHeartbeat();
+    await runHeartbeat();
     const elapsed = performance.now() - start;
     expect(elapsed).toBeLessThan(100);
   });

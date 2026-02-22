@@ -38,35 +38,42 @@ export function resolveTypeKey(nb: string, type: string): NotebookType | undefin
   return key in TYPE_MAP ? key : undefined;
 }
 
-// --- LLM (primary) ---
-
 function getTimeoutForModel(modelName: string): number {
   const lower = modelName.toLowerCase();
-  if (/72b|70b|80b|32b/.test(lower)) return 90000;
-  if (/7b|8b|13b|14b/.test(lower)) return 20000;
-  if (/1b|2b|3b|4b/.test(lower)) return 10000;
+  if (/pro/.test(lower)) return 90000;
+  if (/flash-lite|nano/.test(lower)) return 10000;
+  if (/flash/.test(lower)) return 20000;
   return 20000;
 }
 
-const _llmModel = process.env.LLM_MODEL ?? '';
+const _geminiModel = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
 
-export const LLM_CONFIG = {
-  endpoint: process.env.LLM_ENDPOINT ?? '',
-  model: _llmModel,
-  maxTokens: 512,
-  temperature: 0.3,
-  timeoutMs: getTimeoutForModel(_llmModel),
+export const GEMINI_CONFIG = {
+  apiKey: process.env.GEMINI_API_KEY ?? '',
+  endpoint: process.env.GEMINI_ENDPOINT ?? 'https://generativelanguage.googleapis.com/v1beta',
+  model: _geminiModel,
+  maxTokens: Number(process.env.LLM_MAX_TOKENS ?? '512'),
+  temperature: Number(process.env.LLM_TEMPERATURE ?? '0.3'),
+  timeoutMs: Number(process.env.LLM_TIMEOUT_MS ?? String(getTimeoutForModel(_geminiModel))),
 };
 
 export const EMBEDDING_TIMEOUT_MS = 10000;
 
-// --- LLM (fallback) ---
+export const AUTONOMY_CONFIG = {
+  enabled: String(process.env.AUTONOMY_ENABLED ?? 'false').toLowerCase() === 'true',
+  intervalMs: Number(process.env.AUTONOMY_INTERVAL_MS ?? '45000'),
+  maxTasksPerCycle: Number(process.env.AUTONOMY_MAX_TASKS ?? '2'),
+  maxAttemptsPerTask: Number(process.env.AUTONOMY_MAX_ATTEMPTS ?? '4'),
+};
+
+// --- LLM fallback (optional) ---
 export const LLM_FALLBACK_CONFIG = process.env.LLM_FALLBACK_PROVIDER
   ? {
       provider: process.env.LLM_FALLBACK_PROVIDER,
       model: process.env.LLM_FALLBACK_MODEL ?? '',
       apiKey: process.env.ANTHROPIC_API_KEY ?? '',
-      endpoint: process.env.ANTHROPIC_ENDPOINT ?? '',
+      endpoint: process.env.ANTHROPIC_ENDPOINT
+        ?? 'https://api.anthropic.com/v1/messages',
     }
   : null;
 

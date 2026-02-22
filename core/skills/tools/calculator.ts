@@ -1,5 +1,6 @@
 import { evaluate } from 'mathjs';
 import type { MCPSkill, SkillResult } from '../types.js';
+import { registerSkill } from '../store.js';
 
 const calculatorSkill: MCPSkill = {
   name: 'calculator',
@@ -25,4 +26,5 @@ const calculatorSkill: MCPSkill = {
   },
 };
 
+registerSkill(calculatorSkill);
 export default calculatorSkill;

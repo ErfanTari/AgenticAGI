@@ -1,39 +1,26 @@
 import type { Intent } from '../types.js';
-import type { Skill, MCPSkill } from './types.js';
+import type { Skill } from './types.js';
 import { memoryReadSkill } from './memory_read.js';
 import { memoryWriteSkill } from './memory_write.js';
+import {
+  registerSkill,
+  getSkill,
+  getAllSkills,
+  getSkillDescriptions,
+} from './store.js';
 
-// Import MCP skill defaults
-import calculatorSkill from './tools/calculator.js';
-import fileReaderSkill from './tools/file_reader.js';
-import webSearchSkill from './tools/web_search.js';
+// Built-in MCP skills self-register via store.
+import './tools/calculator.js';
+import './tools/file_reader.js';
+import './tools/file_writer.js';
+import './tools/web_fetch.js';
+import './tools/web_search.js';
+import './tools/shell_runner.js';
+import './tools/task_planner.js';
+import './tools/log_analyzer.js';
+import './tools/code_editor.js';
 
-// --- MCP Skill Registry (Map-based) ---
-
-const registry = new Map<string, MCPSkill>();
-
-export function registerSkill(skill: MCPSkill): void {
-  registry.set(skill.name, skill);
-}
-
-export function getSkill(name: string): MCPSkill | undefined {
-  return registry.get(name);
-}
-
-export function getAllSkills(): MCPSkill[] {
-  return [...registry.values()];
-}
-
-export function getSkillDescriptions(): string {
-  return getAllSkills()
-    .map(s => `${s.name}: ${s.description}`)
-    .join('\n');
-}
-
-// Register built-in skills once, after all imports resolved
-registerSkill(calculatorSkill);
-registerSkill(fileReaderSkill);
-registerSkill(webSearchSkill);
+export { registerSkill, getSkill, getAllSkills, getSkillDescriptions };
 
 // --- Legacy skill loading (used by context builder) ---
 

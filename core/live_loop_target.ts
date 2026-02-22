@@ -1,0 +1,1 @@
+export const liveProbe: number = 0;

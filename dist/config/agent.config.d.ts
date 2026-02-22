@@ -82,7 +82,8 @@ export type NotebookType = keyof typeof TYPE_MAP;
 export type Notebook = typeof TYPE_MAP[NotebookType]['notebook'];
 export type TypeCode = typeof TYPE_MAP[NotebookType]['type'];
 export declare function resolveTypeKey(nb: string, type: string): NotebookType | undefined;
-export declare const LLM_CONFIG: {
+export declare const GEMINI_CONFIG: {
+    apiKey: string;
     endpoint: string;
     model: string;
     maxTokens: number;
@@ -90,6 +91,12 @@ export declare const LLM_CONFIG: {
     timeoutMs: number;
 };
 export declare const EMBEDDING_TIMEOUT_MS = 10000;
+export declare const AUTONOMY_CONFIG: {
+    enabled: boolean;
+    intervalMs: number;
+    maxTasksPerCycle: number;
+    maxAttemptsPerTask: number;
+};
 export declare const LLM_FALLBACK_CONFIG: {
     provider: string;
     model: string;

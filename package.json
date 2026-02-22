@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "chat": "pnpm build && node dist/core/playground.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },

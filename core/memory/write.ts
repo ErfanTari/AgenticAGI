@@ -57,6 +57,7 @@ export function createEntry(input: CreateEntryInput): IndexEntry {
       status: input.status,
       updated,
       summary: input.summary,
+      due_date: input.due_date ?? null,
     };
 
     const filePath = resolveEntryPath(input.nb, input.type, code, input.name);

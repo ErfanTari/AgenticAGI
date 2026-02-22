@@ -1,48 +1,83 @@
-import { LLM_CONFIG, LLM_FALLBACK_CONFIG } from '../config/agent.config.js';
+import { GEMINI_CONFIG, LLM_FALLBACK_CONFIG } from '../config/agent.config.js';
+function toGeminiPayload(messages) {
+    const systemText = messages
+        .filter(message => message.role === 'system')
+        .map(message => message.content)
+        .join('\n\n')
+        .trim();
+    const contents = messages
+        .filter(message => message.role !== 'system')
+        .map(message => ({
+        role: message.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: message.content }],
+    }));
+    if (contents.length === 0) {
+        contents.push({ role: 'user', parts: [{ text: '' }] });
+    }
+    return {
+        systemInstruction: systemText
+            ? { parts: [{ text: systemText }] }
+            : undefined,
+        contents,
+    };
+}
 /**
- * Call the primary LLM (Mac Studio / OpenAI-compatible endpoint).
- * Timeout is tiered by model size (70B+=90s, 7B-14B=20s, 1B-4B=10s, default=20s).
- * On timeout, logs a warning with model name so caller knows what happened.
+ * Call Google Gemini via the Generative Language API.
  */
-async function callPrimary(messages) {
+async function callGemini(messages) {
+    if (!GEMINI_CONFIG.apiKey) {
+        throw new Error('Gemini not configured (missing GEMINI_API_KEY)');
+    }
     const controller = new AbortController();
-    const timeoutMs = LLM_CONFIG.timeoutMs;
     const timer = setTimeout(() => {
-        console.warn('[llm] Still thinking — %s is processing a complex query. Timeout after %ds.', LLM_CONFIG.model, timeoutMs / 1000);
+        console.warn('[llm] Gemini timeout after %ds (%s).', GEMINI_CONFIG.timeoutMs / 1000, GEMINI_CONFIG.model);
         controller.abort();
-    }, timeoutMs);
+    }, GEMINI_CONFIG.timeoutMs);
     try {
-        const response = await fetch(LLM_CONFIG.endpoint, {
+        const payload = toGeminiPayload(messages);
+        const url = `${GEMINI_CONFIG.endpoint}/models/${encodeURIComponent(GEMINI_CONFIG.model)}:generateContent?key=${encodeURIComponent(GEMINI_CONFIG.apiKey)}`;
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: LLM_CONFIG.model,
-                messages,
-                max_tokens: LLM_CONFIG.maxTokens,
-                temperature: LLM_CONFIG.temperature,
+                ...payload,
+                generationConfig: {
+                    maxOutputTokens: GEMINI_CONFIG.maxTokens,
+                    temperature: GEMINI_CONFIG.temperature,
+                },
             }),
             signal: controller.signal,
         });
         if (!response.ok) {
-            throw new Error(`Primary LLM: ${response.status} ${response.statusText}`);
+            throw new Error(`Gemini: ${response.status} ${response.statusText}`);
         }
         const data = await response.json();
-        return data.choices[0].message.content;
+        const parts = data.candidates?.[0]?.content?.parts ?? [];
+        const text = parts
+            .map(part => part.text ?? '')
+            .join('')
+            .trim();
+        if (!text) {
+            throw new Error('Gemini returned an empty response');
+        }
+        return text;
     }
     finally {
         clearTimeout(timer);
     }
 }
 /**
- * Call the Anthropic Messages API as fallback.
- * Extracts system messages into the top-level `system` parameter.
+ * Call the Anthropic Messages API as optional fallback.
+ * Extracts system messages into top-level `system`.
  */
 async function callAnthropic(messages) {
     if (!LLM_FALLBACK_CONFIG || !LLM_FALLBACK_CONFIG.apiKey) {
         throw new Error('Anthropic fallback not configured (missing API key)');
     }
-    const systemParts = messages.filter(m => m.role === 'system').map(m => m.content);
-    const nonSystem = messages.filter(m => m.role !== 'system');
+    const systemParts = messages
+        .filter(message => message.role === 'system')
+        .map(message => message.content);
+    const nonSystem = messages.filter(message => message.role !== 'system');
     const response = await fetch(LLM_FALLBACK_CONFIG.endpoint, {
         method: 'POST',
         headers: {
@@ -52,53 +87,46 @@ async function callAnthropic(messages) {
         },
         body: JSON.stringify({
             model: LLM_FALLBACK_CONFIG.model,
-            system: systemParts.join('\n'),
+            system: systemParts.join('\n\n'),
             messages: nonSystem,
-            max_tokens: LLM_CONFIG.maxTokens,
+            max_tokens: GEMINI_CONFIG.maxTokens,
         }),
     });
     if (!response.ok) {
         throw new Error(`Anthropic fallback: ${response.status} ${response.statusText}`);
     }
     const data = await response.json();
-    return data.content[0].text;
+    const text = data.content?.[0]?.text?.trim();
+    if (!text)
+        throw new Error('Anthropic fallback returned empty response');
+    return text;
 }
 /**
- * Call LLM with automatic fallback.
- *
- * Flow:
- * 1. Try primary (Mac Studio) with tiered timeout based on model size
- * 2. If unreachable or times out → fall back to Anthropic API
- * 3. Log which provider handled the request + response time
- * 4. Never crash — callers catch the final throw
+ * Call LLM with Gemini primary and optional fallback.
  */
 export async function callLLM(messages) {
-    // Try primary
-    if (LLM_CONFIG.endpoint) {
-        const start = performance.now();
-        try {
-            const result = await callPrimary(messages);
-            const elapsed = Math.round(performance.now() - start);
-            console.log('[llm] Provider: primary (%s) — %dms', LLM_CONFIG.model, elapsed);
-            return result;
-        }
-        catch (err) {
-            const elapsed = Math.round(performance.now() - start);
-            console.warn('[llm] Primary failed after %dms: %s — trying fallback', elapsed, String(err));
-        }
+    const geminiStart = performance.now();
+    try {
+        const result = await callGemini(messages);
+        const elapsed = Math.round(performance.now() - geminiStart);
+        console.log('[llm] Provider: gemini (%s) — %dms', GEMINI_CONFIG.model, elapsed);
+        return result;
     }
-    // Try fallback
+    catch (error) {
+        const elapsed = Math.round(performance.now() - geminiStart);
+        console.warn('[llm] Gemini failed after %dms: %s — trying fallback', elapsed, String(error));
+    }
     if (LLM_FALLBACK_CONFIG) {
-        const start = performance.now();
+        const fallbackStart = performance.now();
         try {
             const result = await callAnthropic(messages);
-            const elapsed = Math.round(performance.now() - start);
+            const elapsed = Math.round(performance.now() - fallbackStart);
             console.log('[llm] Provider: fallback (%s/%s) — %dms', LLM_FALLBACK_CONFIG.provider, LLM_FALLBACK_CONFIG.model, elapsed);
             return result;
         }
-        catch (err) {
-            const elapsed = Math.round(performance.now() - start);
-            console.warn('[llm] Fallback failed after %dms: %s', elapsed, String(err));
+        catch (error) {
+            const elapsed = Math.round(performance.now() - fallbackStart);
+            console.warn('[llm] Fallback failed after %dms: %s', elapsed, String(error));
         }
     }
     throw new Error('All LLM providers unreachable');

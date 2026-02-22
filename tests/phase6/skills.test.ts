@@ -62,18 +62,24 @@ afterAll(() => {
 // --- MCP Skill Registry ---
 
 describe('skill registry', () => {
-  it('has calculator, file_reader, web_search registered', () => {
+  it('has calculator, file_reader, file_writer, web_fetch, web_search, shell_runner, task_planner, log_analyzer, code_editor registered', () => {
     expect(getSkill('calculator')).toBeDefined();
     expect(getSkill('file_reader')).toBeDefined();
+    expect(getSkill('file_writer')).toBeDefined();
+    expect(getSkill('web_fetch')).toBeDefined();
     expect(getSkill('web_search')).toBeDefined();
+    expect(getSkill('shell_runner')).toBeDefined();
+    expect(getSkill('task_planner')).toBeDefined();
+    expect(getSkill('log_analyzer')).toBeDefined();
+    expect(getSkill('code_editor')).toBeDefined();
   });
 
   // FIX 3: registry_only_count — skills registered without importing agent
-  it('registry_only_count equals 3 built-in skills', () => {
+  it('registry_only_count equals 9 built-in skills', () => {
     const builtIn = getAllSkills().filter(s =>
-      ['calculator', 'file_reader', 'web_search'].includes(s.name)
+      ['calculator', 'file_reader', 'file_writer', 'web_fetch', 'web_search', 'shell_runner', 'task_planner', 'log_analyzer', 'code_editor'].includes(s.name)
     );
-    expect(builtIn.length).toBe(3);
+    expect(builtIn.length).toBe(9);
   });
 
   it('getAllSkills returns all registered skills', () => {
@@ -81,14 +87,26 @@ describe('skill registry', () => {
     const names = skills.map(s => s.name);
     expect(names).toContain('calculator');
     expect(names).toContain('file_reader');
+    expect(names).toContain('file_writer');
+    expect(names).toContain('web_fetch');
     expect(names).toContain('web_search');
+    expect(names).toContain('shell_runner');
+    expect(names).toContain('task_planner');
+    expect(names).toContain('log_analyzer');
+    expect(names).toContain('code_editor');
   });
 
   it('getSkillDescriptions returns formatted descriptions', () => {
     const desc = getSkillDescriptions();
     expect(desc).toContain('calculator:');
     expect(desc).toContain('file_reader:');
+    expect(desc).toContain('file_writer:');
+    expect(desc).toContain('web_fetch:');
     expect(desc).toContain('web_search:');
+    expect(desc).toContain('shell_runner:');
+    expect(desc).toContain('task_planner:');
+    expect(desc).toContain('log_analyzer:');
+    expect(desc).toContain('code_editor:');
   });
 
   it('returns undefined for unknown skill', () => {
@@ -129,6 +147,76 @@ describe('skill registry', () => {
     const result = await runSkill('echo', { text: 'hello world' });
     expect(result.success).toBe(true);
     expect(result.output).toBe('Echo: hello world');
+  });
+});
+
+// --- Shell Runner Skill ---
+
+describe('shell_runner skill', () => {
+  it('runs allowed command successfully', async () => {
+    const result = await runSkill('shell_runner', { command: 'pnpm --version' });
+    expect(result.success).toBe(true);
+    expect(result.output.length).toBeGreaterThan(0);
+  });
+
+  it('blocks disallowed command', async () => {
+    const result = await runSkill('shell_runner', { command: 'rm -rf /tmp/demo' });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Command not allowed');
+  });
+
+  it('allows mkdir -p for safe workspace setup', async () => {
+    const dir = path.join(TEST_DIR, 'mkdir-safe');
+    const result = await runSkill('shell_runner', { command: `mkdir -p ${dir}` });
+    expect(result.success).toBe(true);
+    expect(fs.existsSync(dir)).toBe(true);
+  });
+
+  it('allows safe chained commands (mkdir + pnpm --version)', async () => {
+    const dir = path.join(TEST_DIR, 'node-chain');
+    const result = await runSkill('shell_runner', { command: `mkdir -p ${dir} && pnpm --version` });
+    expect(result.success).toBe(true);
+    expect(fs.existsSync(dir)).toBe(true);
+    expect(result.output.length).toBeGreaterThan(0);
+  });
+});
+
+describe('task_planner skill', () => {
+  it('returns ordered execution steps', async () => {
+    const result = await runSkill('task_planner', { goal: 'implement farming loop', maxSteps: 5 });
+    expect(result.success).toBe(true);
+    expect(result.output).toContain('Execution plan:');
+    expect(result.output).toContain('1.');
+    expect(result.output).toContain('5.');
+  });
+});
+
+describe('log_analyzer skill', () => {
+  it('extracts TypeScript error signatures', async () => {
+    const logs = 'core/a.ts(1,1): error TS2322: Type string is not assignable to number';
+    const result = await runSkill('log_analyzer', { logs });
+    expect(result.success).toBe(true);
+    expect(result.output).toContain('TS2322');
+    expect(result.output).toContain('Suggested fixes');
+  });
+});
+
+describe('code_editor skill', () => {
+  const file = path.join(TEST_DIR, 'code-editor.ts');
+  afterAll(() => {
+    fs.rmSync(file, { force: true });
+  });
+
+  it('replaces text in file', async () => {
+    fs.writeFileSync(file, 'export const n = 1;');
+    const result = await runSkill('code_editor', {
+      path: file,
+      operation: 'replace',
+      target: '1',
+      content: '2',
+    });
+    expect(result.success).toBe(true);
+    expect(fs.readFileSync(file, 'utf-8')).toContain('2');
   });
 });
 
@@ -224,13 +312,158 @@ describe('file_reader skill', () => {
   });
 });
 
+// --- File Writer Skill ---
+
+describe('file_writer skill', () => {
+  const outputFile = path.join(TEST_DIR, 'write-target.txt');
+
+  afterAll(() => {
+    fs.rmSync(outputFile, { force: true });
+  });
+
+  it('writes text to a file successfully', async () => {
+    const result = await runSkill('file_writer', {
+      path: outputFile,
+      content: 'hello writer',
+      overwrite: true,
+    });
+    expect(result.success).toBe(true);
+    expect(fs.readFileSync(outputFile, 'utf-8')).toContain('hello writer');
+  });
+
+  it('fails when file exists and overwrite=false', async () => {
+    fs.writeFileSync(outputFile, 'existing');
+    const result = await runSkill('file_writer', {
+      path: outputFile,
+      content: 'new content',
+      overwrite: false,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('File already exists');
+  });
+
+  it('appends to a file', async () => {
+    fs.writeFileSync(outputFile, 'line1');
+    const result = await runSkill('file_writer', {
+      path: outputFile,
+      content: '\nline2',
+      append: true,
+    });
+    expect(result.success).toBe(true);
+    expect(fs.readFileSync(outputFile, 'utf-8')).toContain('line1\nline2');
+  });
+});
+
+// --- Web Fetch Skill ---
+
+describe('web_fetch skill', () => {
+  const originalFetch = globalThis.fetch;
+  const downloadTarget = path.join(TEST_DIR, 'catalog.pdf');
+
+  afterAll(() => {
+    globalThis.fetch = originalFetch;
+    fs.rmSync(downloadTarget, { force: true });
+  });
+
+  it('returns text content when fetching a text page', async () => {
+    globalThis.fetch = async () => (
+      new Response('Catalog page content', {
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      })
+    );
+
+    const result = await runSkill('web_fetch', { url: 'https://example.com/catalog' });
+    expect(result.success).toBe(true);
+    expect(result.output).toContain('Catalog page content');
+  });
+
+  it('downloads binary content when outputPath is provided', async () => {
+    const bytes = new Uint8Array([1, 2, 3, 4, 5]);
+    globalThis.fetch = async () => (
+      new Response(bytes, {
+        status: 200,
+        headers: { 'content-type': 'application/pdf' },
+      })
+    );
+
+    const result = await runSkill('web_fetch', {
+      url: 'https://example.com/catalog.pdf',
+      outputPath: downloadTarget,
+    });
+    expect(result.success).toBe(true);
+    expect(fs.existsSync(downloadTarget)).toBe(true);
+    expect(fs.readFileSync(downloadTarget).length).toBe(5);
+  });
+
+  it('rejects binary fetch without outputPath', async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    globalThis.fetch = async () => (
+      new Response(bytes, {
+        status: 200,
+        headers: { 'content-type': 'application/octet-stream' },
+      })
+    );
+
+    const result = await runSkill('web_fetch', { url: 'https://example.com/binary.bin' });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Provide outputPath');
+  });
+});
+
 // --- Web Search Skill ---
 
 describe('web_search skill', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterAll(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   it('returns results for a query', async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      async json() {
+        return {
+          AbstractText: 'TypeScript is a strongly typed programming language.',
+          RelatedTopics: [],
+        };
+      },
+    } as Response);
+
     const result = await runSkill('web_search', { query: 'TypeScript programming language' });
     expect(result.success).toBe(true);
     expect(result.output).toContain('TypeScript');
+  });
+
+  it('returns top news items for news queries', async () => {
+    const rss = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Story One</title>
+      <link>https://news.example.com/one</link>
+      <pubDate>Sat, 22 Feb 2026 10:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Story Two</title>
+      <link>https://news.example.com/two</link>
+      <pubDate>Sat, 22 Feb 2026 09:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>`;
+
+    globalThis.fetch = async () => (
+      new Response(rss, {
+        status: 200,
+        headers: { 'content-type': 'application/rss+xml' },
+      })
+    );
+
+    const result = await runSkill('web_search', { query: '3 news for today' });
+    expect(result.success).toBe(true);
+    expect(result.output).toContain("Top news for '3 news for today'");
+    expect(result.output).toContain('Story One');
   });
 
   it('handles empty query', async () => {
@@ -240,6 +473,13 @@ describe('web_search skill', () => {
   });
 
   it('returns graceful message when no results', async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      async json() {
+        return { AbstractText: '', RelatedTopics: [] };
+      },
+    } as Response);
+
     const result = await runSkill('web_search', { query: 'xyznonexistentqueryzyx123456' });
     expect(result.success).toBe(true);
     expect(result.output.length).toBeGreaterThan(0);
@@ -323,6 +563,57 @@ describe('classifier skill detection', () => {
     expect(c.skill).toBe('file_reader');
   });
 
+  // File writer
+  it('detects "write \\"hello\\" to /tmp/note.txt" → file_writer', () => {
+    const c = classifyIntent('write "hello" to /tmp/note.txt');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('file_writer');
+    expect(String(c.skillInput!.path)).toContain('/tmp/note.txt');
+    expect(String(c.skillInput!.content)).toContain('hello');
+  });
+
+  // Shell runner
+  it('detects "run tests" → shell_runner', () => {
+    const c = classifyIntent('run tests');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('shell_runner');
+    expect(String(c.skillInput!.command)).toBe('pnpm test');
+  });
+
+  it('detects "build project" → shell_runner', () => {
+    const c = classifyIntent('build project');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('shell_runner');
+    expect(String(c.skillInput!.command)).toBe('pnpm build');
+  });
+
+  it('detects planning request → task_planner', () => {
+    const c = classifyIntent('break this into steps for implementation');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('task_planner');
+  });
+
+  it('detects log analysis request → log_analyzer', () => {
+    const c = classifyIntent('analyze this compiler log and explain failure');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('log_analyzer');
+  });
+
+  it('detects replace-in-file request → code_editor', () => {
+    const c = classifyIntent('replace \"foo\" with \"bar\" in /tmp/a.ts');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('code_editor');
+  });
+
+  // Web fetch/download
+  it('detects "download https://example.com/catalog.pdf to /tmp/catalog.pdf" → web_fetch', () => {
+    const c = classifyIntent('download https://example.com/catalog.pdf to /tmp/catalog.pdf');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('web_fetch');
+    expect(String(c.skillInput!.url)).toContain('https://example.com/catalog.pdf');
+    expect(String(c.skillInput!.outputPath)).toContain('/tmp/catalog.pdf');
+  });
+
   // Web search
   it('detects "search the web for ceramic suppliers Turkey" → web_search', () => {
     const c = classifyIntent('search the web for ceramic suppliers Turkey');
@@ -353,6 +644,13 @@ describe('classifier skill detection', () => {
     const c = classifyIntent('latest news on ceramics');
     expect(c.intent).toBe('skill');
     expect(c.skill).toBe('web_search');
+  });
+
+  it('detects "give me 3 news for today" → web_search', () => {
+    const c = classifyIntent('give me 3 news for today');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('web_search');
+    expect(String(c.skillInput!.query).length).toBeGreaterThan(0);
   });
 
   // Non-skill intents remain unchanged
@@ -393,6 +691,8 @@ describe('agent.ts import cleanliness', () => {
     );
     expect(agentSource).not.toContain('./skills/tools/calculator');
     expect(agentSource).not.toContain('./skills/tools/file_reader');
+    expect(agentSource).not.toContain('./skills/tools/file_writer');
+    expect(agentSource).not.toContain('./skills/tools/web_fetch');
     expect(agentSource).not.toContain('./skills/tools/web_search');
   });
 });
@@ -494,10 +794,201 @@ describe('processMessage with skills', () => {
     expect(res.reply).toContain('"key"');
   });
 
-  it('web_search skill end-to-end', async () => {
-    const res = await processMessage('search the web for ceramic glaze suppliers Turkey', [], { llmHandler: mockLLM });
+  it('file_writer skill end-to-end', async () => {
+    const outFile = path.join(TEST_DIR, 'written-by-agent.txt');
+    fs.rmSync(outFile, { force: true });
+
+    const res = await processMessage(`write "hello from file writer" to ${outFile}`, [], { llmHandler: mockLLM });
     expect(res.intent).toBe('skill');
-    expect(res.reply.length).toBeGreaterThan(0);
+    expect(res.reply).toContain('Wrote');
+    expect(fs.existsSync(outFile)).toBe(true);
+    expect(fs.readFileSync(outFile, 'utf-8')).toContain('hello from file writer');
+  });
+
+  it('web_fetch skill end-to-end (download to local file)', async () => {
+    const originalFetch = globalThis.fetch;
+    const downloadPath = path.join(TEST_DIR, 'downloaded-catalog.pdf');
+    try {
+      globalThis.fetch = async () => (
+        new Response(new Uint8Array([7, 8, 9]), {
+          status: 200,
+          headers: { 'content-type': 'application/pdf' },
+        })
+      );
+
+      const res = await processMessage(
+        `download https://example.com/catalog.pdf to ${downloadPath}`,
+        [],
+        { llmHandler: mockLLM },
+      );
+      expect(res.intent).toBe('skill');
+      expect(res.reply.length).toBeGreaterThan(0);
+      expect(fs.existsSync(downloadPath)).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+      fs.rmSync(downloadPath, { force: true });
+    }
+  });
+
+  it('web action workflow chains search then download', async () => {
+    const originalFetch = globalThis.fetch;
+    const downloadPath = path.join(TEST_DIR, 'workflow-catalog.pdf');
+    let plannerCalls = 0;
+
+    const orchestratorLLM = async (messages: Message[]) => {
+      const system = messages[0].content;
+      if (!system.includes('tool orchestrator')) {
+        return 'General response.';
+      }
+
+      plannerCalls += 1;
+      if (plannerCalls === 1) {
+        return JSON.stringify({
+          type: 'tool',
+          tool: 'web_search',
+          input: { query: 'acme catalog pdf' },
+        });
+      }
+      if (plannerCalls === 2) {
+        return JSON.stringify({
+          type: 'tool',
+          tool: 'web_fetch',
+          input: { url: 'https://acme.example/catalog.pdf', outputPath: downloadPath },
+        });
+      }
+      return JSON.stringify({
+        type: 'final',
+        message: `Downloaded catalog to ${downloadPath}`,
+      });
+    };
+
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('duckduckgo.com')) {
+          return new Response(
+            JSON.stringify({
+              AbstractText: 'ACME catalog PDF available at https://acme.example/catalog.pdf',
+              RelatedTopics: [],
+            }),
+            {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            },
+          );
+        }
+        if (url.includes('acme.example/catalog.pdf')) {
+          return new Response(new Uint8Array([4, 5, 6]), {
+            status: 200,
+            headers: { 'content-type': 'application/pdf' },
+          });
+        }
+        return new Response('Not found', { status: 404 });
+      };
+
+      const res = await processMessage(
+        `search the web for acme catalog and download the first pdf to ${downloadPath}`,
+        [],
+        { llmHandler: orchestratorLLM },
+      );
+
+      expect(res.intent).toBe('skill');
+      expect(res.reply).toContain('Downloaded catalog');
+      expect(plannerCalls).toBe(3);
+      expect(fs.existsSync(downloadPath)).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+      fs.rmSync(downloadPath, { force: true });
+    }
+  });
+
+  it('code workflow chains file write then test command', async () => {
+    let plannerCalls = 0;
+    const workflowFile = path.join(TEST_DIR, 'workflow-code.ts');
+
+    const plannerLLM = async (messages: Message[]) => {
+      const system = messages[0].content;
+      if (!system.includes('tool orchestrator')) return 'General response.';
+
+      plannerCalls += 1;
+      if (plannerCalls === 1) {
+        return JSON.stringify({
+          type: 'tool',
+          tool: 'file_writer',
+          input: { path: workflowFile, content: 'export const x = 1;', overwrite: true },
+        });
+      }
+      if (plannerCalls === 2) {
+        return JSON.stringify({
+          type: 'tool',
+          tool: 'shell_runner',
+          input: { command: 'pnpm --version' },
+        });
+      }
+      return JSON.stringify({ type: 'final', message: 'Code update applied and tests checked.' });
+    };
+
+    const res = await processMessage(
+      `write code in ${workflowFile} and run tests`,
+      [],
+      { llmHandler: plannerLLM },
+    );
+
+    expect(res.intent).toBe('skill');
+    expect(res.reply).toContain('Code update applied');
+    expect(plannerCalls).toBe(3);
+    expect(fs.existsSync(workflowFile)).toBe(true);
+    expect(fs.readFileSync(workflowFile, 'utf-8')).toContain('export const x = 1');
+  });
+
+  it('web_search skill end-to-end', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => ({
+        ok: true,
+        async json() {
+          return {
+            AbstractText: 'Ceramic glaze suppliers list',
+            RelatedTopics: [],
+          };
+        },
+      } as Response);
+
+      const res = await processMessage('search the web for ceramic glaze suppliers Turkey', [], { llmHandler: mockLLM });
+      expect(res.intent).toBe('skill');
+      expect(res.reply.length).toBeGreaterThan(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('news request routes through web_search skill (not general LLM fallback)', async () => {
+    const originalFetch = globalThis.fetch;
+    const rss = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Today Headline</title>
+      <link>https://news.example.com/today</link>
+      <pubDate>Sat, 22 Feb 2026 11:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>`;
+
+    try {
+      globalThis.fetch = async () => (
+        new Response(rss, {
+          status: 200,
+          headers: { 'content-type': 'application/rss+xml' },
+        })
+      );
+
+      const res = await processMessage('give me 3 news for today', [], { llmHandler: mockLLM });
+      expect(res.intent).toBe('skill');
+      expect(res.reply).toContain('Today Headline');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('skill error with "calculate abc + xyz"', async () => {
@@ -538,6 +1029,129 @@ describe('processMessage with skills', () => {
     const res = await processMessage('hello', []);
     expect(res.intent).toBe('greeting');
     expect(res.reply).toContain('Hello');
+  });
+
+  it('tool inventory query returns registered skills deterministically', async () => {
+    const res = await processMessage('can you see any skills?', [], { llmHandler: mockLLM });
+    expect(res.intent).toBe('general');
+    expect(res.reply).toContain('Available MCP skills');
+    expect(res.reply).toContain('calculator');
+    expect(res.reply).toContain('web_search');
+    expect(res.reply).toContain('shell_runner');
+    expect(res.reply).toContain('task_planner');
+    expect(res.reply).toContain('log_analyzer');
+    expect(res.reply).toContain('code_editor');
+  });
+
+  it('does not misclassify task prompt containing "available skills" as inventory query', async () => {
+    const res = await processMessage(
+      'Make a very small version of stardew valley using your new available skills',
+      [],
+      { llmHandler: mockLLM },
+    );
+    expect(res.reply).not.toContain('Available MCP skills:');
+  });
+
+  it('triggers planned workflow for long simulator build prompt', async () => {
+    let plannerCalls = 0;
+    const plannerLLM = async (messages: Message[]) => {
+      if ((messages[0]?.content ?? '').includes('tool orchestrator')) {
+        plannerCalls += 1;
+        if (plannerCalls === 1) {
+          return JSON.stringify({ type: 'tool', tool: 'task_planner', input: { goal: 'farming simulator prototype', maxSteps: 5 } });
+        }
+        if (plannerCalls === 2) {
+          return JSON.stringify({
+            type: 'tool',
+            tool: 'file_writer',
+            input: { path: path.join(TEST_DIR, 'sim-proto.txt'), content: 'prototype scaffold', overwrite: true },
+          });
+        }
+        return JSON.stringify({ type: 'final', message: 'State trace: scaffold complete. Gold math: final gold = 100.' });
+      }
+      return 'General response.';
+    };
+
+    const prompt = `Build a text-based, turn-based farming simulator prototype.
+Initialize the game and process the following sequence of player inputs.`;
+
+    const res = await processMessage(prompt, [], { llmHandler: plannerLLM });
+    expect(res.intent).toBe('skill');
+    expect(plannerCalls).toBeGreaterThan(0);
+    expect(res.reply).toContain('Gold math');
+  });
+
+  it('recovers from non-JSON planner output and continues workflow', async () => {
+    let plannerCalls = 0;
+    const outFile = path.join(TEST_DIR, 'planner-recover.ts');
+    const plannerLLM = async (messages: Message[]) => {
+      if (!(messages[0]?.content ?? '').includes('tool orchestrator')) return 'General response.';
+      plannerCalls += 1;
+      if (plannerCalls === 1) {
+        return JSON.stringify({ type: 'tool', tool: 'task_planner', input: { goal: 'build simulator' } });
+      }
+      if (plannerCalls === 2) {
+        return 'I think we should now write code and run build.'; // invalid planner format
+      }
+      if (plannerCalls === 3) {
+        return JSON.stringify({
+          type: 'tool',
+          tool: 'file_writer',
+          input: { path: outFile, content: 'export const ok = true;', overwrite: true },
+        });
+      }
+      return JSON.stringify({ type: 'final', message: 'Completed after recovery.' });
+    };
+
+    const res = await processMessage(
+      'Build a simulator prototype using tools only and execute steps',
+      [],
+      { llmHandler: plannerLLM },
+    );
+
+    expect(res.intent).toBe('skill');
+    expect(res.reply).toContain('Completed after recovery');
+    expect(plannerCalls).toBeGreaterThanOrEqual(4);
+    expect(fs.existsSync(outFile)).toBe(true);
+  });
+
+  it('tools-only enforced prompt never falls back to plain generic LLM response', async () => {
+    const invalidPlannerLLM = async () => 'This is not JSON tool output.';
+    const res = await processMessage(
+      'You must return STRICT JSON tool calls every step. tools only with shell_runner and file_writer.',
+      [],
+      { llmHandler: invalidPlannerLLM },
+    );
+    expect(res.intent).toBe('skill');
+    expect(res.error).toBeTruthy();
+    expect(res.reply).toContain('I ran these actions:');
+    expect(res.reply).not.toContain('I cannot interact with your local file system');
+  });
+
+  it('auto-recovers file_writer overwrite conflicts inside planned workflow', async () => {
+    const file = path.join(TEST_DIR, 'overwrite-recover.txt');
+    fs.writeFileSync(file, 'existing', 'utf-8');
+    let plannerCalls = 0;
+    const plannerLLM = async (messages: Message[]) => {
+      if (!(messages[0]?.content ?? '').includes('tool orchestrator')) return 'General response.';
+      plannerCalls += 1;
+      if (plannerCalls === 1) {
+        return JSON.stringify({
+          type: 'tool',
+          tool: 'file_writer',
+          input: { path: file, content: 'new-content' },
+        });
+      }
+      return JSON.stringify({ type: 'final', message: 'state trace: done, gold: 100' });
+    };
+
+    const res = await processMessage(
+      'Build simulator tools only and include state trace and gold math',
+      [],
+      { llmHandler: plannerLLM },
+    );
+    expect(res.intent).toBe('skill');
+    expect(fs.readFileSync(file, 'utf-8')).toContain('new-content');
   });
 
   it('LLM failure during skill returns raw skill output', async () => {
