@@ -125,10 +125,18 @@ export function buildContext(
   }
 
   if (tokens > MAX_TOKENS) {
-    // Step 2: Trim memory to summaries only (no full content)
+    // Step 2: Trim memory to summaries only, truncate large skill output
     const summaryResolved = formatResolved(resolved, true);
-    const trimmedSystem = [SYSTEM_PROMPT, summaryResolved, formatSkills(skills)]
-      .filter(Boolean).join('\n\n');
+    const trimParts = [SYSTEM_PROMPT, summaryResolved, formatSkills(skills)];
+    if (skillOutput) {
+      // Keep skill output but cap at ~2000 chars to fit in token budget
+      const maxSkillChars = 2000;
+      const truncatedSkill = skillOutput.length > maxSkillChars
+        ? skillOutput.slice(0, maxSkillChars) + '\n\n[skill output truncated]'
+        : skillOutput;
+      trimParts.push('## Skill Output\n' + truncatedSkill);
+    }
+    const trimmedSystem = trimParts.filter(Boolean).join('\n\n');
     messages[0] = { role: 'system', content: trimmedSystem };
     tokens = estimateTokens(messages);
   }

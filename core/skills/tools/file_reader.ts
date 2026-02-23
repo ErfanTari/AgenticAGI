@@ -29,6 +29,9 @@ const fileReaderSkill: MCPSkill = {
       return { success: false, output: '', error: 'No file path provided' };
     }
 
+    // Ensure workspace exists on every call (handles deletion between calls)
+    fs.mkdirSync(WORKSPACE_ROOT, { recursive: true });
+
     const resolved = path.resolve(filePath);
 
     if (!resolved.startsWith(WORKSPACE_ROOT)) {
