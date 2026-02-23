@@ -304,6 +304,17 @@ describe('file_reader skill', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('No file path');
   });
+
+  it('recreates user_workspace automatically if deleted', async () => {
+    fs.rmSync(WORKSPACE_ROOT, { recursive: true, force: true });
+    const result = await runSkill('file_reader', { path: 'user_workspace/missing-after-delete.txt' });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('File not found');
+    expect(fs.existsSync(WORKSPACE_ROOT)).toBe(true);
+
+    // Ensure later tests that write under this directory have a valid parent.
+    fs.mkdirSync(WORKSPACE_TEST_DIR, { recursive: true });
+  });
 });
 
 // --- File Writer Skill ---
@@ -1349,7 +1360,7 @@ describe('processMessage with skills', () => {
       const system = messages[0]?.content ?? '';
       if (system.includes('repair tool inputs after a failed tool execution')) {
         repairCalls += 1;
-        if (repairCalls < 3) return 'not valid json';
+        if (repairCalls < 2) return 'not valid json';
         return JSON.stringify({ path: existingFile });
       }
       return 'Recovered by retry.';
@@ -1361,7 +1372,7 @@ describe('processMessage with skills', () => {
     expect(res.intent).toBe('skill');
     expect(res.error).toBeUndefined();
     expect(res.reply).toContain('Recovered by retry');
-    expect(repairCalls).toBeGreaterThanOrEqual(3);
+    expect(repairCalls).toBeGreaterThanOrEqual(2);
   });
 
   // Regression: memory queries still work unchanged

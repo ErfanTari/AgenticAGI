@@ -82,8 +82,8 @@ It tells you the notebook, the type, and the number — without opening anything
 │       ├── memory_write.ts    ← legacy skill descriptor
 │       └── tools/
 │           ├── calculator.ts  ← math evaluation via mathjs
-│           ├── file_reader.ts ← read files from disk
-│           └── web_search.ts  ← DuckDuckGo Instant Answer API
+│           ├── file_reader.ts ← jailed reads from user_workspace/
+│           └── web_search.ts  ← Brave + configurable endpoint fallback
 └── config/
     └── agent.config.ts        ← model, paths, settings
 ```
@@ -135,7 +135,7 @@ PLAN.PL-000007  → Planning entry 7
 
 ## SQLite Schema
 
-Three tables. Nothing more until justified.
+Core tables. Nothing more until justified.
 
 ### Table: index_entries
 
@@ -148,7 +148,8 @@ CREATE TABLE index_entries (
   status    TEXT NOT NULL,      -- active | archived | open | closed | upcoming
   updated   TEXT NOT NULL,      -- ISO date string
   summary   TEXT,               -- one line, agent answers simple queries from this
-  path      TEXT NOT NULL       -- full path to markdown file
+  path      TEXT NOT NULL,      -- full path to markdown file
+  due_date  TEXT                -- optional YYYY-MM-DD for calendar/plan checks
 );
 
 CREATE INDEX idx_nb     ON index_entries(nb);
@@ -280,8 +281,8 @@ It does not respond to the user. It only reads and writes to memory.
 1. WHEN notebook — any events or deadlines in next 24 hours?
    → if yes: queue a user notification
 
-2. NOW notebook — any todos overdue?
-   → if yes: update status, flag in summary
+2. NOW + PLAN notebooks — any overdue todos or planning entries with past due_date?
+   → if yes: update todo status to overdue, queue overdue plan/todo findings
 
 3. WHY notebook — any open questions older than 3 days?
    → if yes: surface to user at next interaction
@@ -292,6 +293,10 @@ It does not respond to the user. It only reads and writes to memory.
 
 5. WHAT notebook — any active projects with no update in 7 days?
    → flag as stale, queue check-in question
+
+6. Vision alignment check — if WHY.MT "North Star" exists:
+   → find active WHAT.PJ projects with no relationship to North Star
+   → queue: "Project '{name}' has no stated connection to your vision. Still relevant?"
 ```
 
 ### Rules for heartbeat
@@ -376,7 +381,7 @@ Each phase must work cleanly before the next begins.
 
 ### Phase 5 — Heartbeat
 - Background timer (30 min interval)
-- Five notebook checks (as listed above)
+- Six notebook checks (including vision alignment)
 - Notification queue
 - Planning calibration logic
 
@@ -386,14 +391,30 @@ Each phase must work cleanly before the next begins.
 - Universal MCP-compatible Skill interface (MCPSkill + SkillResult)
 - Map-based registry with registerSkill / getSkill / getAllSkills / getSkillDescriptions
 - Runner (runSkill) that never throws — errors contained in SkillResult
-- Three skills built: calculator (mathjs), file_reader, web_search (DuckDuckGo API)
+- Three core skills built: calculator (mathjs), file_reader, web_search
+- Core skills are registered in `registry.ts` (agent/runner remain generic)
+- file_reader is jailed to `user_workspace/` (path traversal blocked)
+- web_search supports Brave API with configurable `SEARCH_ENDPOINT` fallback
 - Classifier extended with 'skill' intent + skill name + param extraction
-- Skills self-register on import — adding a new skill touches zero existing files
 - Skill output injected into context builder, passed through LLM
 - web_search intent migrated from stub to live skill
-- 42 new tests (181 total), pnpm build clean
+- Foundation suite passing (257 tests), pnpm build clean
 
 **Done when:** all three skills work end-to-end through full agent loop, adding a 4th skill touches zero existing files, memory queries unchanged. DONE.
+
+### Phase 7 — ReAct + Structured Outputs + Planning/Vision (COMPLETE)
+- Skill execution now uses a ReAct-style self-correction loop (max 3 attempts)
+- Failed tool attempts are repaired silently via isolated low-token LLM repair calls
+- Memory-write JSON extraction now retries with repair prompts on parse/validation failure
+- Structured output support added to `callLLM` with optional JSON Schema (`response_format`)
+- Zod + JSON Schema added for memory writes (`core/schemas/write.ts`)
+- If structured output is unsupported by local endpoint, system falls back to unstructured calls safely
+- Classifier now extracts `due_date` from natural language (`by March 15`, ISO dates)
+- Vision entry support added (`WHY.MT` North Star template path)
+- Heartbeat now checks overdue PLAN.PL entries and vision alignment
+- Full suite passing (270 tests), pnpm build clean
+
+**Done when:** retries stay internal, schema enforcement is safe with fallback, and planning/vision heartbeat checks run without regressions. DONE.
 
 ---
 
@@ -547,13 +568,13 @@ Do not change EMBEDDING_MODEL without rebuilding the index.
 
 ---
 
-## Phase 6 — Thanks
+## Phase 6 + 7
 
-Phase 6 adds a universal skills layer. Three skills (calculator, file_reader, web_search)
-work end-to-end through the full agent loop. The architecture is MCP-compatible:
-every skill implements one interface, self-registers on import, and adding a new skill
-requires creating one file and one import line — zero changes to agent.ts, intent.ts,
-or runner.ts. Memory queries are untouched. 181 tests pass. The foundation holds.
+Phase 6 established the universal MCP skills layer with three core tools and registry-based
+decoupling. Phase 7 added the reliability layer: self-correcting retries, schema-guided
+memory-write extraction, and heartbeat-level planning/vision checks. The agent now retries
+tool/input failures internally before surfacing a clean failure, validates memory-write
+payloads against schema, and tracks overdue plans plus North Star alignment. 270 tests pass.
 
 ---
 

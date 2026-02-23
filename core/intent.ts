@@ -10,6 +10,8 @@ const WRITE_PATTERNS = [
   /\b(create|add|new|write|save|store|remember)\b/i,
   /\bremind\s+me\b/i,
   /\bschedule\b/i,
+  /\bplan\s+to\b/i,
+  /\bvision\s+entry\b/i,
   /\bnew\s+(contact|project|todo|task|event|deadline|procedure|plan)\b/i,
 ];
 
@@ -205,6 +207,20 @@ const RELATION_PATTERNS: Array<{ pattern: RegExp; relation: string }> = [
 ];
 
 const STATUS_REGEX = /\b(active|archived|open|closed|upcoming)\b/i;
+const MONTH_INDEX: Record<string, number> = {
+  january: 0,
+  february: 1,
+  march: 2,
+  april: 3,
+  may: 4,
+  june: 5,
+  july: 6,
+  august: 7,
+  september: 8,
+  october: 9,
+  november: 10,
+  december: 11,
+};
 
 function matchesAny(message: string, patterns: RegExp[]): boolean {
   return patterns.some(p => p.test(message));
@@ -259,6 +275,41 @@ function extractRelation(message: string): string | undefined {
 function extractStatus(message: string): string | undefined {
   const match = message.match(STATUS_REGEX);
   return match ? match[1].toLowerCase() : undefined;
+}
+
+function toIsoDate(year: number, monthIndex: number, day: number): string {
+  const d = new Date(Date.UTC(year, monthIndex, day));
+  return d.toISOString().slice(0, 10);
+}
+
+function extractDueDate(message: string): string | undefined {
+  const isoMatch = message.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
+  if (isoMatch) return isoMatch[1];
+
+  const mdMatch = message.match(
+    /\bby\s+([A-Za-z]+)\s+(\d{1,2})(?:,?\s*(20\d{2}))?\b/i,
+  );
+  if (mdMatch) {
+    const monthIndex = MONTH_INDEX[mdMatch[1].toLowerCase()];
+    if (monthIndex !== undefined) {
+      const nowYear = new Date().getUTCFullYear();
+      const year = mdMatch[3] ? Number(mdMatch[3]) : nowYear;
+      return toIsoDate(year, monthIndex, Number(mdMatch[2]));
+    }
+  }
+
+  const monthOnlyMatch = message.match(/\bby\s+([A-Za-z]+)(?:\s+(20\d{2}))?\b/i);
+  if (monthOnlyMatch) {
+    const monthIndex = MONTH_INDEX[monthOnlyMatch[1].toLowerCase()];
+    if (monthIndex !== undefined) {
+      const nowYear = new Date().getUTCFullYear();
+      const year = monthOnlyMatch[2] ? Number(monthOnlyMatch[2]) : nowYear;
+      const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+      return toIsoDate(year, monthIndex, lastDay);
+    }
+  }
+
+  return undefined;
 }
 
 function extractName(message: string): string | undefined {
@@ -580,6 +631,7 @@ export function classifyIntent(message: string): Classification {
   const codes = extractCodes(message);
   const relation = extractRelation(message);
   const status = extractStatus(message);
+  const due_date = extractDueDate(message);
   const name = extractName(message);
 
   let intent: Intent;
@@ -632,5 +684,5 @@ export function classifyIntent(message: string): Classification {
     }
   }
 
-  return { intent, codes, nb, type, status, name, relation, skill, skillInput };
+  return { intent, codes, nb, type, status, due_date, name, relation, skill, skillInput };
 }

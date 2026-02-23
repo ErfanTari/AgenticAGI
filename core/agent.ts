@@ -11,6 +11,7 @@ import { addRelationship } from './memory/relationships.js';
 import { fetchByCode } from './memory/mod.js';
 import { startHeartbeat, stopHeartbeat } from './heartbeat.js';
 import { getDb } from './memory/index.js';
+import { WriteEntrySchema, WriteEntryJsonSchema } from './schemas/write.js';
 
 // FIX 1: Processing flag — heartbeat checks this to skip when agent is busy
 export let isProcessingMessage = false;
@@ -58,6 +59,7 @@ Return a JSON object with these fields:
   "status": "active|open|upcoming",
   "summary": "one-line summary",
   "body": "markdown body content",
+  "due_date": "YYYY-MM-DD (optional)",
   "relationships": [{"relation": "works_for|owns|supplies|blocks|refers", "to_code": "CODE"}]
 }
 
@@ -81,7 +83,11 @@ No punctuation, no extra text.`;
 const SKILL_REPAIR_SYSTEM_PROMPT = `You repair tool inputs after a failed tool execution.
 Return ONLY a JSON object that matches the target tool input schema.
 No markdown, no comments, no explanation.`;
-const MAX_SKILL_SELF_RETRIES = 3;
+const WRITE_JSON_REPAIR_SYSTEM_PROMPT = `You repair malformed memory-write JSON.
+Return ONLY one valid JSON object for memory entry creation.
+No markdown, no comments, no explanation.`;
+const MAX_SKILL_ATTEMPTS = 3;
+const MAX_WRITE_JSON_ATTEMPTS = 3;
 const ROUTER_ENABLED = String(process.env.LLM_ROUTER_ENABLED ?? 'true').toLowerCase() === 'true';
 const MEMORY_CODE_PATTERN = /\b[A-Z]+\.[A-Z]+-\d{6,}\b/;
 const ROUTER_READ_VERB_PATTERN = /\b(show|find|list|lookup|look up|fetch|open|read|load|status|tell\s+me\s+about|what\s+did\s+i|what\s+does)\b/i;
@@ -90,8 +96,36 @@ const ROUTER_WRITE_CONFIRM_PATTERN = /\b(create|add|remember|remind|save|store|r
 const ROUTER_MEETING_HINT_PATTERN = /\b(i\s+just\s+met|met\s+a|met\s+an)\b/i;
 
 function inferWriteData(message: string, classification: Classification): {
-  nb: string; type: string; name: string; status: string; summary: string; body: string;
+  nb: string; type: string; name: string; status: string; summary: string; body: string; due_date?: string;
 } | null {
+  const isVisionEntry = /\b(vision\s+entry|north\s+star|create\s+a\s+vision)\b/i.test(message);
+  if (isVisionEntry) {
+    const visionText = (
+      message.match(/vision\s+entry\s*:?\s*([\s\S]+)/i)?.[1]
+      ?? message.match(/create\s+a\s+vision\s+entry\s*:?\s*([\s\S]+)/i)?.[1]
+      ?? message
+    ).trim();
+
+    return {
+      nb: 'WHY',
+      type: 'MT',
+      name: 'North Star',
+      status: 'active',
+      summary: 'Core direction that all projects should serve',
+      body: [
+        '## Vision',
+        visionText,
+        '',
+        '## Mission',
+        'Translate this vision into concrete projects and weekly actions.',
+        '',
+        '## Filter',
+        'Every active project should answer:',
+        '"How does this serve the vision?"',
+      ].join('\n'),
+    };
+  }
+
   // Determine notebook + type from classification or message content
   let nb = classification.nb;
   let type = classification.type;
@@ -113,11 +147,18 @@ function inferWriteData(message: string, classification: Classification): {
   // Extract name from classification or message
   let name = classification.name;
   if (!name) {
+    if (nb === 'PLAN' && /\bplan\s+to\b/i.test(message)) {
+      const planMatch = message.match(
+        /\bplan\s+to\s+(?:finish|complete|ship|deliver)\s+(.+?)(?:\s+by\b|$)/i,
+      );
+      if (planMatch) name = `Plan: ${planMatch[1].trim()}`;
+    }
+
     // Try "named/called/for X" patterns
     const namedMatch = message.match(
       /(?:named|called|for|contact)\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)/
     );
-    if (namedMatch) name = namedMatch[1];
+    if (!name && namedMatch) name = namedMatch[1];
   }
   if (!name) return null;
 
@@ -136,39 +177,39 @@ function inferWriteData(message: string, classification: Classification): {
 
   // Build body from remaining context
   const body = message;
+  const due_date = classification.due_date;
 
-  return { nb, type, name, status, summary, body };
+  return { nb, type, name, status, summary, body, due_date };
 }
 
 function parseLLMWriteResponse(response: string): {
-  nb?: string; type?: string; name?: string; status?: string;
-  summary?: string; body?: string;
+  nb?: string;
+  type?: string;
+  name?: string;
+  status?: string;
+  summary?: string;
+  body?: string;
+  due_date?: string;
   relationships?: Array<{ relation: string; to_code: string }>;
 } | null {
   try {
     const jsonText = extractJsonObject(response);
     if (!jsonText) return null;
-    const parsed = JSON.parse(jsonText) as {
-      nb?: string; type?: string; name?: string; status?: string;
-      summary?: string; body?: string;
-      relationships?: Array<{ relation?: unknown; to_code?: unknown }>;
-    };
-    if (typeof parsed.nb !== 'string' || typeof parsed.type !== 'string' || typeof parsed.name !== 'string') {
+    const parsed = JSON.parse(jsonText) as unknown;
+    const validated = WriteEntrySchema.safeParse(parsed);
+    if (!validated.success) {
       return null;
     }
-    const rels = Array.isArray(parsed.relationships)
-      ? parsed.relationships
-        .filter((r): r is { relation: string; to_code: string } =>
-          typeof r?.relation === 'string' && typeof r?.to_code === 'string')
-      : undefined;
+    const data = validated.data;
     return {
-      nb: parsed.nb,
-      type: parsed.type,
-      name: parsed.name,
-      status: typeof parsed.status === 'string' ? parsed.status : undefined,
-      summary: typeof parsed.summary === 'string' ? parsed.summary : undefined,
-      body: typeof parsed.body === 'string' ? parsed.body : undefined,
-      relationships: rels,
+      nb: data.nb,
+      type: data.type,
+      name: data.name,
+      status: data.status,
+      summary: data.summary,
+      body: data.body,
+      due_date: data.due_date,
+      relationships: data.relationships,
     };
   } catch {
     return null;
@@ -258,10 +299,10 @@ async function repairSkillInput(
     'Return corrected tool input JSON only.',
   ].join('\n');
   try {
-    const raw = await handler([
+    const raw = await callAgentLLM(handler, [
       { role: 'system', content: SKILL_REPAIR_SYSTEM_PROMPT },
       { role: 'user', content: prompt },
-    ]);
+    ], { maxTokens: 200, temperature: 0 });
     const jsonText = extractJsonObject(raw);
     if (!jsonText) return null;
     const parsed = JSON.parse(jsonText);
@@ -272,13 +313,110 @@ async function repairSkillInput(
   }
 }
 
+async function repairWriteJson(
+  message: string,
+  previousResponse: string,
+  errorText: string,
+  attempt: number,
+  handler: LLMHandler,
+): Promise<string | null> {
+  const prompt = [
+    `Attempt: ${attempt}`,
+    `User request: ${message}`,
+    `Parse error: ${errorText}`,
+    `Previous output: ${previousResponse}`,
+    'Return corrected JSON only.',
+  ].join('\n');
+
+  try {
+    return await callAgentLLM(handler, [
+      { role: 'system', content: WRITE_JSON_REPAIR_SYSTEM_PROMPT },
+      { role: 'user', content: prompt },
+    ], { maxTokens: 200, temperature: 0 });
+  } catch {
+    return null;
+  }
+}
+
+async function callAgentLLM(
+  handler: LLMHandler,
+  messages: Message[],
+  options?: { schema?: Record<string, unknown>; timeout?: number; maxTokens?: number; temperature?: number },
+): Promise<string> {
+  if (handler === callLLM) {
+    return callLLM(messages, options);
+  }
+  return handler(messages);
+}
+
+async function extractWriteDataWithRetry(
+  message: string,
+  handler: LLMHandler,
+): Promise<{
+  nb: string;
+  type: string;
+  name: string;
+  status: string;
+  summary: string;
+  body: string;
+  due_date?: string;
+  relationships?: Array<{ relation: string; to_code: string }>;
+} | null> {
+  let attempt = 1;
+  let llmResponse = '';
+
+  while (attempt <= MAX_WRITE_JSON_ATTEMPTS) {
+    if (attempt === 1) {
+      llmResponse = await callAgentLLM(handler, [
+        { role: 'system', content: WRITE_SYSTEM_PROMPT },
+        { role: 'user', content: message },
+      ], { schema: WriteEntryJsonSchema as Record<string, unknown> });
+    } else {
+      const repaired = await repairWriteJson(
+        message,
+        llmResponse,
+        'Invalid memory-write JSON format',
+        attempt,
+        handler,
+      );
+      if (!repaired) {
+        console.debug(`[retry][write_json] attempt=${attempt} repair call failed`);
+        attempt += 1;
+        continue;
+      }
+      llmResponse = repaired;
+    }
+
+    const parsed = parseLLMWriteResponse(llmResponse);
+    if (parsed?.nb && parsed?.type && parsed?.name) {
+      return {
+        nb: parsed.nb,
+        type: parsed.type,
+        name: parsed.name,
+        status: parsed.status ?? 'active',
+        summary: parsed.summary ?? parsed.name,
+        body: parsed.body ?? message,
+        due_date: parsed.due_date,
+        relationships: parsed.relationships,
+      };
+    }
+
+    if (attempt < MAX_WRITE_JSON_ATTEMPTS) {
+      console.debug(`[retry][write_json] attempt=${attempt} parse failed; retrying`);
+    }
+    attempt += 1;
+  }
+
+  return null;
+}
+
 async function runSkillWithSelfCorrection(
   skillName: string,
   initialInput: Record<string, unknown>,
   userMessage: string,
   handler: LLMHandler,
 ): Promise<{ result: SkillResult; attempts: number; finalInput: Record<string, unknown> }> {
-  const maxAttempts = MAX_SKILL_SELF_RETRIES + 1; // initial call + retries
+  const maxAttempts = MAX_SKILL_ATTEMPTS;
   let attempts = 0;
   let currentInput = initialInput;
   let result: SkillResult = { success: false, output: '', error: 'No execution performed' };
@@ -291,6 +429,10 @@ async function runSkillWithSelfCorrection(
     }
     if (attempts >= maxAttempts) break;
 
+    console.debug(
+      `[retry][skill] tool=${skillName} attempt=${attempts} failed: ${result.error ?? 'unknown error'}`,
+    );
+
     const repairedInput = await repairSkillInput(
       skillName,
       currentInput,
@@ -298,10 +440,16 @@ async function runSkillWithSelfCorrection(
       userMessage,
       handler,
     );
-    if (!repairedInput) continue;
+    if (!repairedInput) {
+      console.debug(`[retry][skill] tool=${skillName} attempt=${attempts + 1} no repaired input`);
+      continue;
+    }
 
     const inputError = validateToolInput(skillName, repairedInput);
-    if (inputError) continue;
+    if (inputError) {
+      console.debug(`[retry][skill] tool=${skillName} attempt=${attempts + 1} invalid repaired input: ${inputError}`);
+      continue;
+    }
     currentInput = repairedInput;
   }
 
@@ -873,27 +1021,12 @@ async function _processMessage(
     // Try LLM extraction first, fall back to rule-based
     let writeData: {
       nb: string; type: string; name: string; status: string; summary: string; body: string;
+      due_date?: string;
       relationships?: Array<{ relation: string; to_code: string }>;
     } | null = null;
 
     try {
-      const writeMessages: Message[] = [
-        { role: 'system', content: WRITE_SYSTEM_PROMPT },
-        { role: 'user', content: message },
-      ];
-      const llmResponse = await handler(writeMessages);
-      const parsed = parseLLMWriteResponse(llmResponse);
-      if (parsed?.nb && parsed?.type && parsed?.name) {
-        writeData = {
-          nb: parsed.nb,
-          type: parsed.type,
-          name: parsed.name,
-          status: parsed.status ?? 'active',
-          summary: parsed.summary ?? parsed.name,
-          body: parsed.body ?? message,
-          relationships: parsed.relationships,
-        };
-      }
+      writeData = await extractWriteDataWithRetry(message, handler);
     } catch {
       // LLM unavailable — fall through to rule-based
     }
@@ -911,6 +1044,10 @@ async function _processMessage(
       writeData = inferred;
     }
 
+    if (!writeData.due_date && classification.due_date) {
+      writeData.due_date = classification.due_date;
+    }
+
     try {
       const entry = createEntry({
         nb: writeData.nb,
@@ -919,6 +1056,7 @@ async function _processMessage(
         status: writeData.status,
         summary: writeData.summary,
         body: writeData.body,
+        due_date: writeData.due_date,
       });
 
       // Add relationships if present
@@ -981,7 +1119,7 @@ async function _processMessage(
 
     if (!skillResult.success) {
       return {
-        reply: findingsPrefix + `I couldn't complete that after ${execution.attempts} attempts. ${skillResult.error}`,
+        reply: findingsPrefix + `I couldn't complete that after ${execution.attempts} attempts.`,
         intent: 'skill',
         resolved: null,
         error: skillResult.error,

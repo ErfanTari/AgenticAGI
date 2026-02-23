@@ -16,6 +16,7 @@ export interface Classification {
   nb?: string;
   type?: string;
   status?: string;
+  due_date?: string;
   name?: string;
   relation?: string;
   skill?: string;

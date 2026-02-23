@@ -4,7 +4,7 @@ import { createEntry, updateEntry } from './memory/write.js';
 import { isProcessingMessage } from './agent.js';
 
 export interface Notification {
-  type: 'upcoming_event' | 'overdue_todo' | 'stale_question' | 'stale_plan' | 'stale_project';
+  type: 'upcoming_event' | 'overdue_todo' | 'overdue_plan' | 'stale_question' | 'stale_plan' | 'stale_project' | 'vision_alignment';
   entries: IndexEntry[];
   message: string;
 }
@@ -95,6 +95,22 @@ export function checkOverdueTodos(): Notification | null {
   };
 }
 
+export function checkOverduePlans(): Notification | null {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const d = getDb();
+  const entries = d.prepare(
+    'SELECT * FROM index_entries WHERE nb = ? AND type = ? AND status = ? AND due_date < ?'
+  ).all('PLAN', 'PL', 'active', todayStr) as IndexEntry[];
+
+  if (entries.length === 0) return null;
+
+  return {
+    type: 'overdue_plan',
+    entries,
+    message: `${entries.length} plan entry/entries overdue`,
+  };
+}
+
 export function checkStaleQuestions(): Notification | null {
   const cutoff = daysAgo(3);
   const entries = queryStale('WHY', 'QU', 'open', cutoff);
@@ -131,6 +147,46 @@ export function checkStaleProjects(): Notification | null {
   };
 }
 
+export function checkVisionAlignment(): Notification | null {
+  const d = getDb();
+  const northStar = d.prepare(
+    "SELECT * FROM index_entries WHERE nb = 'WHY' AND type = 'MT' AND name = 'North Star' AND status = 'active' ORDER BY updated DESC LIMIT 1"
+  ).get() as IndexEntry | undefined;
+
+  if (!northStar) return null;
+
+  const activeProjects = d.prepare(
+    "SELECT * FROM index_entries WHERE nb = 'WHAT' AND type = 'PJ' AND status = 'active'"
+  ).all() as IndexEntry[];
+
+  if (activeProjects.length === 0) return null;
+
+  const linkedStmt = d.prepare(`
+    SELECT 1
+    FROM relationships
+    WHERE (from_code = ? AND to_code = ?)
+       OR (from_code = ? AND to_code = ?)
+    LIMIT 1
+  `);
+
+  const unlinked = activeProjects.filter(project => {
+    const linked = linkedStmt.get(project.code, northStar.code, northStar.code, project.code);
+    return !linked;
+  });
+
+  if (unlinked.length === 0) return null;
+
+  const questions = unlinked
+    .map(project => `Project '${project.name}' has no stated connection to your vision. Still relevant?`)
+    .join('\n');
+
+  return {
+    type: 'vision_alignment',
+    entries: unlinked,
+    message: questions,
+  };
+}
+
 // --- Main heartbeat ---
 
 export async function runHeartbeat(): Promise<HeartbeatResult> {
@@ -141,9 +197,11 @@ export async function runHeartbeat(): Promise<HeartbeatResult> {
   const checks = [
     checkDeadlines,
     checkOverdueTodos,
+    checkOverduePlans,
     checkStaleQuestions,
     checkPlanCalibration,
     checkStaleProjects,
+    checkVisionAlignment,
   ];
 
   for (const check of checks) {
