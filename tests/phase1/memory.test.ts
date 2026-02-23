@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {
   initDatabase,
+  getDb,
   closeDatabase,
   parseCode,
   generateCode,
@@ -113,6 +114,44 @@ describe('createEntry', () => {
     const firstNum = parseCode(first.code)!.number;
     const secondNum = parseCode(second.code)!.number;
     expect(secondNum).toBe(firstNum + 1);
+  });
+
+  it('cleans up the markdown file if DB transaction fails', () => {
+    const d = getDb();
+    d.exec(`
+      CREATE TRIGGER fail_index_insert
+      BEFORE INSERT ON index_entries
+      BEGIN
+        SELECT RAISE(ABORT, 'forced tx failure');
+      END;
+    `);
+
+    const countMarkdownFiles = (dir: string): number => {
+      if (!fs.existsSync(dir)) return 0;
+      return fs.readdirSync(dir, { recursive: true })
+        .filter(file => String(file).endsWith('.md'))
+        .length;
+    };
+
+    const beforeCount = countMarkdownFiles(PATHS.memory);
+
+    try {
+      expect(() =>
+        createEntry({
+          nb: 'WHAT',
+          type: 'KN',
+          name: 'Should Roll Back',
+          status: 'active',
+          summary: 'This insert is forced to fail',
+          body: 'Content should be deleted on rollback.',
+        })
+      ).toThrow('forced tx failure');
+
+      const afterCount = countMarkdownFiles(PATHS.memory);
+      expect(afterCount).toBe(beforeCount);
+    } finally {
+      d.exec('DROP TRIGGER fail_index_insert');
+    }
   });
 });
 

@@ -8,6 +8,8 @@ import { indexContent } from './fts.js';
 import { chunkMarkdown } from './chunks.js';
 import { storeChunks, fetchEmbeddings } from './embeddings.js';
 
+let loggedEmbeddingWriteFallback = false;
+
 function sanitizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
@@ -42,47 +44,44 @@ function buildMarkdown(entry: Omit<IndexEntry, 'path'>, body: string): string {
 
 export function createEntry(input: CreateEntryInput): IndexEntry {
   const d = getDb();
+  const code = generateCode(input.nb, input.type);
+  const updated = new Date().toISOString().slice(0, 10);
+  const entryData: Omit<IndexEntry, 'path'> = {
+    code,
+    nb: input.nb,
+    type: input.type,
+    name: input.name,
+    status: input.status,
+    updated,
+    summary: input.summary,
+    due_date: input.due_date ?? null,
+  };
 
-  // Generate code + insert index row in a single transaction
-  // This prevents race conditions: counter increment and insert are atomic
-  const run = d.transaction(() => {
-    const code = generateCode(input.nb, input.type);
-    const updated = new Date().toISOString().slice(0, 10);
+  const filePath = resolveEntryPath(input.nb, input.type, code, input.name);
+  const markdown = buildMarkdown(entryData, input.body);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, markdown, 'utf-8');
 
-    const entryData: Omit<IndexEntry, 'path'> = {
-      code,
-      nb: input.nb,
-      type: input.type,
-      name: input.name,
-      status: input.status,
-      updated,
-      summary: input.summary,
-      due_date: input.due_date ?? null,
-    };
-
-    const filePath = resolveEntryPath(input.nb, input.type, code, input.name);
-    const markdown = buildMarkdown(entryData, input.body);
-
-    // File-before-SQLite: write file first, then index
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, markdown, 'utf-8');
-
-    const entry: IndexEntry = { ...entryData, path: filePath };
+  const entry: IndexEntry = { ...entryData, path: filePath };
+  const runTransaction = d.transaction(() => {
     insertEntry(entry);
-
-    // Index content for FTS5 BM25 search (sync, inside transaction)
     indexContent(code, input.nb, `${input.name} ${input.summary} ${input.body}`);
-
-    // Store chunks for vector search (sync, inside transaction)
     const chunks = chunkMarkdown(code, markdown);
     if (chunks.length > 0) {
       storeChunks(chunks);
     }
-
-    return entry;
   });
 
-  const entry = run();
+  try {
+    runTransaction();
+  } catch (err) {
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch {
+      // Best-effort cleanup.
+    }
+    throw err;
+  }
 
   // Schedule embedding computation — fire-and-forget, best-effort
   scheduleEmbedding(entry.code);
@@ -150,7 +149,10 @@ function scheduleEmbedding(code: string): void {
       });
       updateAll();
     } catch {
-      console.log('[embed] Embedding server unreachable — using BM25 only');
+      if (!loggedEmbeddingWriteFallback) {
+        loggedEmbeddingWriteFallback = true;
+        console.log('[embed] Embedding server unreachable — using BM25 only');
+      }
     }
   });
 }

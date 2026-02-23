@@ -16,13 +16,21 @@ const WRITE_PATTERNS = [
 // --- Web search patterns (now routes to skill) ---
 const WEB_SEARCH_PATTERNS = [
   /\bsearch\s+(the\s+)?web\b/i,
+  /\bsearch\s+(the\s+)?internet\b/i,
+  /\bsearch\s+(the\s+)?internet\s+for\b/i,
+  /\bcheck\s+(the\s+)?internet\s+for\b/i,
+  /\bfind\s+(it\s+)?in\s+(the\s+)?internet\b/i,
   /\blook\s+up\b/i,
   /\bfind\s+online\b/i,
+  /\bcheck\s+if\s+you\s+can\s+search\b/i,
+  /\bcan\s+you\s+search\b/i,
   /\bsearch\s+for\b/i,
   /\bsearch\s+online\b/i,
+  /\bweb[_\s-]?search\b/i,
   /\bweb\s+search\b/i,
   /\bgoogle\b/i,
   /\blatest\s+news\b/i,
+  /\blatest\b[\s\S]{0,40}\bnews\b/i,
   /\btoday'?s?\s+news\b/i,
   /\bnews\s+today\b/i,
   /\bnews\s+(for|on|about)\b/i,
@@ -38,6 +46,9 @@ const WEB_FETCH_PATTERNS = [
   /\bretrieve\b/i,
   /\bgrab\b/i,
   /\bget\b.*\bfrom\b/i,
+  /\bgo\s+to\b/i,
+  /\bvisit\b/i,
+  /\bopen\s+(the\s+)?(site|website|url)\b/i,
 ];
 
 // --- Calculator patterns ---
@@ -48,6 +59,7 @@ const CALCULATOR_PATTERNS = [
   /\bhow\s+much\s+is\b/i,
   /\d+\s*[\+\-\*\/]\s*\d/,
   /\d+\s+percent\s+of\b/i,
+  /\bpercent\s+of\b/i,
   /\btimes\b/i,
   /\bdivided\s+by\b/i,
   /\bmultiplied\s+by\b/i,
@@ -405,13 +417,35 @@ function extractShellCommand(message: string): string | null {
 }
 
 function extractUrl(message: string): string | null {
-  const match = message.match(/https?:\/\/[^\s'"]+/i);
-  return match ? match[0] : null;
+  const explicitMatch = message.match(/https?:\/\/[^\s'"]+/i);
+  if (explicitMatch) {
+    return explicitMatch[0].replace(/[),.;!?]+$/g, '');
+  }
+
+  // Support bare domains like "neolith.com" in web-action prompts.
+  if (!matchesAny(message, WEB_FETCH_PATTERNS)) return null;
+
+  const domainLikeMatch = message.match(
+    /\b((?:www\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:\/[^\s'"]*)?)/i,
+  );
+  if (!domainLikeMatch) return null;
+
+  const candidate = domainLikeMatch[1].replace(/[),.;!?]+$/g, '');
+  const hostPart = candidate.split('/')[0].toLowerCase();
+  const tld = hostPart.split('.').pop() ?? '';
+
+  // Avoid treating common file names like config.json as web domains.
+  const blockedFileLikeTlds = new Set(['json', 'ts', 'js', 'md', 'txt', 'csv', 'xml', 'yaml', 'yml']);
+  if (blockedFileLikeTlds.has(tld)) return null;
+
+  return `https://${candidate}`;
 }
 
 function extractDownloadOutputPath(message: string): string | null {
-  const toPath = message.match(/(?:to|into|as)\s+(\/[\w.\-/]+|[\w.\-/]+\.\w+)/i);
-  if (toPath) return toPath[1];
+  const explicitPath = message.match(
+    /\b(?:download|save|write|fetch|get)\b[\s\S]*?\b(?:to|into|as)\s+(\/[\w.\-/]+|[\w.\-/]+\.\w+)/i,
+  );
+  if (explicitPath) return explicitPath[1];
   return null;
 }
 
@@ -495,25 +529,44 @@ function extractFilePath(message: string): string | null {
 }
 
 function extractSearchQuery(message: string): string {
-  // Strip trigger phrases, keep the rest as query
-  const cleaned = message
+  const original = message.trim();
+  const normalized = message
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Strip trigger phrases, keep the core query
+  const cleaned = normalized
+    .replace(/^\s*(qwen|assistant|agent|codex)\s*[:,.-]?\s+/i, '')
+    .replace(/^\s*(please|pls|kindly)\s+/i, '')
+    .replace(/^\s*(do\s+an?|do)\s+/i, '')
+    .replace(/^\s*(can\s+you|could\s+you|would\s+you)\s+/i, '')
+    .replace(/\bcheck\s+if\s+you\s+can\s+search\s+(the\s+)?internet[\s,]*(and\s+)?/i, '')
+    .replace(/\bcan\s+you\s+search\s+(the\s+)?internet[\s,]*(and\s+)?/i, '')
+    .replace(/\bsearch\s+(the\s+)?internet\s+for\s+/i, '')
+    .replace(/\bcheck\s+(the\s+)?internet\s+for\s+/i, '')
+    .replace(/\bfind\s+(?:it\s+)?in\s+(the\s+)?internet\s+(?:for\s+)?/i, '')
     .replace(/\b(?:show|give)\s+me\s+/i, '')
-    .replace(/^\d+\s+/, '')
+    .replace(/\bweb[_\s-]?search\s+(for\s+)?/i, '')
     .replace(/\bsearch\s+(the\s+)?web\s+(for\s+)?/i, '')
+    .replace(/\bsearch\s+(the\s+)?internet\s+(for\s+)?/i, '')
     .replace(/\bsearch\s+(for|online)\s+/i, '')
     .replace(/\blook\s+up\s+/i, '')
     .replace(/\bfind\s+online\s+(resources?\s+(for|on|about)\s+)?/i, '')
     .replace(/\bgoogle\s+/i, '')
     .replace(/\bweb\s+search\s+(for\s+)?/i, '')
-    .replace(/\btoday'?s?\s+news\b/i, '')
-    .replace(/\bnews\s+today\b/i, '')
-    .replace(/\bnews\s+(for|on|about)\s*/i, '')
-    .replace(/\bheadlines?\s+(for|on|about)\s*/i, '')
-    .replace(/\blatest\s+news\s+(on|about)?\s*/i, '')
-    .replace(/\bcurrent\s+info\s+(on|about)?\s*/i, '')
+    .replace(/\bas\s+a\s+test\b/i, '')
+    .replace(/\b(tell\s+me\s+the\s+results?|tell\s+me)\b/i, '')
+    .replace(/^[\s,.:;!?-]+/, '')
+    .replace(/[\s,.:;!?-]+$/, '')
+    .replace(/\s+/g, ' ')
     .trim();
 
-  if (!cleaned || /^(today|latest|current)$/i.test(cleaned)) {
+  const looksEmpty = !cleaned || /^(today|latest|current|please|search)$/i.test(cleaned);
+  if (looksEmpty || /^[\s,.-]*$/.test(cleaned)) {
+    if (/\bnews\b/i.test(original) || /\bheadlines?\b/i.test(original)) {
+      return 'top news today';
+    }
     return 'top news today';
   }
 

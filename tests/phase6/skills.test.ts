@@ -27,6 +27,8 @@ import { PATHS } from '../../config/agent.config.js';
 const TEST_DIR = path.join(os.tmpdir(), `agentic-agi-test-p6-${Date.now()}`);
 const TEST_DB = path.join(TEST_DIR, 'memory.sqlite');
 const TEST_MEMORY = path.join(TEST_DIR, 'memory');
+const WORKSPACE_ROOT = path.resolve(process.cwd(), 'user_workspace');
+const WORKSPACE_TEST_DIR = path.join(WORKSPACE_ROOT, `phase6-tests-${Date.now()}`);
 
 const origDb = PATHS.db;
 const origMemory = PATHS.memory;
@@ -37,6 +39,7 @@ let projectCode: string;
 beforeAll(() => {
   (PATHS as Record<string, string>).db = TEST_DB;
   (PATHS as Record<string, string>).memory = TEST_MEMORY;
+  fs.mkdirSync(WORKSPACE_TEST_DIR, { recursive: true });
   initDatabase(TEST_DB);
 
   contactCode = createEntry({
@@ -55,6 +58,7 @@ beforeAll(() => {
 afterAll(() => {
   closeDatabase();
   fs.rmSync(TEST_DIR, { recursive: true, force: true });
+  fs.rmSync(WORKSPACE_TEST_DIR, { recursive: true, force: true });
   (PATHS as Record<string, string>).db = origDb;
   (PATHS as Record<string, string>).memory = origMemory;
 });
@@ -62,51 +66,33 @@ afterAll(() => {
 // --- MCP Skill Registry ---
 
 describe('skill registry', () => {
-  it('has calculator, file_reader, file_writer, web_fetch, web_search, shell_runner, task_planner, log_analyzer, code_editor registered', () => {
+  it('has calculator, file_reader, web_search core skills registered', () => {
     expect(getSkill('calculator')).toBeDefined();
     expect(getSkill('file_reader')).toBeDefined();
-    expect(getSkill('file_writer')).toBeDefined();
-    expect(getSkill('web_fetch')).toBeDefined();
     expect(getSkill('web_search')).toBeDefined();
-    expect(getSkill('shell_runner')).toBeDefined();
-    expect(getSkill('task_planner')).toBeDefined();
-    expect(getSkill('log_analyzer')).toBeDefined();
-    expect(getSkill('code_editor')).toBeDefined();
   });
 
-  // FIX 3: registry_only_count — skills registered without importing agent
-  it('registry_only_count equals 9 built-in skills', () => {
+  it('registry_only_count equals 3 core built-in skills', () => {
     const builtIn = getAllSkills().filter(s =>
-      ['calculator', 'file_reader', 'file_writer', 'web_fetch', 'web_search', 'shell_runner', 'task_planner', 'log_analyzer', 'code_editor'].includes(s.name)
+      ['calculator', 'file_reader', 'web_search'].includes(s.name)
     );
-    expect(builtIn.length).toBe(9);
+    expect(builtIn.length).toBe(3);
   });
 
-  it('getAllSkills returns all registered skills', () => {
+  it('getAllSkills returns core phase-6 skills by default', () => {
     const skills = getAllSkills();
     const names = skills.map(s => s.name);
+    expect(names.length).toBe(3);
     expect(names).toContain('calculator');
     expect(names).toContain('file_reader');
-    expect(names).toContain('file_writer');
-    expect(names).toContain('web_fetch');
     expect(names).toContain('web_search');
-    expect(names).toContain('shell_runner');
-    expect(names).toContain('task_planner');
-    expect(names).toContain('log_analyzer');
-    expect(names).toContain('code_editor');
   });
 
   it('getSkillDescriptions returns formatted descriptions', () => {
     const desc = getSkillDescriptions();
     expect(desc).toContain('calculator:');
     expect(desc).toContain('file_reader:');
-    expect(desc).toContain('file_writer:');
-    expect(desc).toContain('web_fetch:');
     expect(desc).toContain('web_search:');
-    expect(desc).toContain('shell_runner:');
-    expect(desc).toContain('task_planner:');
-    expect(desc).toContain('log_analyzer:');
-    expect(desc).toContain('code_editor:');
   });
 
   it('returns undefined for unknown skill', () => {
@@ -268,28 +254,36 @@ describe('calculator skill', () => {
 // --- File Reader Skill ---
 
 describe('file_reader skill', () => {
-  const testFile = path.join(TEST_DIR, 'test-read.txt');
-  const largeFile = path.join(TEST_DIR, 'large-file.txt');
-  const binaryFile = path.join(TEST_DIR, 'test.png');
+  const testFile = path.join(WORKSPACE_ROOT, 'agenticagi_test.txt');
+  const testFileRelative = 'user_workspace/agenticagi_test.txt';
+  const missingWorkspaceFile = path.join(WORKSPACE_TEST_DIR, 'does_not_exist_xyz.txt');
+  const largeFile = path.join(WORKSPACE_TEST_DIR, 'large-file.txt');
+  const binaryFile = path.join(WORKSPACE_TEST_DIR, 'test.png');
+  const outsideFile = '/tmp/agenticagi_outside_workspace.txt';
 
   beforeAll(() => {
-    fs.mkdirSync(TEST_DIR, { recursive: true });
-    fs.writeFileSync(testFile, 'Hello, this is test content.\nLine 2.');
+    fs.mkdirSync(WORKSPACE_TEST_DIR, { recursive: true });
+    fs.writeFileSync(testFile, 'hello from phase 6');
     fs.writeFileSync(largeFile, 'x'.repeat(60000));
     fs.writeFileSync(binaryFile, Buffer.from([0x89, 0x50, 0x4E, 0x47])); // PNG header
   });
 
   it('reads a text file successfully', async () => {
-    const result = await runSkill('file_reader', { path: testFile });
+    const result = await runSkill('file_reader', { path: testFileRelative });
     expect(result.success).toBe(true);
-    expect(result.output).toContain('Hello, this is test content.');
-    expect(result.output).toContain('Line 2.');
+    expect(result.output).toContain('hello from phase 6');
   });
 
   it('returns error for nonexistent file', async () => {
-    const result = await runSkill('file_reader', { path: '/tmp/nonexistent-file-xyz.txt' });
+    const result = await runSkill('file_reader', { path: missingWorkspaceFile });
     expect(result.success).toBe(false);
     expect(result.error).toContain('File not found');
+  });
+
+  it('denies reading files outside workspace', async () => {
+    const result = await runSkill('file_reader', { path: outsideFile });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Access denied: Path outside workspace');
   });
 
   it('truncates files larger than 50000 chars', async () => {
@@ -415,12 +409,28 @@ describe('web_fetch skill', () => {
 
 describe('web_search skill', () => {
   const originalFetch = globalThis.fetch;
+  const originalBraveKey = process.env.BRAVE_SEARCH_API_KEY;
+  const originalBraveEndpoint = process.env.BRAVE_SEARCH_ENDPOINT;
+  const originalBraveNewsEndpoint = process.env.BRAVE_NEWS_ENDPOINT;
+  const originalSearchEndpoint = process.env.SEARCH_ENDPOINT;
+  const originalDdgEndpoint = process.env.DUCKDUCKGO_ENDPOINT;
 
   afterAll(() => {
     globalThis.fetch = originalFetch;
+    if (originalBraveKey === undefined) delete process.env.BRAVE_SEARCH_API_KEY;
+    else process.env.BRAVE_SEARCH_API_KEY = originalBraveKey;
+    if (originalBraveEndpoint === undefined) delete process.env.BRAVE_SEARCH_ENDPOINT;
+    else process.env.BRAVE_SEARCH_ENDPOINT = originalBraveEndpoint;
+    if (originalBraveNewsEndpoint === undefined) delete process.env.BRAVE_NEWS_ENDPOINT;
+    else process.env.BRAVE_NEWS_ENDPOINT = originalBraveNewsEndpoint;
+    if (originalSearchEndpoint === undefined) delete process.env.SEARCH_ENDPOINT;
+    else process.env.SEARCH_ENDPOINT = originalSearchEndpoint;
+    if (originalDdgEndpoint === undefined) delete process.env.DUCKDUCKGO_ENDPOINT;
+    else process.env.DUCKDUCKGO_ENDPOINT = originalDdgEndpoint;
   });
 
   it('returns results for a query', async () => {
+    delete process.env.BRAVE_SEARCH_API_KEY;
     globalThis.fetch = async () => ({
       ok: true,
       async json() {
@@ -434,6 +444,99 @@ describe('web_search skill', () => {
     const result = await runSkill('web_search', { query: 'TypeScript programming language' });
     expect(result.success).toBe(true);
     expect(result.output).toContain('TypeScript');
+  });
+
+  it('uses Brave API when key is configured', async () => {
+    process.env.BRAVE_SEARCH_API_KEY = 'test-brave-key';
+    process.env.BRAVE_SEARCH_ENDPOINT = 'https://api.search.brave.com/res/v1/web/search';
+    let capturedToken = '';
+
+    globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string> | undefined;
+      capturedToken = headers?.['X-Subscription-Token'] ?? '';
+      return new Response(
+        JSON.stringify({
+          web: {
+            results: [
+              {
+                title: 'TypeScript',
+                url: 'https://www.typescriptlang.org',
+                description: 'TypeScript official website.',
+              },
+            ],
+          },
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      );
+    };
+
+    const result = await runSkill('web_search', { query: 'TypeScript tutorial' });
+    expect(result.success).toBe(true);
+    expect(result.output).toContain('Brave Search');
+    expect(result.output).toContain('typescriptlang.org');
+    expect(capturedToken).toBe('test-brave-key');
+  });
+
+  it('falls back to Google News RSS when Brave returns no results for news query', async () => {
+    process.env.BRAVE_SEARCH_API_KEY = 'test-brave-key';
+    process.env.BRAVE_NEWS_ENDPOINT = 'https://api.search.brave.com/res/v1/news/search';
+    let braveCalls = 0;
+    let rssCalls = 0;
+    let ddgCalls = 0;
+
+    const rss = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Political Headline A</title>
+      <link>https://news.example.com/a</link>
+      <pubDate>Mon, 23 Feb 2026 12:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>`;
+
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/news/search')) {
+        braveCalls += 1;
+        return new Response(
+          JSON.stringify({ news: { results: [] }, web: { results: [] } }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
+      }
+      if (url.includes('news.google.com/rss/search')) {
+        rssCalls += 1;
+        return new Response(rss, {
+          status: 200,
+          headers: { 'content-type': 'application/rss+xml' },
+        });
+      }
+      if (url.includes('duckduckgo.com')) {
+        ddgCalls += 1;
+        return new Response(
+          JSON.stringify({ AbstractText: 'Should not be needed', RelatedTopics: [] }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    const result = await runSkill('web_search', { query: '3 political news today' });
+    expect(result.success).toBe(true);
+    expect(result.output).toContain("Top news for '3 political news today'");
+    expect(result.output).toContain('Political Headline A');
+    expect(braveCalls).toBe(1);
+    expect(rssCalls).toBe(1);
+    expect(ddgCalls).toBe(0);
   });
 
   it('returns top news items for news queries', async () => {
@@ -483,6 +586,37 @@ describe('web_search skill', () => {
     const result = await runSkill('web_search', { query: 'xyznonexistentqueryzyx123456' });
     expect(result.success).toBe(true);
     expect(result.output.length).toBeGreaterThan(0);
+  });
+
+  it('respects SEARCH_ENDPOINT with {query} placeholder for SearXNG/Tavily-compatible responses', async () => {
+    process.env.SEARCH_ENDPOINT = 'http://localhost:8080/search?q={query}&format=json';
+    delete process.env.BRAVE_SEARCH_API_KEY;
+    let requestedUrl = '';
+
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      requestedUrl = String(input);
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              title: 'SearX Result',
+              url: 'https://example.com/searx',
+              content: 'SearX compatible result payload',
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      );
+    };
+
+    const result = await runSkill('web_search', { query: 'TypeScript tutorial' });
+    expect(result.success).toBe(true);
+    expect(requestedUrl).toContain('http://localhost:8080/search?q=TypeScript%20tutorial&format=json');
+    expect(result.output).toContain('SearX Result');
+    expect(result.output).toContain('https://example.com/searx');
   });
 });
 
@@ -614,6 +748,13 @@ describe('classifier skill detection', () => {
     expect(String(c.skillInput!.outputPath)).toContain('/tmp/catalog.pdf');
   });
 
+  it('detects bare-domain download prompt → web_fetch with normalized URL', () => {
+    const c = classifyIntent('can you go to neolith.com and download their general catalog');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('web_fetch');
+    expect(String(c.skillInput!.url)).toBe('https://neolith.com');
+  });
+
   // Web search
   it('detects "search the web for ceramic suppliers Turkey" → web_search', () => {
     const c = classifyIntent('search the web for ceramic suppliers Turkey');
@@ -651,6 +792,66 @@ describe('classifier skill detection', () => {
     expect(c.intent).toBe('skill');
     expect(c.skill).toBe('web_search');
     expect(String(c.skillInput!.query).length).toBeGreaterThan(0);
+  });
+
+  it('detects internet capability news prompt → web_search', () => {
+    const c = classifyIntent('check if you can search internet , and tell me latest political news as a test');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('web_search');
+    expect(String(c.skillInput!.query)).toContain('political news');
+  });
+
+  it('detects "do a web_Search for 3 political news today" with clean query', () => {
+    const c = classifyIntent('do a web_Search for 3 political news today');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('web_search');
+    expect(String(c.skillInput!.query)).toContain('political news today');
+    expect(String(c.skillInput!.query).toLowerCase()).not.toContain('web search');
+  });
+
+  it('strips model-name prefix from web search prompt query', () => {
+    const c = classifyIntent('qwen do a web_Search for 3 political news today');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('web_search');
+    expect(String(c.skillInput!.query)).toContain('political news today');
+    expect(String(c.skillInput!.query).toLowerCase()).not.toContain('qwen');
+    expect(String(c.skillInput!.query).toLowerCase()).not.toContain('web search');
+  });
+
+  it('detects polite internet news prompt with non-empty query', () => {
+    const c = classifyIntent('please search internet for news today');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('web_search');
+    expect(String(c.skillInput!.query).length).toBeGreaterThan(0);
+    expect(String(c.skillInput!.query).toLowerCase()).not.toBe('please');
+  });
+
+  it('detects "search internet for ..." → web_search', () => {
+    const c = classifyIntent('search internet for EV battery prices');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('web_search');
+    expect(String(c.skillInput!.query)).toContain('EV battery prices');
+  });
+
+  it('detects "check internet for ..." → web_search', () => {
+    const c = classifyIntent('check internet for latest ceramic market trends');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('web_search');
+    expect(String(c.skillInput!.query)).toContain('latest ceramic market trends');
+  });
+
+  it('detects "find it in internet ..." → web_search', () => {
+    const c = classifyIntent('find it in internet for TypeScript router patterns');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('web_search');
+    expect(String(c.skillInput!.query)).toContain('TypeScript router patterns');
+  });
+
+  it('detects "web_Search for todays date" → web_search', () => {
+    const c = classifyIntent('web_Search for todays date');
+    expect(c.intent).toBe('skill');
+    expect(c.skill).toBe('web_search');
+    expect(String(c.skillInput!.query).toLowerCase()).toContain('todays date');
   });
 
   // Non-skill intents remain unchanged
@@ -777,7 +978,7 @@ describe('processMessage with skills', () => {
   });
 
   it('file_reader skill end-to-end', async () => {
-    const testFile = path.join(TEST_DIR, 'agent-test-file.txt');
+    const testFile = path.join(WORKSPACE_TEST_DIR, 'agent-test-file.txt');
     fs.writeFileSync(testFile, 'Agent test file contents here.');
 
     const res = await processMessage(`read the file ${testFile}`, [], { llmHandler: mockLLM });
@@ -786,7 +987,7 @@ describe('processMessage with skills', () => {
   });
 
   it('file_reader: "load the contents of" routes correctly', async () => {
-    const testFile = path.join(TEST_DIR, 'config-test.json');
+    const testFile = path.join(WORKSPACE_TEST_DIR, 'config-test.json');
     fs.writeFileSync(testFile, '{"key": "value"}');
 
     const res = await processMessage(`load the contents of ${testFile}`, [], { llmHandler: mockLLM });
@@ -830,6 +1031,31 @@ describe('processMessage with skills', () => {
     }
   });
 
+  it('bare-domain web prompt uses web_fetch skill output (not capability denial text)', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => (
+        new Response('Neolith catalog landing page', {
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        })
+      );
+
+      const denyingLLM = async () => 'I cannot browse live websites.';
+      const res = await processMessage(
+        'can you go to neolith.com and download their general catalog',
+        [],
+        { llmHandler: denyingLLM },
+      );
+
+      expect(res.intent).toBe('skill');
+      expect(res.reply).toContain('Neolith catalog landing page');
+      expect(res.reply.toLowerCase()).not.toContain('cannot browse live websites');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('web action workflow chains search then download', async () => {
     const originalFetch = globalThis.fetch;
     const downloadPath = path.join(TEST_DIR, 'workflow-catalog.pdf');
@@ -865,6 +1091,25 @@ describe('processMessage with skills', () => {
     try {
       globalThis.fetch = async (input: RequestInfo | URL) => {
         const url = String(input);
+        if (url.includes('api.search.brave.com')) {
+          return new Response(
+            JSON.stringify({
+              web: {
+                results: [
+                  {
+                    title: 'ACME catalog',
+                    url: 'https://acme.example/catalog.pdf',
+                    description: 'ACME catalog PDF available',
+                  },
+                ],
+              },
+            }),
+            {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            },
+          );
+        }
         if (url.includes('duckduckgo.com')) {
           return new Response(
             JSON.stringify({
@@ -991,6 +1236,97 @@ describe('processMessage with skills', () => {
     }
   });
 
+  it('internet capability prompt routes through web_search instead of generic memory fallback', async () => {
+    const originalFetch = globalThis.fetch;
+    const oldBraveKey = process.env.BRAVE_SEARCH_API_KEY;
+    try {
+      delete process.env.BRAVE_SEARCH_API_KEY;
+      globalThis.fetch = async () => ({
+        ok: true,
+        async json() {
+          return {
+            AbstractText: 'Latest political updates and headlines.',
+            RelatedTopics: [],
+          };
+        },
+      } as Response);
+
+      const res = await processMessage(
+        'check if you can search internet , and tell me latest political news as a test',
+        [],
+        { llmHandler: mockLLM },
+      );
+      expect(res.intent).toBe('skill');
+      expect(res.reply).toContain('political');
+      expect(res.reply.toLowerCase()).not.toContain('cannot search the internet');
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (oldBraveKey === undefined) delete process.env.BRAVE_SEARCH_API_KEY;
+      else process.env.BRAVE_SEARCH_API_KEY = oldBraveKey;
+    }
+  });
+
+  it('returns deterministic web_search output when LLM claims no internet access', async () => {
+    const originalFetch = globalThis.fetch;
+    const oldBraveKey = process.env.BRAVE_SEARCH_API_KEY;
+    try {
+      delete process.env.BRAVE_SEARCH_API_KEY;
+      globalThis.fetch = async () => ({
+        ok: true,
+        async json() {
+          return {
+            AbstractText: 'Top political headlines fetched from web tool.',
+            RelatedTopics: [],
+          };
+        },
+      } as Response);
+
+      const denyingLLM = async () => "I don't have live web access.";
+      const res = await processMessage('search todays 3 latest political news', [], { llmHandler: denyingLLM });
+      expect(res.intent).toBe('skill');
+      expect(res.reply).toContain('Top political headlines');
+      expect(res.reply.toLowerCase()).not.toContain("don't have live web access");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (oldBraveKey === undefined) delete process.env.BRAVE_SEARCH_API_KEY;
+      else process.env.BRAVE_SEARCH_API_KEY = oldBraveKey;
+    }
+  });
+
+  it('news-style web_Search prompt preserves news intent in tool query and output', async () => {
+    const originalFetch = globalThis.fetch;
+    const oldBraveKey = process.env.BRAVE_SEARCH_API_KEY;
+    try {
+      process.env.BRAVE_SEARCH_API_KEY = 'test-brave-key';
+      globalThis.fetch = async (_input: RequestInfo | URL) => (
+        new Response(
+          JSON.stringify({
+            news: {
+              results: [
+                {
+                  title: 'Today Political Story',
+                  url: 'https://news.example/politics-today',
+                  description: 'Current political development.',
+                },
+              ],
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      );
+
+      const denyingLLM = async () => "I don't have live web access.";
+      const res = await processMessage('do a web_Search for 3 political news today', [], { llmHandler: denyingLLM });
+      expect(res.intent).toBe('skill');
+      expect(res.reply).toContain('Today Political Story');
+      expect(res.reply.toLowerCase()).not.toContain("don't have live web access");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (oldBraveKey === undefined) delete process.env.BRAVE_SEARCH_API_KEY;
+      else process.env.BRAVE_SEARCH_API_KEY = oldBraveKey;
+    }
+  });
+
   it('skill error with "calculate abc + xyz"', async () => {
     const res = await processMessage('calculate abc + xyz', [], { llmHandler: mockLLM });
     expect(res.intent).toBe('skill');
@@ -998,10 +1334,34 @@ describe('processMessage with skills', () => {
   });
 
   it('file_reader error for nonexistent file', async () => {
-    const res = await processMessage('read the file /tmp/nonexistent-abc-xyz.txt', [], { llmHandler: mockLLM });
+    const res = await processMessage(`read the file ${path.join(WORKSPACE_TEST_DIR, 'nonexistent-abc-xyz.txt')}`, [], { llmHandler: mockLLM });
     expect(res.intent).toBe('skill');
     expect(res.reply).toContain("couldn't complete");
     expect(res.error).toContain('File not found');
+  });
+
+  it('self-corrects skill input even when early repair outputs are malformed', async () => {
+    const existingFile = path.join(WORKSPACE_TEST_DIR, 'self-correct-reader.txt');
+    fs.writeFileSync(existingFile, 'self-correction works', 'utf-8');
+    let repairCalls = 0;
+
+    const correctingLLM = async (messages: Message[]) => {
+      const system = messages[0]?.content ?? '';
+      if (system.includes('repair tool inputs after a failed tool execution')) {
+        repairCalls += 1;
+        if (repairCalls < 3) return 'not valid json';
+        return JSON.stringify({ path: existingFile });
+      }
+      return 'Recovered by retry.';
+    };
+
+    const res = await processMessage('read the file /tmp/does-not-exist-retry.txt', [], {
+      llmHandler: correctingLLM,
+    });
+    expect(res.intent).toBe('skill');
+    expect(res.error).toBeUndefined();
+    expect(res.reply).toContain('Recovered by retry');
+    expect(repairCalls).toBeGreaterThanOrEqual(3);
   });
 
   // Regression: memory queries still work unchanged
@@ -1036,11 +1396,9 @@ describe('processMessage with skills', () => {
     expect(res.intent).toBe('general');
     expect(res.reply).toContain('Available MCP skills');
     expect(res.reply).toContain('calculator');
+    expect(res.reply).toContain('file_reader');
     expect(res.reply).toContain('web_search');
-    expect(res.reply).toContain('shell_runner');
-    expect(res.reply).toContain('task_planner');
-    expect(res.reply).toContain('log_analyzer');
-    expect(res.reply).toContain('code_editor');
+    expect(res.reply).not.toContain('shell_runner');
   });
 
   it('does not misclassify task prompt containing "available skills" as inventory query', async () => {

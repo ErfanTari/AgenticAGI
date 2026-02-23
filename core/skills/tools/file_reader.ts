@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { MCPSkill, SkillResult } from '../types.js';
-import { registerSkill } from '../store.js';
 
 const MAX_CHARS = 50000;
+const WORKSPACE_ROOT = path.resolve(process.cwd(), 'user_workspace');
+fs.mkdirSync(WORKSPACE_ROOT, { recursive: true });
 
 const SUPPORTED_EXTENSIONS = new Set([
   '.txt', '.md', '.json', '.csv', '.ts', '.js', '.py',
@@ -28,6 +29,16 @@ const fileReaderSkill: MCPSkill = {
     }
 
     const resolved = path.resolve(filePath);
+    const workspacePrefix = WORKSPACE_ROOT.endsWith(path.sep)
+      ? WORKSPACE_ROOT
+      : WORKSPACE_ROOT + path.sep;
+    if (resolved !== WORKSPACE_ROOT && !resolved.startsWith(workspacePrefix)) {
+      return {
+        success: false,
+        output: '',
+        error: 'Access denied: Path outside workspace',
+      };
+    }
 
     if (!fs.existsSync(resolved)) {
       return { success: false, output: '', error: `File not found: ${filePath}` };
@@ -57,5 +68,4 @@ const fileReaderSkill: MCPSkill = {
   },
 };
 
-registerSkill(fileReaderSkill);
 export default fileReaderSkill;
