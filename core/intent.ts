@@ -518,7 +518,7 @@ function extractMathExpression(message: string): string | null {
 
 function extractFilePath(message: string): string | null {
   // Absolute path
-  const absPath = message.match(/(\/[\w.\-/]+)/);
+  const absPath = message.match(/(?:^|\s)(\/[^\s'"]+)/);
   if (absPath) return absPath[1];
 
   // Relative path with extension
