@@ -7,6 +7,7 @@ export interface IndexEntry {
   updated: string;
   summary: string;
   path: string;
+  due_date?: string | null;
 }
 
 export interface CreateEntryInput {
@@ -16,6 +17,7 @@ export interface CreateEntryInput {
   status: string;
   summary: string;
   body: string;
+  due_date?: string;
 }
 
 export interface Relationship {

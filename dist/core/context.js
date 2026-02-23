@@ -67,7 +67,7 @@ function formatSkills(skills) {
         return '';
     return 'Available capabilities: ' + skills.map(s => s.description).join('; ');
 }
-export function buildContext(userMessage, resolved, history, skills, intent) {
+export function buildContext(userMessage, resolved, history, skills, intent, skillOutput) {
     const systemParts = [SYSTEM_PROMPT];
     // Only include notebook counts for summary/overview queries (BUG 4)
     if (needsSummary(intent ?? 'general', userMessage)) {
@@ -75,6 +75,10 @@ export function buildContext(userMessage, resolved, history, skills, intent) {
     }
     systemParts.push(formatResolved(resolved));
     systemParts.push(formatSkills(skills));
+    // Inject skill output into context
+    if (skillOutput) {
+        systemParts.push('## Skill Output\n' + skillOutput);
+    }
     const systemContent = systemParts.filter(Boolean).join('\n\n');
     const messages = [
         { role: 'system', content: systemContent },

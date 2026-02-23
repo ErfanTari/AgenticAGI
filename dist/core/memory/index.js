@@ -20,7 +20,8 @@ export function initDatabase(dbPath) {
       status    TEXT NOT NULL,
       updated   TEXT NOT NULL,
       summary   TEXT,
-      path      TEXT NOT NULL
+      path      TEXT NOT NULL,
+      due_date  TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_nb     ON index_entries(nb);
@@ -44,7 +45,22 @@ export function initDatabase(dbPath) {
       type    TEXT PRIMARY KEY,
       current INTEGER NOT NULL DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS heartbeat_queue (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      code     TEXT NOT NULL,
+      message  TEXT NOT NULL,
+      seen     INTEGER DEFAULT 0,
+      created  TEXT NOT NULL
+    );
   `);
+    // Phase 5 migration: add due_date column for existing databases
+    try {
+        db.exec('ALTER TABLE index_entries ADD COLUMN due_date TEXT');
+    }
+    catch {
+        // Column already exists — ignore
+    }
     // Phase 4: Initialize FTS5 and chunks tables
     initFTS();
     initChunksTable();
@@ -58,9 +74,9 @@ export function getDb() {
 export function insertEntry(entry) {
     const d = getDb();
     d.prepare(`
-    INSERT INTO index_entries (code, nb, type, name, status, updated, summary, path)
-    VALUES (@code, @nb, @type, @name, @status, @updated, @summary, @path)
-  `).run(entry);
+    INSERT INTO index_entries (code, nb, type, name, status, updated, summary, path, due_date)
+    VALUES (@code, @nb, @type, @name, @status, @updated, @summary, @path, @due_date)
+  `).run({ ...entry, due_date: entry.due_date ?? null });
 }
 export function getEntryByCode(code) {
     const d = getDb();

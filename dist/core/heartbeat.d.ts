@@ -7,11 +7,13 @@ export interface Notification {
 export interface HeartbeatResult {
     ran_at: string;
     notifications: Notification[];
-    created: IndexEntry | null;
+    created: IndexEntry[];
 }
-export declare function checkUpcomingEvents(): Notification | null;
+export declare function startHeartbeat(): void;
+export declare function stopHeartbeat(): void;
+export declare function checkDeadlines(): Notification | null;
 export declare function checkOverdueTodos(): Notification | null;
 export declare function checkStaleQuestions(): Notification | null;
-export declare function checkStalePlans(): Notification | null;
+export declare function checkPlanCalibration(): Notification | null;
 export declare function checkStaleProjects(): Notification | null;
-export declare function runHeartbeat(): HeartbeatResult;
+export declare function runHeartbeat(): Promise<HeartbeatResult>;
