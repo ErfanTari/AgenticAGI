@@ -238,7 +238,7 @@ async function _processMessage(
     }
   }
 
-  // 4. Skill execution — calculator, file_reader, web_search
+  // 4. Skill execution — routed via registry + runner
   if (classification.intent === 'skill' && classification.skill) {
     const skillResult = await runSkill(classification.skill, classification.skillInput ?? {});
 
@@ -266,11 +266,6 @@ async function _processMessage(
       // If LLM fails, return raw skill output
       return { reply: findingsPrefix + skillResult.output, intent: 'skill', resolved: null };
     }
-  }
-
-  // 4b. Legacy web_search fallback (backward compat)
-  if (classification.intent === 'web_search') {
-    return { reply: findingsPrefix + 'Web search not yet implemented.', intent: 'web_search', resolved: null };
   }
 
   // 5. Resolve memory (5-step query flow)

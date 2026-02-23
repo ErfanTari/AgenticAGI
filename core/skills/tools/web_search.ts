@@ -5,6 +5,13 @@ interface DDGResponse {
   RelatedTopics?: Array<{ Text?: string }>;
 }
 
+const DDG_FALLBACK = 'https://api.duckduckgo.com/?q={query}&format=json&no_html=1';
+
+function buildSearchUrl(query: string): string {
+  const endpoint = process.env.SEARCH_ENDPOINT || DDG_FALLBACK;
+  return endpoint.replace('{query}', encodeURIComponent(query));
+}
+
 const webSearchSkill: MCPSkill = {
   name: 'web_search',
   description: 'Search the web. Use when user asks to search, find online, look up current information.',
@@ -21,7 +28,7 @@ const webSearchSkill: MCPSkill = {
       return { success: false, output: '', error: 'No search query provided' };
     }
 
-    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`;
+    const url = buildSearchUrl(query);
 
     try {
       const controller = new AbortController();

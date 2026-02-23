@@ -37,38 +37,45 @@ function buildMarkdown(entry, body) {
 }
 export function createEntry(input) {
     const d = getDb();
-    // Generate code + insert index row in a single transaction
-    // This prevents race conditions: counter increment and insert are atomic
-    const run = d.transaction(() => {
-        const code = generateCode(input.nb, input.type);
-        const updated = new Date().toISOString().slice(0, 10);
-        const entryData = {
-            code,
-            nb: input.nb,
-            type: input.type,
-            name: input.name,
-            status: input.status,
-            updated,
-            summary: input.summary,
-            due_date: input.due_date ?? null,
-        };
-        const filePath = resolveEntryPath(input.nb, input.type, code, input.name);
-        const markdown = buildMarkdown(entryData, input.body);
-        // File-before-SQLite: write file first, then index
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        fs.writeFileSync(filePath, markdown, 'utf-8');
-        const entry = { ...entryData, path: filePath };
-        insertEntry(entry);
-        // Index content for FTS5 BM25 search (sync, inside transaction)
-        indexContent(code, input.nb, `${input.name} ${input.summary} ${input.body}`);
-        // Store chunks for vector search (sync, inside transaction)
-        const chunks = chunkMarkdown(code, markdown);
-        if (chunks.length > 0) {
-            storeChunks(chunks);
+    // Step 1: Generate code (atomic counter increment in its own implicit transaction)
+    const code = generateCode(input.nb, input.type);
+    const updated = new Date().toISOString().slice(0, 10);
+    const entryData = {
+        code,
+        nb: input.nb,
+        type: input.type,
+        name: input.name,
+        status: input.status,
+        updated,
+        summary: input.summary,
+        due_date: input.due_date ?? null,
+    };
+    const filePath = resolveEntryPath(input.nb, input.type, code, input.name);
+    const markdown = buildMarkdown(entryData, input.body);
+    // Step 2: Write file to disk BEFORE transaction
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, markdown, 'utf-8');
+    // Step 3: Run SQLite transaction (insertEntry + FTS + chunks)
+    const entry = { ...entryData, path: filePath };
+    try {
+        const run = d.transaction(() => {
+            insertEntry(entry);
+            indexContent(code, input.nb, `${input.name} ${input.summary} ${input.body}`);
+            const chunks = chunkMarkdown(code, markdown);
+            if (chunks.length > 0) {
+                storeChunks(chunks);
+            }
+        });
+        run();
+    }
+    catch (err) {
+        // Step 4: If transaction fails, clean up the file
+        try {
+            fs.unlinkSync(filePath);
         }
-        return entry;
-    });
-    const entry = run();
+        catch { /* ignore cleanup errors */ }
+        throw err;
+    }
     // Schedule embedding computation — fire-and-forget, best-effort
     scheduleEmbedding(entry.code);
     return entry;

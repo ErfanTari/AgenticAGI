@@ -28,7 +28,7 @@ const CALCULATOR_PATTERNS = [
     /\bwhat\s+is\s+[\d(]/i,
     /\bhow\s+much\s+is\b/i,
     /\d+\s*[\+\-\*\/]\s*\d/,
-    /\d+\s+percent\s+of\b/i,
+    /\bpercent\s+of\b/i,
     /\btimes\b/i,
     /\bdivided\s+by\b/i,
     /\bmultiplied\s+by\b/i,

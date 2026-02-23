@@ -4,6 +4,9 @@ import type { MCPSkill, SkillResult } from '../types.js';
 
 const MAX_CHARS = 50000;
 
+const WORKSPACE_ROOT = path.resolve(process.cwd(), 'user_workspace');
+fs.mkdirSync(WORKSPACE_ROOT, { recursive: true });
+
 const SUPPORTED_EXTENSIONS = new Set([
   '.txt', '.md', '.json', '.csv', '.ts', '.js', '.py',
   '.yaml', '.yml', '.toml', '.xml', '.html', '.css',
@@ -27,6 +30,10 @@ const fileReaderSkill: MCPSkill = {
     }
 
     const resolved = path.resolve(filePath);
+
+    if (!resolved.startsWith(WORKSPACE_ROOT)) {
+      return { success: false, output: '', error: 'Access denied: Path outside workspace' };
+    }
 
     if (!fs.existsSync(resolved)) {
       return { success: false, output: '', error: `File not found: ${filePath}` };
