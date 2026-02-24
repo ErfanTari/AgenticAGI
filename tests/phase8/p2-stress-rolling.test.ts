@@ -325,28 +325,32 @@ describe('Phase 8 Stress: Rolling Context Summarization', () => {
       console.log(`3B: Empty summary handled gracefully`);
     });
 
-    // 3C — Timeout handled (simulated with delay)
-    it('3C: slow summarization does not block (timeout simulation)', async () => {
+    // 3C — Timeout handled (>5000ms triggers fallback)
+    it('3C: summarization hanging >5000ms times out gracefully', async () => {
       const history: Message[] = Array.from({ length: 20 }, (_, i) => ({
         role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
         content: `Turn ${Math.floor(i / 2)} content`,
       }));
 
-      // Simulate slow but not infinite delay
-      const slowHandler: LLMHandler = async () => {
-        await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay
-        return 'Summary after delay';
+      // Simulate hanging summarization (10 seconds)
+      const hangingHandler: LLMHandler = async () => {
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        return 'This should never be returned';
       };
 
       const start = performance.now();
-      const result = await buildRollingContext(history, slowHandler);
+      const result = await buildRollingContext(history, hangingHandler);
       const elapsed = performance.now() - start;
 
-      expect(result.summary).toBeDefined();
-      expect(elapsed).toBeGreaterThan(100); // Did wait for summary
-      expect(elapsed).toBeLessThan(5000); // But not excessive
+      // Should timeout around 5000ms, not wait 10000ms
+      expect(elapsed).toBeLessThan(6000);
+      expect(elapsed).toBeGreaterThan(4900); // Should be close to 5000ms
 
-      console.log(`3C: Slow summarization completed in ${Math.round(elapsed)}ms`);
+      // Should fall back to recent messages
+      expect(result.turns.length).toBe(6);
+      expect(result.summary).toBeUndefined();
+
+      console.log(`3C: Summarization timed out after ${Math.round(elapsed)}ms, fell back gracefully`);
     });
 
     // 3D — Fallback respects context ceiling

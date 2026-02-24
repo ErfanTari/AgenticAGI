@@ -59,13 +59,13 @@
 |------|--------|----------|
 | 3A | ✅ PASS | LLM failure → graceful fallback to 6 recent messages, no crash |
 | 3B | ✅ PASS | Empty summary → no message injected, clean fallback |
-| 3C | ✅ PASS | Slow summarization (100ms) completes without blocking |
+| 3C | ✅ PASS | Summarization hanging >5000ms times out gracefully (5001ms measured) |
 | 3D | ✅ PASS | Fallback context respects MAX_TOKENS: 166/1500 |
 
 **Key Findings:**
 - Robust error handling: LLM failures don't crash the system
 - Empty summaries handled gracefully (not injected)
-- No timeouts or blocking behavior observed
+- 5000ms timeout enforced: hanging summarization triggers graceful fallback
 - Token ceiling enforced even in fallback scenarios
 
 ---
