@@ -184,7 +184,7 @@ export function checkVisionAlignment(): Notification | null {
   return {
     type: 'vision_drift',
     entries: driftingEntries,
-    message: `${driftingEntries.length} active plan(s)/project(s) may not align with North Star vision`,
+    message: `${driftingEntries.length} active plan(s)/project(s) may not align with North Star vision: ${driftingEntries.map(e => e.name).join(', ')}`,
   };
 }
 

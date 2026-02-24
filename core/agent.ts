@@ -291,7 +291,7 @@ async function _processMessage(
 
     if (!skillResult.success) {
       return {
-        reply: findingsPrefix + `I couldn't complete that: ${skillResult.error}`,
+        reply: findingsPrefix + `I couldn't complete that. Please try again or rephrase your request.`,
         intent: 'skill',
         resolved: null,
         error: skillResult.error,

@@ -111,8 +111,8 @@ describe('Group 3: Vision + Planning', () => {
     expect(drift).toBeDefined();
     expect(drift!.entries.some(e => e.code === project.code)).toBe(true);
     expect(drift!.message).toContain('may not align');
-    // Notification message mentions the project
-    expect(drift!.entries.some(e => e.name === project.name)).toBe(true);
+    // Notification message explicitly mentions the project name
+    expect(drift!.message).toContain(project.name);
   });
 
   // 3C — Vision check skipped with no North Star

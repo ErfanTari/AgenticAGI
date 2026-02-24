@@ -124,18 +124,40 @@ describe('Group 1: ReAct Self-Correction Loop', () => {
   });
 
   // 1C — Max 3 retries then clean failure
-  it('1C: after 3 retries, returns clean failure message with no raw error object, no crash', async () => {
-    const skill = createFlakeySkill('stress_always_fail_1c', 999);
-    registerSkill(skill);
+  it('1C: after 3 retries, user sees clean message with NO internal error details', async () => {
+    const alwaysFail: MCPSkill = {
+      name: 'calculator',
+      description: 'Always fails with internal error',
+      inputSchema: {
+        type: 'object',
+        properties: { expression: { type: 'string', description: 'math expression' } },
+        required: ['expression'],
+      },
+      async execute() {
+        return { success: false, output: '', error: 'INTERNAL_STACK_TRACE_X123_SHOULD_NOT_APPEAR_TO_USER' };
+      },
+    };
+    registerSkill(alwaysFail);
 
-    const result = await runWithRetry('stress_always_fail_1c', { value: 'bad' }, repairingLLM, 3);
+    const mockLLM: LLMHandler = async (messages: Message[]) => {
+      // Repair attempts will be made but skill still fails
+      if (messages[0].content.includes('JSON repair assistant')) {
+        return JSON.stringify({ expression: '1+1' });
+      }
+      return 'ok';
+    };
 
-    expect(result.success).toBe(false);
-    expect(result.retries).toBe(3);
-    // Error is a clean string, not a raw object
-    expect(typeof result.error).toBe('string');
-    expect(result.error).not.toContain('[object Object]');
-    // No crash — we reached this assertion
+    const res = await processMessage('calculate 1 + 1', [], { llmHandler: mockLLM });
+
+    // User reply should be clean, no internal error text
+    expect(res.reply).not.toContain('INTERNAL_STACK_TRACE');
+    expect(res.reply).not.toContain('X123');
+    expect(res.reply).not.toContain('[object Object]');
+    // Should contain friendly message
+    expect(res.reply).toContain('try again');
+    // Error is stored internally
+    expect(res.error).toBeTruthy();
+    expect(res.retries).toBe(3);
   });
 
   // 1D — Retry never creates memory entries
