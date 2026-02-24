@@ -8,4 +8,7 @@ import type { Message } from './types.js';
  * 3. Log which provider handled the request + response time
  * 4. Never crash — callers catch the final throw
  */
-export declare function callLLM(messages: Message[]): Promise<string>;
+export declare function callLLM(messages: Message[], options?: {
+    responseSchema?: Record<string, unknown>;
+    maxTokens?: number;
+}): Promise<string>;

@@ -4,7 +4,7 @@ import { LLM_CONFIG, LLM_FALLBACK_CONFIG } from '../config/agent.config.js';
  * Timeout is tiered by model size (70B+=90s, 7B-14B=20s, 1B-4B=10s, default=20s).
  * On timeout, logs a warning with model name so caller knows what happened.
  */
-async function callPrimary(messages) {
+async function callPrimary(messages, options) {
     const controller = new AbortController();
     const timeoutMs = LLM_CONFIG.timeoutMs;
     const timer = setTimeout(() => {
@@ -12,15 +12,27 @@ async function callPrimary(messages) {
         controller.abort();
     }, timeoutMs);
     try {
+        const requestBody = {
+            model: LLM_CONFIG.model,
+            messages,
+            max_tokens: options?.maxTokens ?? LLM_CONFIG.maxTokens,
+            temperature: LLM_CONFIG.temperature,
+        };
+        // Add structured output schema if provided (LM Studio json_schema format)
+        if (options?.responseSchema) {
+            requestBody.response_format = {
+                type: 'json_schema',
+                json_schema: {
+                    name: 'response',
+                    strict: true,
+                    schema: options.responseSchema,
+                },
+            };
+        }
         const response = await fetch(LLM_CONFIG.endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model: LLM_CONFIG.model,
-                messages,
-                max_tokens: LLM_CONFIG.maxTokens,
-                temperature: LLM_CONFIG.temperature,
-            }),
+            body: JSON.stringify(requestBody),
             signal: controller.signal,
         });
         if (!response.ok) {
@@ -72,12 +84,12 @@ async function callAnthropic(messages) {
  * 3. Log which provider handled the request + response time
  * 4. Never crash — callers catch the final throw
  */
-export async function callLLM(messages) {
+export async function callLLM(messages, options) {
     // Try primary
     if (LLM_CONFIG.endpoint) {
         const start = performance.now();
         try {
-            const result = await callPrimary(messages);
+            const result = await callPrimary(messages, options);
             const elapsed = Math.round(performance.now() - start);
             console.log('[llm] Provider: primary (%s) — %dms', LLM_CONFIG.model, elapsed);
             return result;

@@ -451,8 +451,8 @@ describe('agent.ts import cleanliness', () => {
 // --- FIX 4: Skill output reaches LLM context (5B) ---
 
 describe('skill output in LLM context', () => {
-  it('buildContext includes "## Skill Output" when skillOutput is provided', () => {
-    const messages = buildContext(
+  it('buildContext includes "## Skill Output" when skillOutput is provided', async () => {
+    const messages = await buildContext(
       'what is 2 + 2',
       null,
       [],
@@ -464,14 +464,14 @@ describe('skill output in LLM context', () => {
     expect(messages[0].content).toContain('2 + 2 = 4');
   });
 
-  it('buildContext does NOT include "## Skill Output" when no skillOutput', () => {
-    const messages = buildContext('hello', null, [], []);
+  it('buildContext does NOT include "## Skill Output" when no skillOutput', async () => {
+    const messages = await buildContext('hello', null, [], []);
     expect(messages[0].content).not.toContain('## Skill Output');
   });
 
-  it('large file skill output appears in LLM context', () => {
+  it('large file skill output appears in LLM context', async () => {
     const largeOutput = 'x'.repeat(5000);
-    const messages = buildContext(
+    const messages = await buildContext(
       'read the file /tmp/big.txt',
       null,
       [],

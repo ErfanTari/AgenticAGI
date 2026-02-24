@@ -214,63 +214,63 @@ describe('resolveQuery', () => {
 // --- Context Building ---
 
 describe('buildContext', () => {
-  it('includes system prompt in context', () => {
-    const messages = buildContext('hello', null, [], []);
+  it('includes system prompt in context', async () => {
+    const messages = await buildContext('hello', null, [], []);
     expect(messages[0].role).toBe('system');
     expect(messages[0].content).toContain('personal assistant');
   });
 
   // BUG 4: No extra SQL on every request
-  it('does NOT include notebook counts for normal queries', () => {
-    const messages = buildContext('hello', null, [], []);
+  it('does NOT include notebook counts for normal queries', async () => {
+    const messages = await buildContext('hello', null, [], []);
     expect(messages[0].content).not.toContain('Memory index:');
   });
 
-  it('includes notebook counts only for summary/overview queries', () => {
-    const messages = buildContext('what do you know about me?', null, [], [], 'general');
+  it('includes notebook counts only for summary/overview queries', async () => {
+    const messages = await buildContext('what do you know about me?', null, [], [], 'general');
     expect(messages[0].content).toContain('Memory index:');
   });
 
-  it('includes resolved memory entries in context', () => {
+  it('includes resolved memory entries in context', async () => {
     const c = classifyIntent('show active projects');
     const resolved = resolveQuery(c);
-    const messages = buildContext('show active projects', resolved, [], []);
+    const messages = await buildContext('show active projects', resolved, [], []);
     const system = messages[0].content;
     expect(system).toContain('Resolved Memory');
     expect(system).toContain(projectCode);
   });
 
-  it('limits history to last 6 turns', () => {
+  it('limits history to last 6 turns', async () => {
     const longHistory: Message[] = [];
     for (let i = 0; i < 20; i++) {
       longHistory.push({ role: 'user', content: `msg ${i}` });
       longHistory.push({ role: 'assistant', content: `reply ${i}` });
     }
-    const messages = buildContext('new message', null, longHistory, []);
+    const messages = await buildContext('new message', null, longHistory, []);
     // system + 12 history messages + 1 user message = 14
     expect(messages.length).toBe(14);
     // First history message should be from turn 14 (index 28), not turn 0
     expect(messages[1].content).toBe('msg 14');
   });
 
-  it('keeps context under 500 tokens for simple queries', () => {
+  it('keeps context under 500 tokens for simple queries', async () => {
     const c = classifyIntent('show active projects');
     const resolved = resolveQuery(c);
     const skills = getSkillsForIntent(c.intent);
-    const messages = buildContext('show active projects', resolved, [], skills);
+    const messages = await buildContext('show active projects', resolved, [], skills);
     const tokens = estimateTokens(messages);
     expect(tokens).toBeLessThan(500);
   });
 
   // BUG 5: Token ceiling guard
-  it('enforces token ceiling on large inputs', () => {
+  it('enforces token ceiling on large inputs', async () => {
     const hugeMessage = 'word '.repeat(2000); // ~2000 words = ~10000 chars
     const longHistory: Message[] = [];
     for (let i = 0; i < 20; i++) {
       longHistory.push({ role: 'user', content: `msg ${i} ${'padding '.repeat(50)}` });
       longHistory.push({ role: 'assistant', content: `reply ${i} ${'padding '.repeat(50)}` });
     }
-    const messages = buildContext(hugeMessage, null, longHistory, []);
+    const messages = await buildContext(hugeMessage, null, longHistory, []);
     const tokens = estimateTokens(messages);
     expect(tokens).toBeLessThan(2000);
   });

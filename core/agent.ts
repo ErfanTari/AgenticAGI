@@ -300,10 +300,11 @@ async function _processMessage(
     }
 
     // Pass skill output through context builder and LLM
-    const skillContext = buildContext(
+    const skillContext = await buildContext(
       message, null, history, [],
       'skill',
       skillResult.output,
+      options?.llmHandler ?? callLLM,
     );
 
     try {
@@ -354,12 +355,12 @@ async function _processMessage(
   // 7. Load relevant skills
   const skills = getSkillsForIntent(classification.intent);
 
-  // 8. Build lean context
-  const messages = buildContext(message, resolved, history, skills, classification.intent);
+  // 8. Build lean context with rolling summarization
+  const handler = options?.llmHandler ?? callLLM;
+  const messages = await buildContext(message, resolved, history, skills, classification.intent, undefined, handler);
 
   // 9. Call LLM with error handling (BUG 6)
   try {
-    const handler = options?.llmHandler ?? callLLM;
     const reply = await handler(messages);
     return { reply: findingsPrefix + reply, intent: classification.intent, resolved };
   } catch (error) {

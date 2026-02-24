@@ -1,4 +1,5 @@
 import { getNotebookCounts } from './memory/mod.js';
+import { encode } from 'gpt-tokenizer';
 const SYSTEM_PROMPT = `You are a knowledgeable personal assistant with access to a structured memory system.
 Answer based on the provided memory context. Be concise and direct.
 If the memory context doesn't contain enough information, say so honestly.
@@ -19,6 +20,10 @@ Never use a type code not listed above.
 Never invent new type codes.`;
 const MAX_TOKENS = 1500;
 const HARD_CEILING = 2000;
+const WARNING_THRESHOLD = Math.floor(MAX_TOKENS * 0.8); // 80% = 1200 tokens
+// Rolling context summary thresholds
+const SUMMARY_THRESHOLD = 6; // When history has > 6 turns (12 messages), summarize old turns
+const KEEP_RECENT = 3; // Keep last 3 turns (6 messages) verbatim
 const SUMMARY_INTENTS = new Set(['summary', 'overview']);
 const SUMMARY_PATTERNS = [
     /\bwhat\s+do\s+you\s+know\b/i,
@@ -40,6 +45,46 @@ function needsSummary(intent, userMessage) {
         return SUMMARY_PATTERNS.some(p => p.test(userMessage));
     }
     return false;
+}
+/**
+ * Build rolling context with summarization for long histories.
+ * When history exceeds SUMMARY_THRESHOLD turns, summarize old turns and keep recent turns verbatim.
+ * Falls back gracefully if summarization fails.
+ */
+export async function buildRollingContext(history, llmHandler) {
+    // Count turns (pair of user+assistant messages)
+    const turnCount = Math.floor(history.length / 2);
+    if (turnCount <= SUMMARY_THRESHOLD) {
+        // Short history, no summarization needed
+        return { turns: history };
+    }
+    // Split: old turns to summarize, recent turns to keep verbatim
+    const recentMessageCount = KEEP_RECENT * 2; // 3 turns = 6 messages
+    const oldMessages = history.slice(0, -recentMessageCount);
+    const recentMessages = history.slice(-recentMessageCount);
+    // Try to summarize old turns
+    try {
+        const summaryPrompt = [
+            {
+                role: 'system',
+                content: 'Summarize the conversation history below into 2-3 concise sentences. Focus on key topics, decisions, and context needed for future turns. Omit greetings and pleasantries.',
+            },
+            {
+                role: 'user',
+                content: oldMessages.map(m => `${m.role}: ${m.content}`).join('\n\n'),
+            },
+        ];
+        const summary = await llmHandler(summaryPrompt, { maxTokens: 150 });
+        return {
+            turns: recentMessages,
+            summary: summary.trim(),
+        };
+    }
+    catch (err) {
+        // Graceful fallback: if summarization fails, just return recent turns without summary
+        console.warn('[context] Summary generation failed, keeping recent turns only:', String(err));
+        return { turns: recentMessages };
+    }
 }
 function formatResolved(resolved, summaryOnly) {
     if (!resolved || resolved.entries.length === 0)
@@ -67,7 +112,7 @@ function formatSkills(skills) {
         return '';
     return 'Available capabilities: ' + skills.map(s => s.description).join('; ');
 }
-export function buildContext(userMessage, resolved, history, skills, intent, skillOutput) {
+export async function buildContext(userMessage, resolved, history, skills, intent, skillOutput, llmHandler) {
     const systemParts = [SYSTEM_PROMPT];
     // Only include notebook counts for summary/overview queries (BUG 4)
     if (needsSummary(intent ?? 'general', userMessage)) {
@@ -83,12 +128,29 @@ export function buildContext(userMessage, resolved, history, skills, intent, ski
     const messages = [
         { role: 'system', content: systemContent },
     ];
-    // Start with last 6 turns (12 messages)
-    let recentHistory = history.slice(-12);
+    // Use rolling context summarization if llmHandler provided and history is long
+    let recentHistory = history.slice(-12); // Default: last 6 turns
+    let conversationSummary;
+    if (llmHandler && history.length > SUMMARY_THRESHOLD * 2) {
+        const rollingContext = await buildRollingContext(history, llmHandler);
+        recentHistory = rollingContext.turns;
+        conversationSummary = rollingContext.summary;
+    }
+    // Inject conversation summary if present
+    if (conversationSummary) {
+        messages.push({
+            role: 'system',
+            content: `## Previous Conversation\n${conversationSummary}`,
+        });
+    }
     messages.push(...recentHistory);
     messages.push({ role: 'user', content: userMessage });
     // Token ceiling guard (BUG 5)
     let tokens = estimateTokens(messages);
+    // Warn if context exceeds 80% of budget
+    if (tokens > WARNING_THRESHOLD && tokens <= MAX_TOKENS) {
+        console.warn(`[context] Context at ${tokens}/${MAX_TOKENS} tokens (${Math.round(tokens / MAX_TOKENS * 100)}%) — approaching limit`);
+    }
     if (tokens > MAX_TOKENS) {
         // Step 1: Reduce history to 3 turns (6 messages)
         messages.length = 1; // keep system prompt
@@ -98,28 +160,55 @@ export function buildContext(userMessage, resolved, history, skills, intent, ski
         tokens = estimateTokens(messages);
     }
     if (tokens > MAX_TOKENS) {
-        // Step 2: Trim memory to summaries only (no full content)
+        // Step 2: Trim memory to summaries only, truncate large skill output
         const summaryResolved = formatResolved(resolved, true);
-        const trimmedSystem = [SYSTEM_PROMPT, summaryResolved, formatSkills(skills)]
-            .filter(Boolean).join('\n\n');
+        const trimParts = [SYSTEM_PROMPT, summaryResolved, formatSkills(skills)];
+        if (skillOutput) {
+            // Keep skill output but cap at ~2000 chars to fit in token budget
+            const maxSkillChars = 2000;
+            const truncatedSkill = skillOutput.length > maxSkillChars
+                ? skillOutput.slice(0, maxSkillChars) + '\n\n[skill output truncated]'
+                : skillOutput;
+            trimParts.push('## Skill Output\n' + truncatedSkill);
+        }
+        const trimmedSystem = trimParts.filter(Boolean).join('\n\n');
         messages[0] = { role: 'system', content: trimmedSystem };
         tokens = estimateTokens(messages);
     }
+    if (tokens > MAX_TOKENS) {
+        // Step 3: Drop all history, keep only system + user message
+        messages.length = 1; // keep only system
+        messages.push({ role: 'user', content: userMessage });
+        tokens = estimateTokens(messages);
+    }
     if (tokens > HARD_CEILING) {
-        // Step 3: Truncate user input to ~500 tokens (2000 chars)
+        // Final: Truncate user input to fit under ceiling
         const lastIdx = messages.length - 1;
         const userContent = messages[lastIdx].content;
-        if (userContent.length > 2000) {
+        const userTokens = estimateTokens(userContent);
+        if (userTokens > 500) {
+            // Approximate char position that fits ~500 tokens
+            const targetTokens = 500;
+            const approxChars = Math.floor(userContent.length * (targetTokens / userTokens));
+            const truncated = userContent.slice(0, approxChars);
             messages[lastIdx] = {
                 role: 'user',
-                content: userContent.slice(0, 2000) + '\n\n[input truncated — too long]',
+                content: truncated + '\n\n[input truncated — too long]',
             };
-            console.warn(`Token ceiling hit: input truncated from ${userContent.length} chars`);
+            console.warn(`Token ceiling hit: input truncated from ${userTokens} tokens`);
         }
     }
     return messages;
 }
-export function estimateTokens(messages) {
-    const totalChars = messages.reduce((sum, m) => sum + m.content.length, 0);
-    return Math.ceil(totalChars / 4);
+/**
+ * Count exact tokens using gpt-tokenizer.
+ * Can accept either a string or Message array.
+ */
+export function estimateTokens(input) {
+    if (typeof input === 'string') {
+        return encode(input).length;
+    }
+    // Message array
+    const combined = input.map(m => m.content).join('\n');
+    return encode(combined).length;
 }

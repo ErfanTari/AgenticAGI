@@ -178,6 +178,25 @@ function extractStatus(message) {
     const match = message.match(STATUS_REGEX);
     return match ? match[1].toLowerCase() : undefined;
 }
+function extractDueDate(message) {
+    // ISO date: "due 2025-03-15"
+    const isoMatch = message.match(/\bdue\s+(\d{4}-\d{2}-\d{2})\b/i);
+    if (isoMatch)
+        return isoMatch[1];
+    // "due tomorrow" or "due by tomorrow"
+    if (/\bdue\s+(?:by\s+)?tomorrow\b/i.test(message)) {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        return d.toISOString().slice(0, 10);
+    }
+    // "due next week" or "due by next week"
+    if (/\bdue\s+(?:by\s+)?next\s+week\b/i.test(message)) {
+        const d = new Date();
+        d.setDate(d.getDate() + 7);
+        return d.toISOString().slice(0, 10);
+    }
+    return undefined;
+}
 function extractName(message) {
     // Quoted strings
     const quoted = message.match(/"([^"]+)"|'([^']+)'/);
@@ -284,6 +303,7 @@ export function classifyIntent(message) {
     const relation = extractRelation(message);
     const status = extractStatus(message);
     const name = extractName(message);
+    const due_date = extractDueDate(message);
     let intent;
     let nb;
     let type;
@@ -335,5 +355,5 @@ export function classifyIntent(message) {
             }
         }
     }
-    return { intent, codes, nb, type, status, name, relation, skill, skillInput };
+    return { intent, codes, nb, type, status, name, relation, skill, skillInput, due_date };
 }
