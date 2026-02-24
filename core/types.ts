@@ -20,6 +20,7 @@ export interface Classification {
   relation?: string;
   skill?: string;
   skillInput?: Record<string, unknown>;
+  due_date?: string;
 }
 
 export interface Message {
@@ -34,7 +35,7 @@ export interface ResolvedMemory {
   relationships: Relationship[];
 }
 
-export type LLMHandler = (messages: Message[]) => Promise<string>;
+export type LLMHandler = (messages: Message[], options?: { responseSchema?: Record<string, unknown>; maxTokens?: number }) => Promise<string>;
 
 export interface AgentResponse {
   reply: string;
@@ -42,5 +43,6 @@ export interface AgentResponse {
   resolved: ResolvedMemory | null;
   created?: IndexEntry;
   error?: string;
+  retries?: number;
   notifications?: Array<{ type: string; entries: IndexEntry[]; message: string }>;
 }

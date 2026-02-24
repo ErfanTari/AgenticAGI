@@ -148,7 +148,8 @@ CREATE TABLE index_entries (
   status    TEXT NOT NULL,      -- active | archived | open | closed | upcoming
   updated   TEXT NOT NULL,      -- ISO date string
   summary   TEXT,               -- one line, agent answers simple queries from this
-  path      TEXT NOT NULL       -- full path to markdown file
+  path      TEXT NOT NULL,      -- full path to markdown file
+  due_date  TEXT                -- optional ISO date for deadlines and plans
 );
 
 CREATE INDEX idx_nb     ON index_entries(nb);
@@ -280,8 +281,8 @@ It does not respond to the user. It only reads and writes to memory.
 1. WHEN notebook — any events or deadlines in next 24 hours?
    → if yes: queue a user notification
 
-2. NOW notebook — any todos overdue?
-   → if yes: update status, flag in summary
+2. NOW notebook — any todos overdue? Also checks PLAN.PL with past due_date.
+   → if yes: update status to 'overdue', flag in summary
 
 3. WHY notebook — any open questions older than 3 days?
    → if yes: surface to user at next interaction
@@ -292,6 +293,13 @@ It does not respond to the user. It only reads and writes to memory.
 
 5. WHAT notebook — any active projects with no update in 7 days?
    → flag as stale, queue check-in question
+
+6. Vision alignment — any active plans/projects misaligned with North Star vision?
+   → queries WHY.MT entries with name LIKE '%North Star%'
+   → compares active PLAN.PL and WHAT.PJ entries against vision keywords
+   → excludes entries with 'refers' relationship to vision entry
+   → if no keyword overlap and no relationship: flags vision_drift notification
+   → if no vision entry exists: skips silently (no false positives)
 ```
 
 ### Rules for heartbeat
@@ -554,6 +562,43 @@ work end-to-end through the full agent loop. The architecture is MCP-compatible:
 every skill implements one interface, self-registers on import, and adding a new skill
 requires creating one file and one import line — zero changes to agent.ts, intent.ts,
 or runner.ts. Memory queries are untouched. 181 tests pass. The foundation holds.
+
+---
+
+## Phase 7 — ReAct Loop + Structured Outputs + Planning (COMPLETE)
+
+Phase 7 adds three capabilities:
+
+### ReAct Self-Correction Loop (`core/react.ts`)
+- `runWithRetry(skillName, input, handler, maxRetries=3)` — retries failed skills with LLM-based input repair
+- `repairSkillInput()` — asks LLM to fix a failed skill input, never throws
+- Memory write path retries up to 2 times on invalid LLM JSON responses
+- `retries` field added to `AgentResponse` for observability
+
+### Structured Outputs via JSON Schema (`core/schemas.ts`)
+- Zod v4 schemas for `WriteEntrySchema` with `z.toJSONSchema()` for LM Studio `response_format`
+- `LLMHandler` accepts optional `{ responseSchema }` — backwards compatible
+- `callLLM` passes `response_format: { type: 'json_schema', ... }` to primary (LM Studio) endpoint
+- Memory write path validates LLM response with `WriteEntrySchema.safeParse()` first, falls back to regex extraction
+- Dependency: `zod` (zod v4 has built-in JSON schema conversion, no `zod-to-json-schema` needed)
+
+### Basic Planning + Vision Alignment
+- `checkVisionAlignment()` — CHECK 6 in heartbeat: detects plans that don't align with North Star vision
+- `checkOverdueTodos()` extended to also flag overdue `PLAN.PL` entries with past `due_date`
+- `classifyIntent()` extracts `due_date` from messages ("due 2025-03-15", "due tomorrow", "due next week")
+- `due_date` passes through agent write path to `createEntry()`
+- `due_date` column documented in `index_entries` schema
+
+### Files added/modified
+- `core/react.ts` (NEW) — ReAct retry loop
+- `core/schemas.ts` (NEW) — Zod schemas + JSON schema
+- `core/types.ts` — `retries` in AgentResponse, `due_date` in Classification, `LLMHandler` options
+- `core/agent.ts` — skill retry via `runWithRetry`, write retry loop, Zod validation, due_date pass-through
+- `core/llm.ts` — `responseSchema` parameter in `callPrimary` and `callLLM`
+- `core/heartbeat.ts` — `checkVisionAlignment` (CHECK 6), overdue PLAN.PL, `vision_drift` notification type
+- `core/intent.ts` — `extractDueDate()` with ISO/tomorrow/next-week patterns
+
+226 tests pass (202 existing + 24 new). Build clean.
 
 ---
 

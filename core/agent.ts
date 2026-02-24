@@ -4,12 +4,13 @@ import { resolveQuery } from './resolver.js';
 import { buildContext } from './context.js';
 import { callLLM } from './llm.js';
 import { getSkillsForIntent } from './skills/registry.js';
-import { runSkill } from './skills/runner.js';
+import { runWithRetry } from './react.js';
 import { createEntry, hybridSearch } from './memory/mod.js';
 import { addRelationship } from './memory/relationships.js';
 import { fetchByCode } from './memory/mod.js';
 import { startHeartbeat, stopHeartbeat } from './heartbeat.js';
 import { getDb } from './memory/index.js';
+import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
 
 // FIX 1: Processing flag — heartbeat checks this to skip when agent is busy
 export let isProcessingMessage = false;
@@ -160,32 +161,72 @@ async function _processMessage(
   if (classification.intent === 'memory_write') {
     const handler = options?.llmHandler ?? callLLM;
 
-    // Try LLM extraction first, fall back to rule-based
+    // Try LLM extraction first, fall back to rule-based (with retry on invalid JSON)
     let writeData: {
       nb: string; type: string; name: string; status: string; summary: string; body: string;
       relationships?: Array<{ relation: string; to_code: string }>;
     } | null = null;
+    let lastLLMResponse: string | undefined;
 
-    try {
-      const writeMessages: Message[] = [
-        { role: 'system', content: WRITE_SYSTEM_PROMPT },
-        { role: 'user', content: message },
-      ];
-      const llmResponse = await handler(writeMessages);
-      const parsed = parseLLMWriteResponse(llmResponse);
-      if (parsed?.nb && parsed?.type && parsed?.name) {
-        writeData = {
-          nb: parsed.nb,
-          type: parsed.type,
-          name: parsed.name,
-          status: parsed.status ?? 'active',
-          summary: parsed.summary ?? parsed.name,
-          body: parsed.body ?? message,
-          relationships: parsed.relationships,
-        };
+    const MAX_WRITE_RETRIES = 2;
+    for (let writeAttempt = 0; writeAttempt <= MAX_WRITE_RETRIES; writeAttempt++) {
+      try {
+        const writeMessages: Message[] = writeAttempt === 0
+          ? [
+              { role: 'system', content: WRITE_SYSTEM_PROMPT },
+              { role: 'user', content: message },
+            ]
+          : [
+              { role: 'system', content: WRITE_SYSTEM_PROMPT },
+              { role: 'user', content: message },
+              { role: 'assistant', content: lastLLMResponse! },
+              { role: 'user', content: `Your response was invalid JSON or missing required fields (nb, type, name). Please return ONLY a valid JSON object with all required fields.` },
+            ];
+        const llmResponse = await handler(writeMessages, { responseSchema: writeEntryJsonSchema });
+        lastLLMResponse = llmResponse;
+
+        // Try Zod validation first (structured output path)
+        const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            const raw = JSON.parse(jsonMatch[0]);
+            const zodResult = WriteEntrySchema.safeParse(raw);
+            if (zodResult.success) {
+              writeData = {
+                nb: zodResult.data.nb,
+                type: zodResult.data.type,
+                name: zodResult.data.name,
+                status: zodResult.data.status,
+                summary: zodResult.data.summary,
+                body: zodResult.data.body,
+                relationships: zodResult.data.relationships,
+              };
+              break; // Schema-validated success
+            }
+          } catch {
+            // JSON parse failed — fall through to regex extraction
+          }
+        }
+
+        // Fallback: rule-based regex extraction (existing parseLLMWriteResponse)
+        const parsed = parseLLMWriteResponse(llmResponse);
+        if (parsed?.nb && parsed?.type && parsed?.name) {
+          writeData = {
+            nb: parsed.nb,
+            type: parsed.type,
+            name: parsed.name,
+            status: parsed.status ?? 'active',
+            summary: parsed.summary ?? parsed.name,
+            body: parsed.body ?? message,
+            relationships: parsed.relationships,
+          };
+          break; // Regex-extracted success
+        }
+        // Missing fields — retry if attempts remain
+      } catch {
+        // LLM unavailable — fall through to rule-based
+        break;
       }
-    } catch {
-      // LLM unavailable — fall through to rule-based
     }
 
     // Fall back to rule-based inference
@@ -202,6 +243,10 @@ async function _processMessage(
     }
 
     try {
+      // due_date from LLM response, classification, or undefined
+      const due_date = (writeData as Record<string, unknown>).due_date as string | undefined
+        ?? classification.due_date;
+
       const entry = createEntry({
         nb: writeData.nb,
         type: writeData.type,
@@ -209,6 +254,7 @@ async function _processMessage(
         status: writeData.status,
         summary: writeData.summary,
         body: writeData.body,
+        due_date,
       });
 
       // Add relationships if present
@@ -238,9 +284,10 @@ async function _processMessage(
     }
   }
 
-  // 4. Skill execution — routed via registry + runner
+  // 4. Skill execution — routed via registry + runner (with ReAct retry)
   if (classification.intent === 'skill' && classification.skill) {
-    const skillResult = await runSkill(classification.skill, classification.skillInput ?? {});
+    const handler = options?.llmHandler ?? callLLM;
+    const skillResult = await runWithRetry(classification.skill, classification.skillInput ?? {}, handler);
 
     if (!skillResult.success) {
       return {
@@ -248,6 +295,7 @@ async function _processMessage(
         intent: 'skill',
         resolved: null,
         error: skillResult.error,
+        retries: skillResult.retries,
       };
     }
 
@@ -259,12 +307,11 @@ async function _processMessage(
     );
 
     try {
-      const handler = options?.llmHandler ?? callLLM;
       const reply = await handler(skillContext);
-      return { reply: findingsPrefix + reply, intent: 'skill', resolved: null };
+      return { reply: findingsPrefix + reply, intent: 'skill', resolved: null, retries: skillResult.retries };
     } catch (error) {
       // If LLM fails, return raw skill output
-      return { reply: findingsPrefix + skillResult.output, intent: 'skill', resolved: null };
+      return { reply: findingsPrefix + skillResult.output, intent: 'skill', resolved: null, retries: skillResult.retries };
     }
   }
 

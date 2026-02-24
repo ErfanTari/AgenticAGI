@@ -4,7 +4,7 @@ import { createEntry, updateEntry } from './memory/write.js';
 import { isProcessingMessage } from './agent.js';
 
 export interface Notification {
-  type: 'upcoming_event' | 'overdue_todo' | 'stale_question' | 'stale_plan' | 'stale_project';
+  type: 'upcoming_event' | 'overdue_todo' | 'stale_question' | 'stale_plan' | 'stale_project' | 'vision_drift';
   entries: IndexEntry[];
   message: string;
 }
@@ -78,10 +78,18 @@ export function checkDeadlines(): Notification | null {
 export function checkOverdueTodos(): Notification | null {
   const todayStr = new Date().toISOString().split('T')[0];
   const d = getDb();
-  const entries = d.prepare(
+
+  // Check NOW.TD todos
+  const todoEntries = d.prepare(
     'SELECT * FROM index_entries WHERE nb = ? AND type = ? AND status = ? AND due_date < ?'
   ).all('NOW', 'TD', 'open', todayStr) as IndexEntry[];
 
+  // Also check PLAN.PL overdue plans
+  const planEntries = d.prepare(
+    'SELECT * FROM index_entries WHERE nb = ? AND type = ? AND status = ? AND due_date < ?'
+  ).all('PLAN', 'PL', 'active', todayStr) as IndexEntry[];
+
+  const entries = [...todoEntries, ...planEntries];
   if (entries.length === 0) return null;
 
   for (const entry of entries) {
@@ -91,7 +99,7 @@ export function checkOverdueTodos(): Notification | null {
   return {
     type: 'overdue_todo',
     entries,
-    message: `${entries.length} todo(s) overdue — status updated`,
+    message: `${entries.length} todo(s)/plan(s) overdue — status updated`,
   };
 }
 
@@ -131,6 +139,55 @@ export function checkStaleProjects(): Notification | null {
   };
 }
 
+// --- CHECK 6: Vision alignment ---
+
+export function checkVisionAlignment(): Notification | null {
+  const d = getDb();
+
+  // Find the active North Star vision entry
+  const visionEntries = d.prepare(
+    "SELECT * FROM index_entries WHERE nb = 'WHY' AND type = 'MT' AND name LIKE '%North Star%' AND status = 'active'"
+  ).all() as IndexEntry[];
+
+  if (visionEntries.length === 0) return null; // No vision — nothing to check
+
+  const vision = visionEntries[0];
+  const visionKeywords = (vision.summary ?? vision.name).toLowerCase().split(/\s+/);
+
+  // Get active plans AND projects
+  const entries = d.prepare(
+    "SELECT * FROM index_entries WHERE ((nb = 'PLAN' AND type = 'PL') OR (nb = 'WHAT' AND type = 'PJ')) AND status = 'active'"
+  ).all() as IndexEntry[];
+
+  if (entries.length === 0) return null; // No plans/projects — nothing to compare
+
+  // Exclude entries that explicitly refer to the vision entry
+  const connectedCodes = new Set(
+    (d.prepare(
+      "SELECT from_code FROM relationships WHERE to_code = ? AND relation = 'refers'"
+    ).all(vision.code) as Array<{ from_code: string }>).map(r => r.from_code)
+  );
+
+  // Check each entry for keyword overlap with vision
+  const driftingEntries: IndexEntry[] = [];
+  for (const entry of entries) {
+    if (connectedCodes.has(entry.code)) continue; // explicitly connected — skip
+    const entryText = `${entry.name} ${entry.summary ?? ''}`.toLowerCase();
+    const hasOverlap = visionKeywords.some(kw => kw.length > 3 && entryText.includes(kw));
+    if (!hasOverlap) {
+      driftingEntries.push(entry);
+    }
+  }
+
+  if (driftingEntries.length === 0) return null;
+
+  return {
+    type: 'vision_drift',
+    entries: driftingEntries,
+    message: `${driftingEntries.length} active plan(s)/project(s) may not align with North Star vision`,
+  };
+}
+
 // --- Main heartbeat ---
 
 export async function runHeartbeat(): Promise<HeartbeatResult> {
@@ -144,6 +201,7 @@ export async function runHeartbeat(): Promise<HeartbeatResult> {
     checkStaleQuestions,
     checkPlanCalibration,
     checkStaleProjects,
+    checkVisionAlignment,
   ];
 
   for (const check of checks) {
