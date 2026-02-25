@@ -4,9 +4,6 @@ import type { MCPSkill, SkillResult } from '../types.js';
 
 const MAX_CHARS = 50000;
 
-const WORKSPACE_ROOT = path.resolve(process.cwd(), 'user_workspace');
-fs.mkdirSync(WORKSPACE_ROOT, { recursive: true });
-
 const SUPPORTED_EXTENSIONS = new Set([
   '.txt', '.md', '.json', '.csv', '.ts', '.js', '.py',
   '.yaml', '.yml', '.toml', '.xml', '.html', '.css',
@@ -29,10 +26,12 @@ const fileReaderSkill: MCPSkill = {
       return { success: false, output: '', error: 'No file path provided' };
     }
 
-    // Ensure workspace exists on every call (handles deletion between calls)
+    // Workspace root (computed dynamically to support tests that change cwd)
+    const WORKSPACE_ROOT = path.resolve(process.cwd(), 'workspace');
     fs.mkdirSync(WORKSPACE_ROOT, { recursive: true });
 
-    const resolved = path.resolve(filePath);
+    // Resolve path relative to WORKSPACE_ROOT (same as file_writer)
+    const resolved = path.resolve(WORKSPACE_ROOT, filePath);
 
     if (!resolved.startsWith(WORKSPACE_ROOT)) {
       return { success: false, output: '', error: 'Access denied: Path outside workspace' };

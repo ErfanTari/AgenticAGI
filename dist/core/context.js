@@ -62,7 +62,7 @@ export async function buildRollingContext(history, llmHandler) {
     const recentMessageCount = KEEP_RECENT * 2; // 3 turns = 6 messages
     const oldMessages = history.slice(0, -recentMessageCount);
     const recentMessages = history.slice(-recentMessageCount);
-    // Try to summarize old turns
+    // Try to summarize old turns with timeout
     try {
         const summaryPrompt = [
             {
@@ -74,14 +74,19 @@ export async function buildRollingContext(history, llmHandler) {
                 content: oldMessages.map(m => `${m.role}: ${m.content}`).join('\n\n'),
             },
         ];
-        const summary = await llmHandler(summaryPrompt, { maxTokens: 150 });
+        // Wrap summarization with 5000ms timeout
+        const SUMMARIZATION_TIMEOUT = 5000;
+        const summary = await Promise.race([
+            llmHandler(summaryPrompt, { maxTokens: 150 }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Summarization timeout after 5000ms')), SUMMARIZATION_TIMEOUT)),
+        ]);
         return {
             turns: recentMessages,
             summary: summary.trim(),
         };
     }
     catch (err) {
-        // Graceful fallback: if summarization fails, just return recent turns without summary
+        // Graceful fallback: if summarization fails or times out, just return recent turns without summary
         console.warn('[context] Summary generation failed, keeping recent turns only:', String(err));
         return { turns: recentMessages };
     }

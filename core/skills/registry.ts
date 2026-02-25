@@ -7,6 +7,8 @@ import { memoryWriteSkill } from './memory_write.js';
 import calculatorSkill from './tools/calculator.js';
 import fileReaderSkill from './tools/file_reader.js';
 import webSearchSkill from './tools/web_search.js';
+import { fileWriter } from './tools/file_writer.js';
+import { runBash } from './tools/run_bash.js';
 
 // --- MCP Skill Registry (Map-based) ---
 
@@ -34,6 +36,8 @@ export function getSkillDescriptions(): string {
 registerSkill(calculatorSkill);
 registerSkill(fileReaderSkill);
 registerSkill(webSearchSkill);
+registerSkill(fileWriter);
+registerSkill(runBash);
 
 // --- Legacy skill loading (used by context builder) ---
 

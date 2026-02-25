@@ -202,7 +202,7 @@ describe('calculator skill', () => {
 // --- File Reader Skill ---
 
 describe('file_reader skill', () => {
-  const WORKSPACE_ROOT = path.resolve(process.cwd(), 'user_workspace');
+  const WORKSPACE_ROOT = path.resolve(process.cwd(), 'workspace');
   const testFile = path.join(WORKSPACE_ROOT, 'agenticagi_test.txt');
   const largeFile = path.join(WORKSPACE_ROOT, 'large-file.txt');
   const binaryFile = path.join(WORKSPACE_ROOT, 'test.png');
@@ -252,7 +252,7 @@ describe('file_reader skill', () => {
     expect(result.error).toContain('No file path');
   });
 
-  it('denies access to paths outside user_workspace', async () => {
+  it('denies access to paths outside workspace', async () => {
     const result = await runSkill('file_reader', { path: '/etc/passwd' });
     expect(result.success).toBe(false);
     expect(result.error).toContain('Access denied: Path outside workspace');
@@ -528,7 +528,7 @@ describe('processMessage with skills', () => {
   });
 
   it('file_reader skill end-to-end', async () => {
-    const wsRoot = path.resolve(process.cwd(), 'user_workspace');
+    const wsRoot = path.resolve(process.cwd(), 'workspace');
     const testFile = path.join(wsRoot, 'agent-test-file.txt');
     fs.mkdirSync(wsRoot, { recursive: true });
     fs.writeFileSync(testFile, 'Agent test file contents here.');
@@ -540,7 +540,7 @@ describe('processMessage with skills', () => {
   });
 
   it('file_reader: "load the contents of" routes correctly', async () => {
-    const wsRoot = path.resolve(process.cwd(), 'user_workspace');
+    const wsRoot = path.resolve(process.cwd(), 'workspace');
     const testFile = path.join(wsRoot, 'config-test.json');
     fs.mkdirSync(wsRoot, { recursive: true });
     fs.writeFileSync(testFile, '{"key": "value"}');
@@ -564,7 +564,7 @@ describe('processMessage with skills', () => {
   });
 
   it('file_reader error for nonexistent file', async () => {
-    const wsRoot = path.resolve(process.cwd(), 'user_workspace');
+    const wsRoot = path.resolve(process.cwd(), 'workspace');
     const res = await processMessage(`read the file ${path.join(wsRoot, 'nonexistent-abc-xyz.txt')}`, [], { llmHandler: mockLLM });
     expect(res.intent).toBe('skill');
     expect(res.reply).toContain("couldn't complete");
