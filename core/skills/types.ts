@@ -3,7 +3,10 @@ import type { Intent } from '../types.js';
 /** MCP-compatible skill result */
 export interface SkillResult {
   success: boolean;
+  /** Machine-readable result — used as template value for {{storeResultAs}} in downstream steps */
   output: string;
+  /** Human-readable display string — shown in buildUserReport when present, falls back to output */
+  display?: string;
   error?: string;
 }
 

@@ -7,6 +7,16 @@ const WRITE_PATTERNS = [
     /\bremind\s+me\b/i,
     /\bschedule\b/i,
     /\bnew\s+(contact|project|todo|task|event|deadline|procedure|plan)\b/i,
+    /\bmy\s+(?:north\s+star\s+)?(?:vision|mission|north\s+star)\s*(?:is|:)/i,
+    /\bset\s+my\s+(vision|north\s+star|mission)\b/i,
+];
+// --- Web/file action exclusions — prevent WRITE_PATTERNS from mis-classifying action tasks ---
+// e.g. "download it, save it in a folder" is NOT a memory write
+const WEB_FILE_ACTION_PATTERNS = [
+    /\b(go\s+(to|through)|visit|browse|navigate)\b.*\b(website|site|page)\b/i,
+    /\bdownload\b/i,
+    /\bsave\s+(it|th(is|e)\s+\w+)\s+(in|to|into)\s+(a\s+)?(folder|directory|workspace|disk|path)\b/i,
+    /\bsave\b.*\b(folder|directory|workspace)\b/i,
 ];
 // --- Web search patterns (now routes to skill) ---
 const WEB_SEARCH_PATTERNS = [
@@ -48,6 +58,40 @@ const FILE_READER_PATTERNS = [
     /\bread\s+\/[\w.\-/]+/i,
     /\bcat\s+\/[\w.\-/]+/i,
 ];
+// --- Bash runner patterns ---
+const RUN_BASH_PATTERNS = [
+    /\brun\s+(the\s+)?(command|cmd)\b/i,
+    /\brun\s+(a\s+)?bash\b/i,
+    /\bexecute\s+(the\s+)?(command|script)\b/i,
+    /\b(bash|shell)\s+(command|script)\b/i,
+    // Match "run [common_unix_command]"
+    /\brun\s+(?:echo|ls|cat|pwd|grep|find|mkdir|cp|mv|rm|chmod|curl|wget|git|python3?|node|npm|npx|yarn|sh|touch)\b/i,
+];
+// Messages with explicit multi-step language should not be short-circuited to a single skill
+const MULTI_STEP_LANGUAGE = /\b(then\s+|after\s+that\s+|first\s+.{3,}\s+then\s+|followed\s+by\s+|and\s+then\s+)\b/i;
+// --- File writer patterns ---
+const FILE_WRITER_PATTERNS = [
+    /\bwrite\s+(a\s+|to\s+)?file\b/i,
+    /\bwrite\s+\w+\.\w+\b/i, // "write a notes.txt file"
+    /\bcreate\s+(a\s+)?file\b/i, // "create a file summary.txt"
+    /\bcreate\s+(a\s+)?\w+\.(txt|md|json|sh|html|css|js|ts|py|yaml|yml|csv|log)\b/i,
+    /\bsave\s+(it\s+)?(to|as|into)\s+(a\s+)?file\b/i,
+    /\bsave\s+to\s+file\b/i,
+    /\bmake\s+(a\s+)?(text\s+)?(file|document)\b/i,
+];
+// --- Synthesis patterns — cross-notebook queries that span multiple notebooks ---
+const SYNTHESIS_PATTERNS = [
+    /\bweekly\s+(status\s+)?report\b/i,
+    /\bstatus\s+report\b/i,
+    /\bbased\s+on\s+everything\s+you\s+know\b/i,
+    /\bsummar(?:y|ize)\s+(all|my|everything)\b/i,
+    /\boverview\s+of\s+(all|my)\b/i,
+    /\bwhat\s+(?:do\s+I\s+have|is\s+going\s+on)\b/i,
+    /\bbriefing\b/i,
+    /\bfull\s+picture\b/i,
+    /\bwrap\s+up\b/i,
+    /\bcatch\s+me\s+up\b/i,
+];
 // --- WHO patterns ---
 const WHO_PATTERNS = [
     /\bwho\s+is\b/i,
@@ -87,6 +131,9 @@ const WHY_PATTERNS = [
     /\bquestions?\b/i,
     /\bwhy\s+did\b/i,
     /\bopen\s+questions?\b/i,
+    /\bnorth\s+star\b/i,
+    /\bvision\s+is\b/i,
+    /\bmy\s+mission\b/i,
 ];
 // --- NOW patterns ---
 const NOW_PATTERNS = [
@@ -113,6 +160,7 @@ const NOTEBOOK_PATTERNS = [
     { pattern: /\btodos?\b|\btasks?\b/i, nb: 'NOW', type: 'TD' },
     { pattern: /\breports?\b/i, nb: 'NOW', type: 'RP' },
     { pattern: /\bplanning\b|\bplans?\b/i, nb: 'PLAN', type: 'PL' },
+    { pattern: /\bnorth\s+star\b|\bmy\s+vision\b/i, nb: 'WHY', type: 'MT' },
 ];
 const RELATION_PATTERNS = [
     { pattern: /\bowns?\b/i, relation: 'owns' },
@@ -150,8 +198,11 @@ function detectNotebook(message) {
     }
     if (matchesAny(message, HOW_PATTERNS))
         return { nb: 'HOW', type: 'PR' };
-    if (matchesAny(message, WHY_PATTERNS))
+    if (matchesAny(message, WHY_PATTERNS)) {
+        if (/\b(north\s+star|vision|mission)\b/i.test(message))
+            return { nb: 'WHY', type: 'MT' };
         return { nb: 'WHY', type: 'QU' };
+    }
     if (matchesAny(message, NOW_PATTERNS)) {
         if (/\breports?\b/i.test(message))
             return { nb: 'NOW', type: 'RP' };
@@ -218,10 +269,34 @@ function extractName(message) {
 }
 // --- Skill detection ---
 function detectSkill(message) {
+    // If the message describes multiple sequential steps, don't short-circuit to a single skill —
+    // let the complexity check route it to the planner for decomposition.
+    if (MULTI_STEP_LANGUAGE.test(message))
+        return null;
+    // Bash runner detection — before file patterns to avoid overlap
+    if (matchesAny(message, RUN_BASH_PATTERNS)) {
+        // Extract command: text after keyword "command/cmd/bash/execute", or after "run " for direct commands
+        const cmdMatch = message.match(/(?:command|cmd|bash|execute(?:\s+the\s+command)?)\s+(.+)/i) ??
+            message.match(/\brun\s+(.+?)(?:\s+and\s+(?:tell|show|report)\s+me\b|$)/i);
+        const command = cmdMatch
+            ? cmdMatch[1].replace(/\bin\s+the\s+workspace\b.*/i, '').trim()
+            : message.trim();
+        return { skill: 'run_bash', skillInput: { command } };
+    }
     // Web search detection — highest priority among skills (replaces old web_search intent)
     if (matchesAny(message, WEB_SEARCH_PATTERNS)) {
         const query = extractSearchQuery(message);
         return { skill: 'web_search', skillInput: { query } };
+    }
+    // File writer detection — before file_reader to avoid overlap on "write...file" phrases
+    if (matchesAny(message, FILE_WRITER_PATTERNS)) {
+        // Extract the filename from the message
+        const fileNameMatch = message.match(/\b([\w.\-/]+\.\w+)\b/);
+        const filePath = fileNameMatch ? fileNameMatch[1] : 'output.txt';
+        // Extract content hint (everything after "with content" or similar)
+        const contentMatch = message.match(/(?:with\s+(?:content|text)\s+)(.+)$/i);
+        const content = contentMatch ? contentMatch[1].trim() : '';
+        return { skill: 'file_writer', skillInput: { path: filePath, content } };
     }
     // File reader detection — before calculator to avoid path numbers matching math
     if (matchesAny(message, FILE_READER_PATTERNS)) {
@@ -277,8 +352,8 @@ function extractFilePath(message) {
     const absPath = message.match(/(\/[\w.\-/]+)/);
     if (absPath)
         return absPath[1];
-    // Relative path with extension
-    const relPath = message.match(/([\w.\-/]+\.\w+)/);
+    // Relative path with extension (strip surrounding quotes)
+    const relPath = message.match(/["']?([\w.\-/]+\.\w+)["']?/);
     if (relPath)
         return relPath[1];
     return null;
@@ -300,7 +375,7 @@ function extractSearchQuery(message) {
 export { getSkillDescriptions };
 export function classifyIntent(message) {
     const codes = extractCodes(message);
-    const relation = extractRelation(message);
+    let relation = extractRelation(message);
     const status = extractStatus(message);
     const name = extractName(message);
     const due_date = extractDueDate(message);
@@ -309,8 +384,19 @@ export function classifyIntent(message) {
     let type;
     let skill;
     let skillInput;
+    // Priority 0: Natural language ownership without explicit codes
+    const naturalRelation = extractRelation(message);
+    const subjectIsUser = /\b(i|me|my|erfan|tari)\b/i.test(message);
+    const hasRelationVerb = naturalRelation !== undefined;
+    if (hasRelationVerb && subjectIsUser && !matchesAny(message, WRITE_PATTERNS)) {
+        intent = 'relationship_write';
+        relation = naturalRelation;
+        const detected = detectNotebook(message);
+        nb = detected.nb;
+        type = detected.type;
+    }
     // Priority 1: Contains a valid code
-    if (codes.length > 0 && relation) {
+    else if (codes.length > 0 && relation) {
         intent = 'relationship_query';
         const detected = detectNotebook(message);
         nb = detected.nb;
@@ -322,16 +408,23 @@ export function classifyIntent(message) {
         nb = detected.nb;
         type = detected.type;
     }
-    // Priority 2: Greeting (only if no codes)
-    else if (GREETING_REGEX.test(message) && codes.length === 0) {
+    // Priority 2: Greeting — only if no codes AND no write intent follows
+    // e.g. "Hey, add a contact for Reza" must NOT be classified as greeting
+    else if (GREETING_REGEX.test(message) && codes.length === 0 && !matchesAny(message, WRITE_PATTERNS)) {
         intent = 'greeting';
     }
-    // Priority 3: Write patterns
-    else if (matchesAny(message, WRITE_PATTERNS)) {
+    // Priority 3: Write patterns — but NOT if this is a web/file action task or explicit file write
+    else if (matchesAny(message, WRITE_PATTERNS) && !matchesAny(message, WEB_FILE_ACTION_PATTERNS) && !matchesAny(message, FILE_WRITER_PATTERNS)) {
         intent = 'memory_write';
         const detected = detectNotebook(message);
         nb = detected.nb;
         type = detected.type;
+    }
+    // Priority 3b: Synthesis query — cross-notebook read+generate+save tasks
+    // Checked after write patterns so "save" doesn't short-circuit to memory_write
+    else if (matchesAny(message, SYNTHESIS_PATTERNS)) {
+        intent = 'synthesis_query';
+        // nb intentionally undefined — reads all notebooks
     }
     // Priority 4: Skill detection (web_search, calculator, file_reader)
     // Checked BEFORE notebook patterns — same priority position web_search had before

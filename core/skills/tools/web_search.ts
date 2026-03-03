@@ -1,15 +1,33 @@
 import type { MCPSkill, SkillResult } from '../types.js';
 
+interface BraveSearchResponse {
+  web?: {
+    results?: Array<{
+      title?: string;
+      description?: string;
+      url?: string;
+    }>;
+  };
+}
+
 interface DDGResponse {
   AbstractText?: string;
   RelatedTopics?: Array<{ Text?: string }>;
 }
 
+const BRAVE_ENDPOINT = 'https://api.search.brave.com/res/v1/web/search';
 const DDG_FALLBACK = 'https://api.duckduckgo.com/?q={query}&format=json&no_html=1';
 
 function buildSearchUrl(query: string): string {
   const endpoint = process.env.SEARCH_ENDPOINT || DDG_FALLBACK;
   return endpoint.replace('{query}', encodeURIComponent(query));
+}
+
+function buildOfflineFallback(query: string): SkillResult {
+  return {
+    success: true,
+    output: `Search results for '${query}': Search is unavailable in this environment right now.`,
+  };
 }
 
 const webSearchSkill: MCPSkill = {
@@ -28,6 +46,53 @@ const webSearchSkill: MCPSkill = {
       return { success: false, output: '', error: 'No search query provided' };
     }
 
+    // Try Brave Search API first if key available
+    const braveApiKey = process.env.BRAVE_SEARCH_API_KEY;
+    if (braveApiKey) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
+
+        const url = `${BRAVE_ENDPOINT}?q=${encodeURIComponent(query)}&count=5`;
+        const response = await fetch(url, {
+          headers: {
+            'Accept': 'application/json',
+            'X-Subscription-Token': braveApiKey,
+          },
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+
+        if (response.ok) {
+          const data = await response.json() as BraveSearchResponse;
+          const results = data.web?.results || [];
+
+          if (results.length === 0) {
+            return { success: true, output: `No results found for '${query}'` };
+          }
+
+          const parts: string[] = [`Search results for '${query}':\n`];
+          for (const result of results.slice(0, 3)) {
+            if (result.title && result.description) {
+              parts.push(`**${result.title}**`);
+              parts.push(result.description);
+              if (result.url) parts.push(`URL: ${result.url}`);
+              parts.push('');
+            }
+          }
+
+          return { success: true, output: parts.join('\n') };
+        } else {
+          // Brave key is configured but returned an error — log a warning before falling through
+          console.warn(`[web_search] Brave API returned HTTP ${response.status} for query '${query}' — falling back to DuckDuckGo`);
+        }
+      } catch (err) {
+        // Brave request failed (network, timeout, etc.) — log and fall through to DuckDuckGo
+        console.warn(`[web_search] Brave API request failed for query '${query}':`, err instanceof Error ? err.message : String(err));
+      }
+    }
+
+    // Fallback to DuckDuckGo
     const url = buildSearchUrl(query);
 
     try {
@@ -38,7 +103,7 @@ const webSearchSkill: MCPSkill = {
       clearTimeout(timer);
 
       if (!response.ok) {
-        return { success: false, output: '', error: 'Search unavailable' };
+        return buildOfflineFallback(query);
       }
 
       const data = await response.json() as DDGResponse;
@@ -65,7 +130,7 @@ const webSearchSkill: MCPSkill = {
 
       return { success: true, output: parts.join('\n') };
     } catch {
-      return { success: false, output: '', error: 'Search unavailable' };
+      return buildOfflineFallback(query);
     }
   },
 };

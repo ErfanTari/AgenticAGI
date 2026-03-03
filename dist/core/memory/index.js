@@ -2,9 +2,141 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PATHS } from '../../config/agent.config.js';
-import { initFTS } from './fts.js';
-import { initChunksTable } from './embeddings.js';
+import { initFTS, indexContent } from './fts.js';
+import { initChunksTable, storeChunks } from './embeddings.js';
+import { chunkMarkdown } from './chunks.js';
 let db = null;
+function collectMarkdownFiles(rootDir) {
+    if (!fs.existsSync(rootDir))
+        return [];
+    const files = [];
+    const stack = [rootDir];
+    while (stack.length > 0) {
+        const current = stack.pop();
+        const entries = fs.readdirSync(current, { withFileTypes: true });
+        for (const entry of entries) {
+            const fullPath = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+                stack.push(fullPath);
+                continue;
+            }
+            if (entry.isFile() && fullPath.endsWith('.md')) {
+                files.push(fullPath);
+            }
+        }
+    }
+    return files;
+}
+function parseFrontmatter(markdown) {
+    const match = markdown.match(/^---\n([\s\S]*?)\n---\n?/);
+    if (!match)
+        return null;
+    const metadata = {};
+    for (const line of match[1].split('\n')) {
+        const sep = line.indexOf(':');
+        if (sep === -1)
+            continue;
+        const key = line.slice(0, sep).trim();
+        const value = line.slice(sep + 1).trim();
+        if (key.length > 0)
+            metadata[key] = value;
+    }
+    const required = ['code', 'nb', 'type', 'name', 'status', 'updated', 'summary'];
+    if (required.some(key => !(key in metadata)))
+        return null;
+    return metadata;
+}
+function parseDiskEntry(filePath) {
+    const markdown = fs.readFileSync(filePath, 'utf-8');
+    const meta = parseFrontmatter(markdown);
+    if (!meta)
+        return null;
+    const codeMatch = meta.code.match(/^([A-Z]+\.[A-Z]+)-(\d{6,})$/);
+    if (!codeMatch)
+        return null;
+    const frontmatterEnd = markdown.indexOf('\n---', 4);
+    const bodyStart = frontmatterEnd >= 0 ? markdown.indexOf('\n', frontmatterEnd + 4) : -1;
+    const body = bodyStart >= 0 ? markdown.slice(bodyStart).trim() : markdown;
+    const entry = {
+        code: meta.code,
+        nb: meta.nb,
+        type: meta.type,
+        name: meta.name,
+        status: meta.status,
+        updated: meta.updated,
+        summary: meta.summary,
+        path: filePath,
+        due_date: meta.due_date ?? null,
+    };
+    return {
+        entry,
+        markdown,
+        searchableText: `${entry.name} ${entry.summary} ${body}`,
+        counterKey: `${entry.nb}.${entry.type}`,
+        counterValue: Number(codeMatch[2]),
+    };
+}
+function bootstrapIndexFromMemoryFiles() {
+    const d = getDb();
+    const countRow = d.prepare('SELECT COUNT(*) as count FROM index_entries').get();
+    if (countRow.count > 0)
+        return;
+    const files = collectMarkdownFiles(PATHS.memory);
+    if (files.length === 0)
+        return;
+    const parsed = files
+        .map(filePath => parseDiskEntry(filePath))
+        .filter((entry) => entry !== null);
+    if (parsed.length === 0)
+        return;
+    const maxCounters = new Map();
+    for (const item of parsed) {
+        const current = maxCounters.get(item.counterKey) ?? 0;
+        if (item.counterValue > current) {
+            maxCounters.set(item.counterKey, item.counterValue);
+        }
+    }
+    const insertEntryStmt = d.prepare(`
+    INSERT OR IGNORE INTO index_entries (code, nb, type, name, status, updated, summary, path, due_date)
+    VALUES (@code, @nb, @type, @name, @status, @updated, @summary, @path, @due_date)
+  `);
+    const upsertCounterStmt = d.prepare(`
+    INSERT INTO counters (type, current) VALUES (?, ?)
+    ON CONFLICT(type) DO UPDATE SET current = CASE
+      WHEN excluded.current > counters.current THEN excluded.current
+      ELSE counters.current
+    END
+  `);
+    const runBootstrap = d.transaction(() => {
+        for (const item of parsed) {
+            insertEntryStmt.run({
+                ...item.entry,
+                due_date: item.entry.due_date ?? null,
+            });
+        }
+        for (const [type, current] of maxCounters.entries()) {
+            upsertCounterStmt.run(type, current);
+        }
+    });
+    runBootstrap();
+    // Rebuild text indexes from the canonical markdown files.
+    // Safe to clear when index_entries was empty at startup.
+    try {
+        d.prepare('DELETE FROM fts_content').run();
+    }
+    catch { /* table may be absent */ }
+    try {
+        d.prepare('DELETE FROM chunks').run();
+    }
+    catch { /* table may be absent */ }
+    for (const item of parsed) {
+        indexContent(item.entry.code, item.entry.nb, item.searchableText);
+        const chunks = chunkMarkdown(item.entry.code, item.markdown);
+        if (chunks.length > 0) {
+            storeChunks(chunks);
+        }
+    }
+}
 export function initDatabase(dbPath) {
     const resolvedPath = dbPath ?? PATHS.db;
     fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
@@ -64,6 +196,7 @@ export function initDatabase(dbPath) {
     // Phase 4: Initialize FTS5 and chunks tables
     initFTS();
     initChunksTable();
+    bootstrapIndexFromMemoryFiles();
     return db;
 }
 export function getDb() {
@@ -95,8 +228,16 @@ export function queryEntries(filter) {
         params.type = filter.type;
     }
     if (filter.status) {
-        conditions.push('status = @status');
-        params.status = filter.status;
+        // BUG 5 Fix: WHEN notebook deadlines use status='upcoming', not 'active'.
+        // When filtering WHEN entries by status, include 'upcoming' and 'open' alongside 'active'
+        // so deadline entries are never silently excluded.
+        if (filter.nb === 'WHEN' && filter.status === 'active') {
+            conditions.push("status IN ('active', 'upcoming', 'open')");
+        }
+        else {
+            conditions.push('status = @status');
+            params.status = filter.status;
+        }
     }
     if (filter.name) {
         conditions.push('name LIKE @name');

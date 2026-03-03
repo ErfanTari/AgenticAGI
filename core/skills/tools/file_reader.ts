@@ -10,6 +10,12 @@ const SUPPORTED_EXTENSIONS = new Set([
   '.sh', '.sql', '.env', '.cfg', '.ini', '.log',
 ]);
 
+function normalizeWorkspacePath(inputPath: string): string {
+  return inputPath
+    .replace(/^\.\/+/, '')
+    .replace(/^\/?workspace\//, '');
+}
+
 const fileReaderSkill: MCPSkill = {
   name: 'file_reader',
   description: 'Read a file from disk. Use when user asks to read, open, or load a file.',
@@ -21,8 +27,9 @@ const fileReaderSkill: MCPSkill = {
     required: ['path'],
   },
   async execute(input: Record<string, unknown>): Promise<SkillResult> {
-    const filePath = String(input.path ?? '');
-    if (!filePath.trim()) {
+    const rawPath = String(input.path ?? '');
+    const filePath = normalizeWorkspacePath(rawPath);
+    if (!rawPath.trim() || !filePath.trim()) {
       return { success: false, output: '', error: 'No file path provided' };
     }
 
@@ -35,6 +42,17 @@ const fileReaderSkill: MCPSkill = {
 
     if (!resolved.startsWith(WORKSPACE_ROOT)) {
       return { success: false, output: '', error: 'Access denied: Path outside workspace' };
+    }
+
+    // Resolve symlinks before re-checking jail (prevents symlink escape attacks)
+    let realResolved = resolved;
+    try {
+      realResolved = fs.realpathSync(resolved);
+    } catch {
+      // File may not exist yet — realpathSync will fail; we'll handle that below
+    }
+    if (!realResolved.startsWith(WORKSPACE_ROOT)) {
+      return { success: false, output: '', error: 'Access denied: Symlink points outside workspace' };
     }
 
     if (!fs.existsSync(resolved)) {

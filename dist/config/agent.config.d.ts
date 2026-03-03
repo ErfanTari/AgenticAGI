@@ -96,6 +96,20 @@ export declare const LLM_FALLBACK_CONFIG: {
     apiKey: string;
     endpoint: string;
 } | null;
+export declare const PLANNER_CONFIG: {
+    endpoint: string;
+    model: string;
+    maxTokens: number;
+    temperature: number;
+    timeoutMs: number;
+};
+export declare const EXECUTOR_CONFIG: {
+    endpoint: string;
+    model: string;
+    maxTokens: number;
+    temperature: number;
+    timeoutMs: number;
+};
 export declare const EMBEDDING_CONFIG: {
     endpoint: string;
     model: string;

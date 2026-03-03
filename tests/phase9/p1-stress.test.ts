@@ -9,24 +9,34 @@ import { getAllSkills } from '../../core/skills/registry.js';
 import { processMessage } from '../../core/agent.js';
 import { initDatabase, closeDatabase } from '../../core/memory/mod.js';
 import type { Message } from '../../core/types.js';
+import { PATHS } from '../../config/agent.config.js';
 
 // Test workspace
 const TEST_DIR = path.join(os.tmpdir(), `phase9-p1-stress-${Date.now()}`);
+const TEST_MEMORY = path.join(TEST_DIR, 'memory');
+const ORIG_CWD = process.cwd();
+const origMemory = PATHS.memory;
 
 beforeAll(() => {
   // Create test directory first
   fs.mkdirSync(TEST_DIR, { recursive: true });
   fs.mkdirSync(path.join(TEST_DIR, 'workspace'), { recursive: true });
+  fs.mkdirSync(TEST_MEMORY, { recursive: true });
 
   // Change to test directory
   process.chdir(TEST_DIR);
 
-  // Initialize database for agent loop tests
-  initDatabase();
+  // Redirect markdown writes into the temp test tree
+  (PATHS as Record<string, string>).memory = TEST_MEMORY;
+
+  // Initialize an isolated in-memory database — prevents polluting the live memory.sqlite
+  initDatabase(':memory:');
 });
 
 afterAll(() => {
   closeDatabase();
+  (PATHS as Record<string, string>).memory = origMemory;
+  process.chdir(ORIG_CWD);
   // Cleanup
   if (fs.existsSync(TEST_DIR)) {
     fs.rmSync(TEST_DIR, { recursive: true, force: true });
@@ -429,7 +439,7 @@ describe('Phase 9 Priority 1 Stress Test', () => {
       const testDir = process.cwd();
       const filesInTest = fs.readdirSync(testDir);
       const unexpectedFiles = filesInTest.filter(f =>
-        !f.startsWith('.') && f !== 'workspace' && f !== 'index'
+        !f.startsWith('.') && f !== 'workspace' && f !== 'index' && f !== 'memory'
       );
 
       expect(unexpectedFiles.length).toBe(0);
@@ -518,7 +528,7 @@ describe('Phase 9 Priority 1 Stress Test', () => {
 describe('Stress Test Summary', () => {
   it('reports registry count', () => {
     const skills = getAllSkills();
-    expect(skills.length).toBe(5);
-    console.log('✅ Registry count: 5 (calculator, file_reader, web_search, file_writer, run_bash)');
+    expect(skills.length).toBeGreaterThanOrEqual(5);
+    console.log(`✅ Registry count: ${skills.length} (includes calculator, file_reader, web_search, file_writer, run_bash)`);
   });
 });

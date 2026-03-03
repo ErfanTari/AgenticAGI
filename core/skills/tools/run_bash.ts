@@ -3,6 +3,25 @@ import path from 'node:path';
 import fs from 'node:fs';
 import type { MCPSkill, SkillResult } from '../types.js';
 
+function normalizeWorkspacePathsInCommand(command: string): string {
+  return command
+    // Strip "cd workspace && " or "cd ./workspace && " prefix — cwd is already workspace
+    .replace(/^(?:cd\s+(?:\.\/)?workspace\s*&&\s*)+/i, '')
+    .replace(/(^|[\s"'`])(?:\.\/)?workspace\//g, '$1')
+    .replace(/\/workspace\//g, '');
+}
+
+function normalizeWorkspaceCwd(cwd: string): string {
+  const normalized = cwd
+    .trim()
+    .replace(/^\.\/+/, '')
+    .replace(/^\/+/, '')
+    .replace(/^workspace\/?/, '');
+
+  if (!normalized || normalized === '.') return '';
+  return normalized;
+}
+
 /**
  * run_bash skill
  *
@@ -33,11 +52,15 @@ export const runBash: MCPSkill = {
   },
 
   async execute(input: Record<string, unknown>): Promise<SkillResult> {
-    const command = input.command as string;
-    const cwd = input.cwd as string | undefined;
+    const rawCommand = input.command as string;
+    const command = typeof rawCommand === 'string'
+      ? normalizeWorkspacePathsInCommand(rawCommand)
+      : '';
+    const rawCwd = input.cwd as string | undefined;
+    const cwd = typeof rawCwd === 'string' ? normalizeWorkspaceCwd(rawCwd) : undefined;
     const timeoutMs = Math.min(parseInt(String(input.timeout || '30000')), 60000);
 
-    if (!command || typeof command !== 'string') {
+    if (!rawCommand || typeof rawCommand !== 'string' || !command.trim()) {
       return {
         success: false,
         output: "",

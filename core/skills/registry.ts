@@ -9,6 +9,13 @@ import fileReaderSkill from './tools/file_reader.js';
 import webSearchSkill from './tools/web_search.js';
 import { fileWriter } from './tools/file_writer.js';
 import { runBash } from './tools/run_bash.js';
+import memoryReadMCPSkill from './tools/memory_read.js';
+import { memoryWriteMCPSkill } from './tools/memory_write.js';
+import contentWriterSkill from './tools/content_writer.js';
+import webFetchSkill from './tools/web_fetch.js';
+import urlExtractSkill from './tools/url_extract.js';
+import { relationshipWriteSkill } from './tools/relationship_write.js';
+import { implementAndTestSkill } from './tools/implement_and_test.js';
 
 // --- MCP Skill Registry (Map-based) ---
 
@@ -38,6 +45,13 @@ registerSkill(fileReaderSkill);
 registerSkill(webSearchSkill);
 registerSkill(fileWriter);
 registerSkill(runBash);
+registerSkill(memoryReadMCPSkill);
+registerSkill(memoryWriteMCPSkill);
+registerSkill(contentWriterSkill);
+registerSkill(webFetchSkill);
+registerSkill(urlExtractSkill);
+registerSkill(relationshipWriteSkill);
+registerSkill(implementAndTestSkill);
 
 // --- Legacy skill loading (used by context builder) ---
 

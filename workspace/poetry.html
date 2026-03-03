@@ -1,0 +1,82 @@
+<!DOCTYPE html><html>...` etc. I will format it nicely with indentation for readability within the HTML itself, but ensure no markdown blocks surround it in the final output message.
+
+    *Wait, one critical detail:* The user said "Return only the requested final content with no markdown fences". This means I should not use ```html at the start and end. Just the raw text.
+
+    Let's assemble the HTML.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PersianPoetry</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        .container {
+            display: flex;
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .column {
+            flex: 1;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .persian {
+            background-color: #f9f9f9;
+            border-right: 1px solid #ddd;
+            direction: rtl;
+            text-align: right;
+            font-family: 'Tahoma', 'Arial', sans-serif;
+            font-size: 1.2em;
+        }
+        .english {
+            background-color: #fff;
+            direction: ltr;
+            text-align: left;
+            font-family: 'Georgia', serif;
+            font-style: italic;
+        }
+        h1 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        .poem-title {
+            font-size: 0.9em;
+            color: #7f8c8d;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="column persian">
+            <h1>Persian Poetry</h1>
+            <div class="poem-title">Hafiz of Shiraz</div>
+            <p>الا یا ایها الساقی ادر کأسک و اسقنی<br>
+            تا ز کشتی غم به ساحل امن برسم</p>
+        </div>
+        <div class="column english">
+            <h1>Persian Poetry</h1>
+            <div class="poem-title">Hafiz of Shiraz</div>
+            <p>O Cup-bearer! Fill the cup and pour it to me,<br>
+            That from the ship of sorrow I may reach the safe shore.</p>
+        </div>
+    </div>
+</body>
+</html>

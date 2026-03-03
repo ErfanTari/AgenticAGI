@@ -119,8 +119,11 @@ export function checkVisionAlignment() {
     const entries = d.prepare("SELECT * FROM index_entries WHERE ((nb = 'PLAN' AND type = 'PL') OR (nb = 'WHAT' AND type = 'PJ')) AND status = 'active'").all();
     if (entries.length === 0)
         return null; // No plans/projects — nothing to compare
-    // Exclude entries that explicitly refer to the vision entry
-    const connectedCodes = new Set(d.prepare("SELECT from_code FROM relationships WHERE to_code = ? AND relation = 'refers'").all(vision.code).map(r => r.from_code));
+    // Exclude entries that explicitly refer to (or are referred to by) the vision entry — bidirectional
+    const connectedCodes = new Set([
+        ...d.prepare("SELECT from_code AS code FROM relationships WHERE to_code = ? AND relation = 'refers'").all(vision.code).map(r => r.code),
+        ...d.prepare("SELECT to_code AS code FROM relationships WHERE from_code = ? AND relation = 'refers'").all(vision.code).map(r => r.code),
+    ]);
     // Check each entry for keyword overlap with vision
     const driftingEntries = [];
     for (const entry of entries) {
@@ -142,6 +145,18 @@ export function checkVisionAlignment() {
 }
 // --- Main heartbeat ---
 export async function runHeartbeat() {
+    // Guard: skip all checks if DB is not initialized
+    try {
+        const db = getDb();
+        if (!db) {
+            console.warn('[heartbeat] DB not initialized — skipping heartbeat cycle');
+            return { ran_at: today(), notifications: [], created: [] };
+        }
+    }
+    catch {
+        console.warn('[heartbeat] DB not initialized — skipping heartbeat cycle');
+        return { ran_at: today(), notifications: [], created: [] };
+    }
     const ran_at = today();
     const notifications = [];
     // FIX 2: Per-check error isolation — one check failing must NEVER stop other checks

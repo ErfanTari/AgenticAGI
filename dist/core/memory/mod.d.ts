@@ -1,7 +1,7 @@
 export type { IndexEntry, CreateEntryInput, Relationship, AddRelationshipInput, TraversalNode, QueryFilter, FetchResult, } from './types.js';
 export { initDatabase, getDb, closeDatabase, getEntryByCode, queryEntries, getNotebookCounts, nextCounter } from './index.js';
 export { generateCode, parseCode } from './codegen.js';
-export { createEntry, updateEntry } from './write.js';
+export { createEntry, updateEntry, upsertEntry } from './write.js';
 export { fetchByCode } from './fetch.js';
 export { addRelationship, getRelationshipsFrom, getRelationshipsTo, getRelationships, traverse } from './relationships.js';
 export { hybridSearch, reciprocalRankFusion } from './search.js';

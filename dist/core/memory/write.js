@@ -80,6 +80,45 @@ export function createEntry(input) {
     scheduleEmbedding(entry.code);
     return entry;
 }
+/**
+ * upsertEntry — create or update based on exact nb+type+name match.
+ *
+ * If an active entry with the same (nb, type, name) already exists,
+ * updates its summary and body content instead of creating a duplicate.
+ *
+ * Returns: { code, created: true } on new creation, { code, created: false } on update.
+ */
+export function upsertEntry(input) {
+    const d = getDb();
+    const existing = d.prepare(`
+    SELECT code FROM index_entries
+    WHERE nb = ? AND type = ? AND LOWER(name) = LOWER(?)
+    AND status != 'archived'
+    LIMIT 1
+  `).get(input.nb, input.type, input.name);
+    if (existing) {
+        // Update summary and body content of the existing entry
+        updateEntry(existing.code, {
+            status: input.status ?? undefined,
+            summary: input.summary,
+        });
+        // Also rewrite the markdown body on disk if content changed
+        const entry = getEntryByCode(existing.code);
+        if (entry && fs.existsSync(entry.path)) {
+            const md = fs.readFileSync(entry.path, 'utf-8');
+            // Replace body (everything after the closing ---)
+            const headerEnd = md.indexOf('\n---\n');
+            if (headerEnd >= 0) {
+                const header = md.slice(0, headerEnd + 5);
+                const newMd = header + '\n# ' + entry.name + '\n\n' + (input.body ?? '') + '\n';
+                fs.writeFileSync(entry.path, newMd, 'utf-8');
+            }
+        }
+        return { code: existing.code, created: false };
+    }
+    const created = createEntry(input);
+    return { code: created.code, created: true };
+}
 export function updateEntry(code, updates) {
     const entry = getEntryByCode(code);
     if (!entry)

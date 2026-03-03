@@ -62,11 +62,20 @@ export function cosineSimilarity(a, b) {
 export async function fetchEmbeddings(texts, config) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), EMBEDDING_TIMEOUT_MS);
+    // Build headers with optional API key for hosted providers
+    const headers = { 'Content-Type': 'application/json' };
+    const apiKey = process.env.JINA_API_KEY
+        || process.env.OPENAI_API_KEY
+        || process.env.VOYAGE_API_KEY
+        || process.env.COHERE_API_KEY;
+    if (apiKey) {
+        headers.Authorization = `Bearer ${apiKey}`;
+    }
     let resp;
     try {
         resp = await fetch(config.endpoint, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify({
                 input: texts,
                 model: config.model,

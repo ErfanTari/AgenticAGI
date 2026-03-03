@@ -2,6 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { MCPSkill, SkillResult } from '../types.js';
 
+function normalizeWorkspacePath(inputPath: string): string {
+  return inputPath
+    .replace(/^\.\/+/, '')
+    .replace(/^\/?workspace\//, '');
+}
+
 /**
  * file_writer skill
  *
@@ -32,11 +38,21 @@ export const fileWriter: MCPSkill = {
   },
 
   async execute(input: Record<string, unknown>): Promise<SkillResult> {
-    const filePath = input.path as string;
+    const rawPath = input.path as string;
+
+    if (!rawPath || typeof rawPath !== 'string') {
+      return {
+        success: false,
+        output: '',
+        error: 'Invalid input: path must be a non-empty string',
+      };
+    }
+
+    const filePath = normalizeWorkspacePath(rawPath);
     const content = input.content as string;
     const mode = (input.mode as string) || 'write';
 
-    if (!filePath || typeof filePath !== 'string') {
+    if (!filePath) {
       return {
         success: false,
         output: '',

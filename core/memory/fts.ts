@@ -33,7 +33,7 @@ export function indexContent(code: string, nb: string, content: string): void {
 export function sanitizeFTSQuery(query: string): string {
   // Remove FTS5 special characters and operators
   let sanitized = query
-    .replace(/[*"(){}:^~+-]/g, ' ')
+    .replace(/[*"(){}:^~+\-,;.!?]/g, ' ')
     .replace(/\b(AND|OR|NOT|NEAR)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();

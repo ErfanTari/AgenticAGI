@@ -18,6 +18,10 @@ const calculatorSkill: MCPSkill = {
     }
     try {
       const result = evaluate(expression);
+      // Catch division by zero and other non-finite results
+      if (typeof result === 'number' && (!isFinite(result) || isNaN(result))) {
+        return { success: false, output: '', error: `Math error: result is ${String(result)} (e.g. division by zero)` };
+      }
       return { success: true, output: `${expression} = ${String(result)}` };
     } catch {
       return { success: false, output: '', error: `Invalid expression: ${expression}` };

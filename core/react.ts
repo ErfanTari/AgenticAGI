@@ -63,6 +63,13 @@ export async function runWithRetry(
       return { ...result, retries: attempt };
     }
 
+    // Early-exit: if the skill is not registered, retrying with LLM repair is useless.
+    // Match only the registry-miss format: "Skill 'X' not found" (not filesystem errors like "File not found").
+    const errorMsg = result.error ?? '';
+    if (/^Skill\s+'.+'\s+not found$/i.test(errorMsg)) {
+      return { ...result, retries: attempt };
+    }
+
     // Final attempt failed — return as-is
     if (attempt === maxRetries) {
       return { ...result, retries: attempt };
@@ -72,7 +79,7 @@ export async function runWithRetry(
     currentInput = await repairSkillInput(
       skillName,
       currentInput,
-      result.error ?? 'Unknown error',
+      errorMsg || 'Unknown error',
       handler,
     );
   }

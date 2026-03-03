@@ -1,0 +1,182 @@
+[dotenv@17.3.1] injecting env (12) from .env -- tip: 🛡️ auth for agents: https://vestauth.com
+
+================================================================================
+TEST: Test 1: Build Landing Page
+================================================================================
+Prompt: Build a simple landing page for my AgenticAGI project. It should have a hero section, a features list, and a contact section. Save all files to the workspace, the main file should be called index.html
+
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 1879ms
+[planner] Complexity check: {
+  isComplex: true,
+  reason: 'The task involves creating a multi-section website (Hero, Features, Contact) and saving it to a specific location, which requires writing code, structuring the HTML, and file management.',
+  estimatedSteps: 4,
+  requiresSkills: [ 'HTML', 'CSS', 'File Management' ]
+}
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 10708ms
+[planner] Attempt 1 response (first 500 chars): { "goal": "Build a simple landing page for the AgenticAGI project with hero, features, and contact sections", "steps": [ { "id": "step1", "description": "Create the main index.html file with HTML structure and embedded CSS", "skill": "file_writer", "input": { "path": true }, "dependsOn": [], "storeResultAs": "index_html", "optional": false }, { "id": "step2", "description": "Create a CSS stylesheet file for styling the landing page", "skill": "file_writer", "input": { "path": true }, "dependsOn"
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 453ms
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 507ms
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 592ms
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 2271ms
+
+✓ Completed in 16426ms
+Intent: planned_workflow
+
+Agent reply:
+## Warning: Build a simple landing page for the AgenticAGI project with hero, features, and contact sections
+
+**Issues:**
+- [Failed] file_writer: Access denied: path outside workspace
+
+**Stopped:** Required step 'step1' failed: Access denied: path outside workspace
+
+**Suggestion:** Ensure the file writer has permission to write to the specified path within the workspace directory.
+
+--------------------------------------------------------------------------------
+
+================================================================================
+TEST: Test 2: Search & Download Image
+================================================================================
+Prompt: Search the web for a free placeholder image URL for a tech website hero section, download it to the workspace as hero.jpg, then update the index.html to reference it
+
+[planner] Complexity check: {
+  isComplex: true,
+  reason: 'Heuristic: multiStep, multiAction',
+  estimatedSteps: 2,
+  requiresSkills: [ 'web_search' ]
+}
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 12708ms
+[planner] Attempt 1 response (first 500 chars): { "goal": "Search for a free tech placeholder image URL, download it to the workspace as hero.jpg, and update index.html to reference it", "steps": [ { "id": "step1", "description": "Search the web for a free tech placeholder image URL", "skill": "web_search", "input": { "query": false },"dependsOn": [], "storeResultAs": "search_results", "optional": false }, { "id": "step2", "description": "Download the image from the URL to the workspace as hero.jpg", "skill": "run_bash", "input": { "command":
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 685ms
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 448ms
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 459ms
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 670ms
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 3960ms
+
+✓ Completed in 20154ms
+Intent: planned_workflow
+
+Agent reply:
+## Warning: Search for a free tech placeholder image URL, download it to the workspace as hero.jpg, and update index.html to reference it
+
+**Completed:**
+- [Done] web_search: Search results for 'false':
+
+**FALSE Definition & Meaning - Merriam-Webster**
+The meaning of FALSE is <strong>not genuine</strong>. How to use false i...
+- [Done] run_bash: Hello, World!
+
+**Issues:**
+- [Failed] file_reader: Access denied: Path outside workspace
+
+**Stopped:** Required step 'step3' failed: Access denied: Path outside workspace
+
+**Suggestion:** Review the file_reader tool configuration to ensure it is restricted to the workspace directory. Verify the path used in the download command to ensure the image is saved to the correct location.
+
+--------------------------------------------------------------------------------
+
+================================================================================
+TEST: Test 3: Create React Starter Structure
+================================================================================
+Prompt: Create a basic React TypeScript starter project structure with folders for src, public, and components. Create README.md, package.json, and a basic App.tsx component file
+
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 2003ms
+[planner] Complexity check: {
+  isComplex: false,
+  reason: 'This is a standard, single-step file system creation task that does not involve complex logic or external dependencies.',
+  estimatedSteps: 1,
+  requiresSkills: [ 'File System Operations', 'Project Structure Design' ]
+}
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 9203ms
+
+✓ Completed in 11219ms
+Intent: memory_write
+Created: WHAT.PJ-000018
+
+Agent reply:
+Created WHAT.PJ-000018 — React TypeScript Starter (WHAT.PJ)
+
+--------------------------------------------------------------------------------
+
+================================================================================
+TEST: Test 4: Portfolio from Memory
+================================================================================
+Prompt: Build a single page portfolio website for me. You know I'm Erfan Tari, digital design specialist, working on AgenticAGI and Meeting Local. Use that information. Create all files, organize them properly, and verify everything works by checking the HTML is valid
+
+[planner] Complexity check: {
+  isComplex: true,
+  reason: 'Heuristic: multiFile, fileAndRun',
+  estimatedSteps: 2,
+  requiresSkills: []
+}
+[llm] Primary failed after 556ms: Error: Primary LLM: 400 Bad Request — trying fallback
+[llm] Fallback failed after 273ms: Error: Anthropic fallback: 401 Unauthorized
+[planner] Planning failed: Error: All LLM providers unreachable
+    at callLLM (/Users/erfantari/Claude_Code/Projects/AgenticAGI/core/llm.ts:144:9)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async decomposeTask (/Users/erfantari/Claude_Code/Projects/AgenticAGI/core/planner.ts:273:22)
+    at async _processMessage (/Users/erfantari/Claude_Code/Projects/AgenticAGI/core/agent.ts:180:22)
+    at async processMessage (/Users/erfantari/Claude_Code/Projects/AgenticAGI/core/agent.ts:128:12)
+    at async runTest (/Users/erfantari/Claude_Code/Projects/AgenticAGI/test-runner.ts:19:20)
+    at async <anonymous> (/Users/erfantari/Claude_Code/Projects/AgenticAGI/test-runner.ts:65:5)
+[embed] Embedding server unreachable — using BM25 only
+[llm] Still thinking — zai-org/glm-4.7-flash is processing a complex query. Timeout after 20s.
+[llm] Primary failed after 20003ms: AbortError: This operation was aborted — trying fallback
+[llm] Fallback failed after 309ms: Error: Anthropic fallback: 401 Unauthorized
+
+✓ Completed in 21149ms
+Intent: memory_write
+
+Agent reply:
+I could not determine what to create. Please specify a name and type (e.g., "create a contact named John Smith").
+
+--------------------------------------------------------------------------------
+
+================================================================================
+TEST: Test 5: Node.js REST API with Testing
+================================================================================
+Prompt: I want to build a simple Node.js REST API with one endpoint GET /health that returns {"status": "ok"}. Build it, run it in background, test the endpoint, kill the server, fix any issues found, and save a HOW entry documenting the process
+
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 2461ms
+[planner] Complexity check: {
+  isComplex: true,
+  reason: 'The request involves multiple distinct phases: project initialization, server development, process management (background execution), testing, error handling, and documentation.',
+  estimatedSteps: 6,
+  requiresSkills: [
+    'Node.js',
+    'Express.js',
+    'Process Management',
+    'API Testing',
+    'Documentation'
+  ]
+}
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 17411ms
+[planner] Attempt 1 response (first 500 chars): {"goal": "Build, run, test, and document a simple Node.js REST API with a GET /health endpoint", "steps": [{"id": "step1", "description": "Create package.json file for the Node.js project", "skill": "file_writer", "input": {"path": false}, "dependsOn": [], "storeResultAs": "package_json", "optional": false}, {"id": "step2", "description": "Create the main server.js file with GET /health endpoint", "skill": "file_writer", "input": {"path": false}, "dependsOn": [], "storeResultAs": "server_code", 
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 658ms
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 570ms
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 375ms
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 596ms
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 514ms
+[llm] Provider: primary (zai-org/glm-4.7-flash) — 3250ms
+
+✓ Completed in 25946ms
+Intent: planned_workflow
+
+Agent reply:
+## Warning: Build, run, test, and document a simple Node.js REST API with a GET /health endpoint
+
+**Completed:**
+- [Done] file_writer: Written to example.txt
+
+**Issues:**
+- [Failed] file_writer: Access denied: path outside workspace
+
+**Stopped:** Required step 'step2' failed: Access denied: path outside workspace
+
+**Suggestion:** Ensure the file writer steps are configured to write within the designated workspace directory to resolve the access denied error.
+
+--------------------------------------------------------------------------------
+
+================================================================================
+ALL TESTS COMPLETED
+================================================================================

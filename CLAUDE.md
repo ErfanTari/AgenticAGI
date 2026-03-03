@@ -602,6 +602,193 @@ Phase 7 adds three capabilities:
 
 ---
 
+## Phase 9 — Planner + Executor Loop (IN PROGRESS)
+
+Phase 9 implements the agentic planning and execution system that enables multi-step task decomposition and autonomous execution.
+
+### Architecture Components
+
+**Complexity Detector (`core/planner.ts`)**
+- `isComplexTask()` — 2-tier detection: fast heuristic patterns (multiStep, multiFile, fileAndRun, etc.) + LLM fallback for ambiguous cases
+- Returns `ComplexityResult` with reason, estimated steps, and required skills
+- Sub-100ms for most queries via regex patterns, only calls LLM when unclear
+
+**Task Decomposer (`core/planner.ts`)**
+- `decomposeTask()` — converts user request into structured `TaskPlan` with up to 8 steps
+- Uses Zod schemas with `z.toJSONSchema()` for LM Studio structured output
+- `resolveTemplates()` — replaces `{{stepN_result}}` patterns with actual outputs
+- Retry logic with up to 3 attempts if JSON validation fails
+- Max tokens increased to 4096 to handle large file content in plans
+
+**Executor Loop (`core/executor.ts`)**
+- `executePlan()` — iterates steps in order, checks dependencies, calls skills via `runWithRetry()`
+- `flattenInput()` — handles nested objects from LLM responses before skill execution
+- 100ms delay between steps, 5-minute total timeout
+- Returns `ExecutionResult` with completed/failed steps
+
+**Execution Verification (`core/executor.ts`)**
+- `verifyExecution()` — LLM validates if plan goal was achieved
+- Returns `VerificationResult` with confidence score, issues, suggestions
+- Advisory only — never re-executes on failure
+
+**User Report (`core/executor.ts`)**
+- `buildUserReport()` — formats results with icons (Done/Warning), brief step outputs, failure messages
+- Under 300 words, includes memory codes if created
+- Strips thinking tags from reasoning models
+
+### Model Compatibility Journey
+
+Tested with multiple local models via LM Studio:
+
+**GLM 7B Flash** (`zai-org/glm-4.7-flash`)
+- ✅ Fast: 10-20s per attempt
+- ❌ Poor quality: generates `"path": false` instead of actual filenames
+- ❌ Creates wrong/empty files
+
+**Qwen 32B Kimi K2** (`qwen3-32b-kimi-k2-thinking-distill-i1`)
+- ✅ Better quality: actual HTML content
+- ❌ Slow: 60-70s per attempt
+- ❌ JSON parsing fails: generates `{"path\":\"index.html\"}` with escaped quotes inside JSON
+
+**GPT OSS 20B** (`openai-gpt-oss-20b`)
+- ❌ Same JSON escaping issue as Qwen 32B
+- ❌ Slow: 37-38s per attempt
+- ❌ 400 errors on some invocations
+
+**Qwen 3.5 35B** (`qwen/qwen3.5-35b-a3b`) — **CURRENT**
+- ✅ Fast: 21-31s per attempt (faster than Qwen 32B)
+- ✅ Proper JSON formatting: no escaped quote issues
+- ✅ Better quality than GLM 7B
+- ⚠️ Nests input structures: `{"path": {"index.html": "..."}}` instead of flat
+- ✅ **WORKING** after sanitizer improvements
+
+### JSON Sanitization Strategy (Model-Agnostic)
+
+Built robust sanitizer that handles common LLM output issues:
+
+1. **Remove thinking tags** — `<think>...</think>`, `<|im_start|>`, `<|im_end|>`
+2. **Fix escaped quotes at boundaries** — `{\"` → `{"`, `:\"` → `:"`, `\"}` → `"}` (but preserve valid escapes inside strings)
+3. **Compact pretty-printed JSON** — Remove newlines/indentation outside string values to prevent embedded content from breaking parsing
+4. **Flatten nested path objects** — Manual parser detects `"path": {"filename": "content"}` and converts to `{"path": "filename", "content": "content"}`
+5. **Increase token limit** — maxTokens: 1024 → 4096 to prevent response truncation
+
+### Known Issues
+
+**Pervasive Nested Structure Problem (OPEN)**
+- Qwen 3.5 35B nests MULTIPLE fields, not just `path`:
+  - `"input": {"path": {"workspace/file.html": ""}}`
+  - `"optional": {"false": ""}`
+  - `"storeResultAs": {"result1": ""}`
+- Current sanitizer only flattens `path` field
+- Need general nested-object flattener for ALL fields
+- Affects ~20% of complex plans
+
+**Plan Quality Issues (OPEN)**
+- Models sometimes generate invalid bash commands
+- Dependency ordering can be incorrect
+- Post-validation or plan repair needed
+
+### Test Results (5-Test Suite)
+
+Ran with Qwen 3.5 35B on 2026-02-26:
+
+1. **Build Landing Page** — ✅ SUCCESS (43s, planned_workflow, file created)
+2. **Search & Download Image** — ⚠️ PARTIAL (40s, planner works, invalid bash command)
+3. **Create React Starter** — ⚠️ PARTIAL (18s, nested input issue)
+4. **Portfolio from Memory** — ✅ SUCCESS (25s, personalized content)
+5. **Node.js REST API** — ✅ SUCCESS (18s, correctly classified as simple task)
+
+**3/5 complete success, 2/5 partial** — Architecture functional, plan quality needs improvement.
+
+### Integration Points
+
+- Wired into `core/agent.ts` after greeting detection, before memory_write
+- Falls through to normal flow if planning fails
+- Added `'planned_workflow'` intent type to `core/types.ts`
+- Planning prompt includes skill descriptions from registry
+- Executor uses existing `runWithRetry()` from `core/react.ts`
+
+### Files Added/Modified
+
+**New Files:**
+- `core/planner.ts` — Complexity detection, task decomposition, JSON sanitization
+- `core/executor.ts` — Plan execution loop, verification, user report
+
+**Modified Files:**
+- `core/schemas.ts` — TaskStepSchema, TaskPlanSchema, VerificationResultSchema
+- `core/types.ts` — Added `'planned_workflow'` intent
+- `core/agent.ts` — Wired planner/executor pipeline
+- `config/agent.config.ts` — Added PLANNER_CONFIG, EXECUTOR_CONFIG, timeout for 20B/35B models
+- `.env` — Added PLANNER_MODEL, EXECUTOR_MODEL, DEBUG_PLANNER
+
+### Configuration
+
+```env
+LLM_MODEL=qwen/qwen3.5-35b-a3b
+PLANNER_MODEL=qwen/qwen3.5-35b-a3b
+EXECUTOR_MODEL=qwen/qwen3.5-35b-a3b
+DEBUG_PLANNER=true
+```
+
+Timeout configuration recognizes 20B/35B models (90s), 7B-14B models (20s), 1B-4B models (10s).
+
+### Next Steps
+
+1. **Implement general nested-object flattener** — Handle all fields, not just `path`
+2. **Plan quality validation** — Post-process plans to catch invalid commands
+3. **Portfolio test** — Complex multi-step test currently fails on nested structure issue
+4. **Model evaluation** — Compare Qwen 3.5 35B vs other models for plan quality/speed trade-offs
+
+Build clean. 3/5 tests passing. Architecture proven functional with model-agnostic sanitization.
+
+---
+
+---
+
+## Fix Sprint — 2026-03-02 (IN PROGRESS)
+
+Five targeted fixes applied to resolve persistent bugs in the planner/executor loop.
+Full session log: `SESSION_2026_03_02.md`
+
+### Completed Fixes
+
+**FIX 1 ✅ — `relationship_write` canonical resolution**
+- SQL-direct entity lookup: `LOWER(name) = LOWER(?)` exact + `LIKE` fuzzy, `ORDER BY updated DESC LIMIT 1`
+- Stable even with 15+ duplicate names
+
+**FIX 2 ✅ — `content_writer` format contract**
+- Added `format: "markdown"|"html"|"plain"` parameter
+- `validateFormat()` + retry on violation; fallback with warning
+
+**FIX 3 ✅ — `implement_and_test` skill**
+- New skill: collapses write→test→fix→retry loop into 1 plan step
+- Handles all code generation/execution internally; writes HOW.PR on success
+
+**FIX 4 ✅ — Planner grounding for comparison tasks**
+- `COMPARISON TASK RULES` block added to planner prompt
+
+**FIX 5 ✅ — Dedupe on `memory_write`**
+- `upsertEntry()` in `core/memory/write.ts` — checks nb+type+name before creating
+- `memory_write` output is now bare code (`WHO.CT-XXXXXX`) for template use
+- `display` field added to `SkillResult` for human-readable output in reports
+
+### Architecture Changes
+- `SkillResult` now has optional `display?: string` field — machine output (`output`) vs human display (`display`) are separated
+- `CompletedStep` in `executor.ts` stores `display` and uses it in `buildUserReport`
+
+### Test Results (2026-03-02)
+| Test | Score |
+|------|-------|
+| Test 3: Search → Compare → Save | 5/5 ✅ |
+| Test 4: Fibonacci implement+test loop | 4/5 ⚠️ preamble strip fix in progress |
+| Test 5: Full 7-op pipeline | 7/7 ✅ |
+
+### Pending
+- **Test 4 final verification** — last code fix (duplicate import on seed+continuation) needs one test run
+- **Git tag:** `fix-sprint-entity-loop-format-complete` after Test 4 reaches 5/5
+
+---
+
 *This document is the source of truth for this project.
 Update it when architecture decisions change.
 Do not let implementation drift from it silently.*

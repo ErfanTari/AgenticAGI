@@ -161,12 +161,15 @@ export function checkVisionAlignment(): Notification | null {
 
   if (entries.length === 0) return null; // No plans/projects — nothing to compare
 
-  // Exclude entries that explicitly refer to the vision entry
-  const connectedCodes = new Set(
-    (d.prepare(
-      "SELECT from_code FROM relationships WHERE to_code = ? AND relation = 'refers'"
-    ).all(vision.code) as Array<{ from_code: string }>).map(r => r.from_code)
-  );
+  // Exclude entries that explicitly refer to (or are referred to by) the vision entry — bidirectional
+  const connectedCodes = new Set([
+    ...(d.prepare(
+      "SELECT from_code AS code FROM relationships WHERE to_code = ? AND relation = 'refers'"
+    ).all(vision.code) as Array<{ code: string }>).map(r => r.code),
+    ...(d.prepare(
+      "SELECT to_code AS code FROM relationships WHERE from_code = ? AND relation = 'refers'"
+    ).all(vision.code) as Array<{ code: string }>).map(r => r.code),
+  ]);
 
   // Check each entry for keyword overlap with vision
   const driftingEntries: IndexEntry[] = [];
@@ -191,6 +194,18 @@ export function checkVisionAlignment(): Notification | null {
 // --- Main heartbeat ---
 
 export async function runHeartbeat(): Promise<HeartbeatResult> {
+  // Guard: skip all checks if DB is not initialized
+  try {
+    const db = getDb();
+    if (!db) {
+      console.warn('[heartbeat] DB not initialized — skipping heartbeat cycle');
+      return { ran_at: today(), notifications: [], created: [] };
+    }
+  } catch {
+    console.warn('[heartbeat] DB not initialized — skipping heartbeat cycle');
+    return { ran_at: today(), notifications: [], created: [] };
+  }
+
   const ran_at = today();
   const notifications: Notification[] = [];
 

@@ -11,6 +11,9 @@ import { fetchByCode } from './memory/mod.js';
 import { startHeartbeat, stopHeartbeat } from './heartbeat.js';
 import { getDb } from './memory/index.js';
 import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
+import { isComplexTask, decomposeTask } from './planner.js';
+import { executePlan, verifyExecution, buildUserReport } from './executor.js';
+import { getSkillDescriptions } from './skills/registry.js';
 
 // FIX 1: Processing flag — heartbeat checks this to skip when agent is busy
 export let isProcessingMessage = false;
@@ -157,7 +160,156 @@ async function _processMessage(
     return { reply: findingsPrefix + 'Hello! How can I help you today?', intent: 'greeting', resolved: null };
   }
 
-  // 3. Memory write — extract data and write to memory
+  // 2b. Synthesis query — always complex, bypass isComplexTask(), go straight to planner
+  if (classification.intent === 'synthesis_query') {
+    const plannerHandler = options?.llmHandler ?? callLLM;
+    try {
+      const skillDescs = getSkillDescriptions();
+      const plan = await decomposeTask(message, { skills: skillDescs }, plannerHandler);
+      const execResult = await executePlan(plan, plannerHandler);
+      const verification = await verifyExecution(plan, execResult, plannerHandler);
+      const report = buildUserReport(plan, execResult, verification);
+      const cleanReport = report.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      return {
+        reply: findingsPrefix + cleanReport,
+        intent: 'synthesis_query',
+        resolved: null,
+      };
+    } catch (err) {
+      return {
+        reply: findingsPrefix + 'I could not generate the synthesis report. No changes were made. Please retry.',
+        intent: 'synthesis_query',
+        resolved: null,
+        error: String(err),
+      };
+    }
+  }
+
+  // 2c. Complex task detection → planner/executor pipeline
+  // Skip if intent classifier already identified a direct, single-step skill call.
+  // Multi-step messages return null from detectSkill() so they fall through here correctly.
+  if (classification.intent !== 'skill') try {
+    const plannerHandler = options?.llmHandler ?? callLLM;
+    const complexity = await isComplexTask(message, classification, plannerHandler);
+
+    if (process.env.DEBUG_PLANNER === 'true') {
+      console.log('[planner] Complexity check:', {
+        isComplex: complexity.isComplex,
+        reason: complexity.reason,
+        estimatedSteps: complexity.estimatedSteps,
+        requiresSkills: complexity.requiresSkills,
+      });
+    }
+
+    if (complexity.isComplex) {
+      try {
+        const skillDescs = getSkillDescriptions();
+        const plan = await decomposeTask(message, { skills: skillDescs }, plannerHandler);
+        const execResult = await executePlan(plan, plannerHandler);
+        const verification = await verifyExecution(plan, execResult, plannerHandler);
+        const report = buildUserReport(plan, execResult, verification);
+
+        // Strip <think> tags from Kimi/reasoning models
+        const cleanReport = report.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+        return {
+          reply: findingsPrefix + cleanReport,
+          intent: 'planned_workflow',
+          resolved: null,
+        };
+      } catch (err) {
+        if (process.env.DEBUG_PLANNER === 'true') {
+          console.log('[planner] Planning failed:', err);
+        }
+        // Architecture guard: do not fall through into unrelated write/query paths.
+        // A failed complex plan must fail safely without side effects.
+        return {
+          reply: findingsPrefix + 'I could not produce a valid execution plan for this multi-step task. No changes were made. Please retry or simplify one requirement at a time.',
+          intent: 'planned_workflow',
+          resolved: null,
+          error: String(err),
+        };
+      }
+    }
+  } catch (err) {
+    if (process.env.DEBUG_PLANNER === 'true') {
+      console.log('[planner] Complexity detection failed:', err);
+    }
+    // Complexity detection failed — fall through to normal flow
+  }
+
+  // 3. Relationship write — natural language ownership
+  if (classification.intent === 'relationship_write') {
+    try {
+      const { getDb } = await import('./memory/index.js');
+      const db = getDb();
+
+      // Extract subject (usually "I/me" → current user)
+      let fromCode: string | undefined;
+      const userEntry = db.prepare('SELECT code FROM index_entries WHERE nb = ? AND type = ? AND name LIKE ? ORDER BY updated DESC LIMIT 1')
+        .get('WHO', 'CT', '%Erfan%') as { code: string } | undefined;
+      if (userEntry) fromCode = userEntry.code;
+
+      // Extract object from message (project name, org name, etc.)
+      const objectName = classification.name;
+      let toCode: string | undefined;
+
+      if (objectName && fromCode && classification.relation) {
+        // Look up object by name
+        const objectEntry = db.prepare('SELECT code FROM index_entries WHERE name LIKE ? LIMIT 1')
+          .get(`%${objectName}%`) as { code: string } | undefined;
+
+        if (objectEntry) {
+          toCode = objectEntry.code;
+        } else {
+          // Create the object entry first
+          const nb = classification.nb || 'WHAT';
+          const type = classification.type || 'PJ';
+          try {
+            const created = createEntry({
+              nb,
+              type,
+              name: objectName,
+              status: 'active',
+              summary: objectName,
+              body: `Referenced in relationship: ${message}`,
+            });
+            toCode = created.code;
+          } catch {
+            // Creation failed
+          }
+        }
+
+        if (toCode) {
+          addRelationship({
+            from_code: fromCode,
+            relation: classification.relation as 'owns' | 'works_for' | 'supplies' | 'blocks' | 'refers',
+            to_code: toCode,
+          });
+          return {
+            reply: findingsPrefix + `Relationship created: ${fromCode} ${classification.relation} ${toCode}`,
+            intent: 'relationship_write',
+            resolved: null,
+          };
+        }
+      }
+
+      return {
+        reply: findingsPrefix + 'Could not create relationship. Please specify both subject and object clearly.',
+        intent: 'relationship_write',
+        resolved: null,
+      };
+    } catch (err) {
+      return {
+        reply: findingsPrefix + `Failed to create relationship: ${String(err)}`,
+        intent: 'relationship_write',
+        resolved: null,
+        error: String(err),
+      };
+    }
+  }
+
+  // 4. Memory write — extract data and write to memory
   if (classification.intent === 'memory_write') {
     const handler = options?.llmHandler ?? callLLM;
 
@@ -290,8 +442,13 @@ async function _processMessage(
     const skillResult = await runWithRetry(classification.skill, classification.skillInput ?? {}, handler);
 
     if (!skillResult.success) {
+      const errorMsg = skillResult.error ?? '';
+      // Surface security/access errors inline; generic message for everything else
+      const reply = /access denied|not allowed|outside workspace|invalid path/i.test(errorMsg)
+        ? findingsPrefix + `I couldn't complete that: ${errorMsg}`
+        : findingsPrefix + `I couldn't complete that. Please try again or rephrase your request.`;
       return {
-        reply: findingsPrefix + `I couldn't complete that. Please try again or rephrase your request.`,
+        reply,
         intent: 'skill',
         resolved: null,
         error: skillResult.error,
@@ -362,7 +519,9 @@ async function _processMessage(
   // 9. Call LLM with error handling (BUG 6)
   try {
     const reply = await handler(messages);
-    return { reply: findingsPrefix + reply, intent: classification.intent, resolved };
+    // Strip <think> tags from reasoning models (Kimi, DeepSeek R1, etc.)
+    const cleanReply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    return { reply: findingsPrefix + cleanReply, intent: classification.intent, resolved };
   } catch (error) {
     return {
       reply: findingsPrefix + 'I could not reach the language model. Please check that it is running.',

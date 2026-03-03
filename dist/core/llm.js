@@ -12,6 +12,10 @@ async function callPrimary(messages, options) {
         controller.abort();
     }, timeoutMs);
     try {
+        const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY;
+        const headers = { 'Content-Type': 'application/json' };
+        if (apiKey)
+            headers.Authorization = `Bearer ${apiKey}`;
         const requestBody = {
             model: LLM_CONFIG.model,
             messages,
@@ -31,7 +35,7 @@ async function callPrimary(messages, options) {
         }
         const response = await fetch(LLM_CONFIG.endpoint, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify(requestBody),
             signal: controller.signal,
         });
