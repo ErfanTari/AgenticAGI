@@ -29,13 +29,15 @@ const WEB_SEARCH_PATTERNS = [
   /\bsearch\s+(the\s+)?web\b/i,
   /\blook\s+up\b/i,
   /\bfind\s+online\b/i,
-  /\bsearch\s+for\b/i,
+  /\bsearch\s+.*(for|online|internet)\b/i,  // "search X for", "search X internet", etc.
   /\bsearch\s+online\b/i,
   /\bweb\s+search\b/i,
   /\bgoogle\b/i,
   /\blatest\s+news\b/i,
   /\bcurrent\s+info\b/i,
   /\bfind\s+online\s+resources?\b/i,
+  /\bbrowse\s+(the\s+)?internet\b/i,
+  /\bget\s+information\s+about\b/i,
 ];
 
 // --- Calculator patterns ---
@@ -399,17 +401,30 @@ function extractFilePath(message: string): string | null {
 }
 
 function extractSearchQuery(message: string): string {
-  // Strip trigger phrases, keep the rest as query
-  return message
+  // Strip politeness prefix: "can you", "please", "could you", etc.
+  let query = message.replace(/^(can\s+you|could\s+you|would\s+you|please|can\s+i|could\s+i)\s+/i, '');
+
+  // Strip search trigger phrases, keep the rest as query
+  query = query
+    // "search internet for X" or "search web for X" → "X"
+    .replace(/\bsearch\s+(the\s+)?(internet|web|online)\s+for\s+/i, '')
     .replace(/\bsearch\s+(the\s+)?web\s+(for\s+)?/i, '')
     .replace(/\bsearch\s+(for|online)\s+/i, '')
     .replace(/\blook\s+up\s+/i, '')
     .replace(/\bfind\s+online\s+(resources?\s+(for|on|about)\s+)?/i, '')
     .replace(/\bgoogle\s+/i, '')
     .replace(/\bweb\s+search\s+(for\s+)?/i, '')
-    .replace(/\blatest\s+news\s+(on|about)?\s*/i, '')
-    .replace(/\bcurrent\s+info\s+(on|about)?\s*/i, '')
+    .replace(/\bbrowse\s+(the\s+)?internet\s+for\s+/i, '')
+    .replace(/\bget\s+information\s+about\s+/i, '')
     .trim();
+
+  // If query is empty after stripping, try to get anything after "news" keyword
+  if (!query && message.match(/latest\s+news/i)) {
+    const newsMatch = message.match(/(?:latest\s+news\s+(?:on|about)?\s*)?([^?!.]+?)(?:\?|!|\.|$)/i);
+    query = newsMatch ? newsMatch[1].trim() : message.trim();
+  }
+
+  return query || message.trim();
 }
 
 // Expose getSkillDescriptions for external use (e.g., tests verifying registry awareness)
