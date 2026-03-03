@@ -217,7 +217,7 @@ describe('buildContext', () => {
   it('includes system prompt in context', async () => {
     const messages = await buildContext('hello', null, [], []);
     expect(messages[0].role).toBe('system');
-    expect(messages[0].content).toContain('personal assistant');
+    expect(messages[0].content).toContain('personal AI agent');
   });
 
   // BUG 4: No extra SQL on every request

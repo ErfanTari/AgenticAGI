@@ -2,6 +2,25 @@ import { LLM_CONFIG, LLM_FALLBACK_CONFIG } from '../config/agent.config.js';
 import type { Message } from './types.js';
 
 /**
+ * Strip model reasoning/thinking artifacts from LLM responses.
+ * Applied to EVERY response before it touches any downstream logic.
+ */
+function stripThinkingTags(raw: string): string {
+  let cleaned = raw;
+  // Remove <think>...</think> blocks
+  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  // Remove Thinking Process: blocks (Qwen format) — up to next blank line or end
+  cleaned = cleaned.replace(/Thinking Process:[\s\S]*?(?=\n\n|$)/gi, '');
+  // Remove numbered analysis blocks starting with **Analyze
+  cleaned = cleaned.replace(/\*\*Analyze[\s\S]*?(?=\n\n[A-Z]|$)/gi, '');
+  // Remove <|im_start|>...<|im_end|> tokens
+  cleaned = cleaned.replace(/<\|im_start\|>[\s\S]*?<\|im_end\|>/g, '');
+  cleaned = cleaned.replace(/<\|im_start\|>/g, '');
+  cleaned = cleaned.replace(/<\|im_end\|>/g, '');
+  return cleaned.trim();
+}
+
+/**
  * Call the primary LLM (Mac Studio / OpenAI-compatible endpoint).
  * Timeout is tiered by model size (70B+=90s, 7B-14B=20s, 1B-4B=10s, default=20s).
  * On timeout, logs a warning with model name so caller knows what happened.
@@ -124,7 +143,7 @@ export async function callLLM(
       const result = await callPrimary(messages, options);
       const elapsed = Math.round(performance.now() - start);
       console.log('[llm] Provider: primary (%s) — %dms', LLM_CONFIG.model, elapsed);
-      return result;
+      return stripThinkingTags(result);
     } catch (err) {
       const elapsed = Math.round(performance.now() - start);
       console.warn('[llm] Primary failed after %dms: %s — trying fallback', elapsed, String(err));
@@ -138,7 +157,7 @@ export async function callLLM(
       const result = await callAnthropic(messages);
       const elapsed = Math.round(performance.now() - start);
       console.log('[llm] Provider: fallback (%s/%s) — %dms', LLM_FALLBACK_CONFIG.provider, LLM_FALLBACK_CONFIG.model, elapsed);
-      return result;
+      return stripThinkingTags(result);
     } catch (err) {
       const elapsed = Math.round(performance.now() - start);
       console.warn('[llm] Fallback failed after %dms: %s', elapsed, String(err));

@@ -176,7 +176,7 @@ describe('Phase 8 Stress: Rolling Context Summarization', () => {
 
       // Verify it's separate from main system prompt
       const mainSystemMessage = context.find(m =>
-        m.role === 'system' && m.content.includes('personal assistant')
+        m.role === 'system' && m.content.includes('personal AI agent')
       );
       expect(mainSystemMessage).toBeDefined();
 
