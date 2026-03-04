@@ -2,11 +2,26 @@ import { LLM_CONFIG, LLM_FALLBACK_CONFIG } from '../config/agent.config.js';
 /**
  * Strip model reasoning/thinking artifacts from LLM responses.
  * Applied to EVERY response before it touches any downstream logic.
+ * Handles: <think> blocks, orphaned closing tags, preamble sentences.
  */
 function stripThinkingTags(raw) {
     let cleaned = raw;
-    // Remove <think>...</think> blocks
+    // Remove complete <think>...</think> blocks
     cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
+    // Remove orphaned closing </think> tags (when opening tag was on earlier chunk)
+    cleaned = cleaned.replace(/<\/think>/gi, '');
+    // Remove "Let me X" preamble sentences (common reasoning prefix)
+    cleaned = cleaned.replace(/^Let me [^\n]+\n/gim, '');
+    // Remove "I need to X" preamble sentences
+    cleaned = cleaned.replace(/^I need to [^\n]+\n/gim, '');
+    // Remove "I will X" preamble sentences
+    cleaned = cleaned.replace(/^I will [^\n]+\n/gim, '');
+    // Remove "I can see X" preamble sentences
+    cleaned = cleaned.replace(/^I can see [^\n]+\n/gim, '');
+    // Remove "I should X" preamble sentences
+    cleaned = cleaned.replace(/^I should [^\n]+\n/gim, '');
+    // Remove "Let's X" preamble sentences
+    cleaned = cleaned.replace(/^Let['´]s [^\n]+\n/gim, '');
     // Remove Thinking Process: blocks (Qwen format) — up to next blank line or end
     cleaned = cleaned.replace(/Thinking Process:[\s\S]*?(?=\n\n|$)/gi, '');
     // Remove numbered analysis blocks starting with **Analyze
