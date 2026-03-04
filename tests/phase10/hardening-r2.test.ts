@@ -81,8 +81,11 @@ describe('BUG-C1: rollbackEntry restores exact original code', () => {
     }
 
     // Delete the DB row to simulate the bug scenario
+    // Temporarily disable FK enforcement so we can orphan the row
     const d = getDb();
+    d.pragma('foreign_keys = OFF');
     d.prepare('DELETE FROM index_entries WHERE code = ?').run(originalCode);
+    d.pragma('foreign_keys = ON');
 
     // Rollback should restore with EXACT original code
     const success = await rollbackEntry(originalCode, history[0].hash);

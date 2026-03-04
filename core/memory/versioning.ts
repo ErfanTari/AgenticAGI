@@ -14,32 +14,57 @@ export interface VersionHistory {
 }
 
 let gitInstance: SimpleGit | null = null;
+let gitInstancePath: string | null = null;
+// Pending init promise — serializes concurrent getGit() calls for the same path
+// so two rapid callers never double-init the same repo.
+let gitInitPromise: Promise<SimpleGit> | null = null;
 
 export async function getGit(): Promise<SimpleGit> {
-  if (gitInstance) return gitInstance;
+  // Key the singleton by path so test isolation (PATHS.memory reassignment)
+  // works correctly and commits never bleed across different memory directories.
+  if (gitInstance && gitInstancePath === PATHS.memory) return gitInstance;
 
-  fs.mkdirSync(PATHS.memory, { recursive: true });
-
-  const git = simpleGit(PATHS.memory);
-
-  // Check if already a git repo
-  const isRepo = await git.checkIsRepo().catch(() => false);
-
-  if (!isRepo) {
-    await git.init();
-    await git.addConfig('user.name', 'AgenticAGI');
-    await git.addConfig('user.email', 'agent@local');
-
-    // Commit existing files if any
-    const files = fs.readdirSync(PATHS.memory).filter(f => f !== '.git');
-    if (files.length > 0) {
-      await git.add('.');
-      await git.commit('init: initial memory state').catch(() => {});
-    }
+  // Path changed — discard cached state
+  if (gitInstancePath !== PATHS.memory) {
+    gitInstance = null;
+    gitInitPromise = null;
+    // Claim this path synchronously before any await so concurrent callers see it
+    gitInstancePath = PATHS.memory;
   }
 
-  gitInstance = git;
-  return git;
+  // Serialize concurrent callers: return the in-flight init promise if one exists
+  if (gitInitPromise) return gitInitPromise;
+
+  const claimedPath = PATHS.memory;
+  gitInitPromise = (async () => {
+    fs.mkdirSync(claimedPath, { recursive: true });
+
+    const git = simpleGit(PATHS.memory);
+
+    // Check for memory/.git directly — never use checkIsRepo() which traverses
+    // parent directories and would accept the project root .git when memory/.git
+    // is absent, causing memory commits to run against the main repository.
+    const hasOwnGit = fs.existsSync(path.join(PATHS.memory, '.git'));
+
+    if (!hasOwnGit) {
+      await git.init();
+      await git.addConfig('user.name', 'AgenticAGI');
+      await git.addConfig('user.email', 'agent@local');
+
+      // Commit existing files if any
+      const files = fs.readdirSync(PATHS.memory).filter(f => f !== '.git');
+      if (files.length > 0) {
+        await git.add('.');
+        await git.commit('init: initial memory state').catch(() => {});
+      }
+    }
+
+    gitInstance = git;
+    gitInstancePath = PATHS.memory;
+    return git;
+  })();
+
+  return gitInitPromise;
 }
 
 export async function commitMemoryWrite(
@@ -171,4 +196,6 @@ export async function rollbackEntry(code: string, commitHash: string): Promise<b
 // Reset singleton for testing
 export function _resetGitInstance(): void {
   gitInstance = null;
+  gitInstancePath = null;
+  gitInitPromise = null;
 }

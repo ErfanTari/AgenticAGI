@@ -56,7 +56,7 @@ afterAll(async () => {
   const { _resetGitInstance } = await import('../../core/memory/versioning.js');
   _resetGitInstance();
   // Give in-flight async git ops a tick to settle before deleting the directory
-  await new Promise(r => setTimeout(r, 100));
+  await new Promise(r => setTimeout(r, 300));
   fs.rmSync(TEST_DIR, { recursive: true, force: true });
   (PATHS as Record<string, string>).db = origDb;
   (PATHS as Record<string, string>).memory = origMemory;
