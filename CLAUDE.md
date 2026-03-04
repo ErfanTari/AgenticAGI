@@ -930,6 +930,59 @@ Phase 10 adds six intelligence capabilities. 420 tests pass. Build clean.
 
 ---
 
+## Phase 10 Hardening Sprint (COMPLETE)
+
+10 risk areas audited. 5 bugs fixed, 2 tests-only validations, 3 code-level confirmations. 437 tests pass.
+
+### BUG-1 (LOW) — commitMemoryWrite fire-and-forget contract
+Confirmed by test: `commitMemoryWrite` always returns a Promise. Callers use `.catch(err => console.warn(...))` — non-blocking.
+
+### BUG-2 (MEDIUM) — fire-and-forget error logging
+`write.ts` and `agent.ts` `.catch(() => {})` upgraded to `.catch(err => console.warn(...))`. Failures now visible in stderr without blocking writes.
+
+### BUG-3 (LOW) — writeEpisodicMemory explicit guard
+`!verification.verified` changed to `verification.verified !== true` in `executor.ts:376`. Rejects `undefined`/`null`/non-boolean truthy values explicitly.
+
+### BUG-4 (HIGH) — findRelevantProcedure false positives
+`score = overlap / nameWords.length` → `score = overlap / Math.max(msgWords.size, nameWords.length)` in `planner.ts`. Short messages no longer score 1.0 against long entry names.
+
+### BUG-5 (LOW) — rankByRelevance denominator
+Same fix applied to `rankByRelevance` in `context.ts` (already implemented in Phase 10, confirmed by test).
+
+### BUG-6 (HIGH) — trimHistoryToTokenBudget drops last message
+Fixed to always include at least the most recent message even when it alone exceeds the token budget. Now exported for testing.
+
+### BUG-7 (HIGH) — hashModel collision risk
+Replaced char-code sum hash with full model name string stored in new `settings` table (`key TEXT, value TEXT`). Strings like "ab" and "ba" now correctly detected as different models. `initDatabase()` creates `settings` table.
+
+### BUG-8 (LOW) — updateAgentCard throws on missing file
+`getAgentCard()` returns `DEFAULT_CARD` on file read failure instead of throwing. `updateAgentCard()` can safely create the card from scratch.
+
+### BUG-9, BUG-10 (test-only)
+Confirmed by source inspection: 2000-char skill output cap and `HARD_CEILING` truncation logic both present in `context.ts`.
+
+### Phase 3 test cleanup fix
+`afterAll` in `tests/phase3/agent.test.ts` now calls `_resetGitInstance()` and waits 100ms before `rmSync` to prevent `ENOTEMPTY` from in-flight git commits.
+
+### Files modified
+- `core/context.ts` — exported `trimHistoryToTokenBudget`, `rankByRelevance`
+- `core/executor.ts` — BUG-3 fix
+- `core/planner.ts` — BUG-4 fix
+- `core/memory/write.ts` — BUG-2 fix
+- `core/agent.ts` — BUG-2 fix
+- `core/agent-card.ts` — BUG-8 fix + DEFAULT_CARD constant
+- `core/memory/search.ts` — BUG-7: settings table string comparison
+- `core/memory/index.ts` — BUG-7: settings table DDL
+- `tests/phase10/hardening.test.ts` — 17 new tests
+- `tests/phase3/agent.test.ts` — cleanup fix
+
+### Test Results
+- 437/437 tests pass (17 new hardening tests)
+- Build: zero TypeScript errors
+- Tag: `phase-10-hardened`
+
+---
+
 *This document is the source of truth for this project.
 Update it when architecture decisions change.
 Do not let implementation drift from it silently.*

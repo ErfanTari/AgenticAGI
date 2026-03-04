@@ -36,9 +36,33 @@ export interface AgentCard {
   };
 }
 
+const DEFAULT_CARD: AgentCard = {
+  name: 'AgenticAGI',
+  version: '0.10.0',
+  description: 'Local-first personal AI agent with structured memory system',
+  endpoint: 'http://localhost:3000',
+  protocol: 'a2a/1.0',
+  capabilities: {
+    memory: {
+      notebooks: ['WHO', 'WHAT', 'WHEN', 'HOW', 'WHY', 'NOW', 'PLAN'],
+      relationships: true,
+      versioned: true,
+      hybrid_search: true,
+    },
+    skills: [],
+    planning: { max_steps: 8, retry: true, verification: true, episodic_memory: true },
+  },
+  identity: { local_first: true, model: 'configurable', owner: 'user' },
+};
+
 export function getAgentCard(): AgentCard {
-  const raw = fs.readFileSync(CARD_PATH, 'utf-8');
-  return JSON.parse(raw) as AgentCard;
+  // BUG-8 fix: return default card if file is missing rather than throwing
+  try {
+    const raw = fs.readFileSync(CARD_PATH, 'utf-8');
+    return JSON.parse(raw) as AgentCard;
+  } catch {
+    return { ...DEFAULT_CARD, capabilities: { ...DEFAULT_CARD.capabilities, skills: [] } };
+  }
 }
 
 export function updateAgentCard(): void {

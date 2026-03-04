@@ -174,7 +174,7 @@ async function _processMessage(
       const verification = await verifyExecution(plan, execResult, plannerHandler);
       const report = buildUserReport(plan, execResult, verification);
       const cleanReport = report.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-      writeEpisodicMemory(plan, execResult, verification).catch(() => {});
+      writeEpisodicMemory(plan, execResult, verification).catch(err => console.warn('[agent] writeEpisodicMemory failed:', err));
       return {
         reply: findingsPrefix + cleanReport,
         intent: 'synthesis_query',
@@ -218,7 +218,7 @@ async function _processMessage(
         const cleanReport = report.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
         // Write episodic HOW.PR — fire-and-forget
-        writeEpisodicMemory(plan, execResult, verification).catch(() => {});
+        writeEpisodicMemory(plan, execResult, verification).catch(err => console.warn('[agent] writeEpisodicMemory failed:', err));
 
         return {
           reply: findingsPrefix + cleanReport,

@@ -373,7 +373,8 @@ export async function writeEpisodicMemory(
   verification: VerificationResult,
 ): Promise<string | null> {
   if (result.completed.length < 2) return null;
-  if (!verification.verified) return null;
+  // BUG-3 fix: explicit check for true to reject undefined/null/truthy non-boolean values
+  if (verification.verified !== true) return null;
 
   const skillSequence = result.completed.map(s => s.skill).join(' → ');
   const verificationSummary = verification.issues.length > 0

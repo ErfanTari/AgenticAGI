@@ -88,7 +88,8 @@ export function createEntry(input: CreateEntryInput): IndexEntry {
   scheduleEmbedding(entry.code);
 
   // Git version commit — fire-and-forget, never blocks write
-  commitMemoryWrite(code, input.name, 'agent').catch(() => {});
+  // BUG-2 fix: log errors to stderr so git commit failures are visible but non-blocking
+  commitMemoryWrite(code, input.name, 'agent').catch(err => console.warn('[memory-write] git commit failed:', err));
 
   return entry;
 }
@@ -150,7 +151,7 @@ export function upsertEntry(
     }
 
     // Git version commit for update — fire-and-forget
-    commitMemoryWrite(existing.code, input.name, 'agent').catch(() => {});
+    commitMemoryWrite(existing.code, input.name, 'agent').catch(err => console.warn('[memory-write] git commit failed:', err));
 
     return { code: existing.code, created: false };
   }

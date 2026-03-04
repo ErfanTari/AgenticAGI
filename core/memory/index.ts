@@ -199,6 +199,11 @@ export function initDatabase(dbPath?: string): Database.Database {
       current INTEGER NOT NULL DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS heartbeat_queue (
       id       INTEGER PRIMARY KEY AUTOINCREMENT,
       code     TEXT NOT NULL,

@@ -521,7 +521,9 @@ async function findRelevantProcedure(message: string): Promise<string | null> {
       const nameWords = entry.name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
       if (nameWords.length === 0) continue;
       const overlap = nameWords.filter(w => msgWords.has(w)).length;
-      const score = overlap / nameWords.length;
+      // BUG-4 fix: use max(msgWords, nameWords) to prevent short messages from
+      // scoring disproportionately high against long entry names (false positives).
+      const score = overlap / Math.max(msgWords.size, nameWords.length);
       if (score > bestScore) {
         bestScore = score;
         bestCode = entry.code;

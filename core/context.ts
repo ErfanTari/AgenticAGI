@@ -74,14 +74,16 @@ export interface ContextHistory {
 
 /**
  * Trim history to fit within a token budget, walking backwards to keep the most recent turns.
+ * BUG-6 fix: always returns at least the most recent message, even if it alone exceeds budget.
  */
-function trimHistoryToTokenBudget(history: Message[], budget: number): Message[] {
+export function trimHistoryToTokenBudget(history: Message[], budget: number): Message[] {
   if (history.length === 0) return [];
   const kept: Message[] = [];
   let tokens = 0;
   for (let i = history.length - 1; i >= 0; i--) {
     const msgTokens = estimateTokens(history[i].content);
-    if (tokens + msgTokens > budget) break;
+    // kept.length === 0 means we haven't added anything yet — always include the most recent msg
+    if (tokens + msgTokens > budget && kept.length > 0) break;
     kept.unshift(history[i]);
     tokens += msgTokens;
   }
@@ -92,7 +94,7 @@ function trimHistoryToTokenBudget(history: Message[], budget: number): Message[]
  * Rank memory entries by relevance to the current message.
  * 60% name word overlap + 40% recency (decays over 30 days).
  */
-function rankByRelevance(entries: IndexEntry[], message: string): IndexEntry[] {
+export function rankByRelevance(entries: IndexEntry[], message: string): IndexEntry[] {
   const msgWords = new Set(
     message.toLowerCase().split(/\s+/).filter(w => w.length > 2),
   );
@@ -101,9 +103,13 @@ function rankByRelevance(entries: IndexEntry[], message: string): IndexEntry[] {
 
   const scored = entries.map(entry => {
     // Name overlap score (0..1)
+    // BUG-5 fix: use max(msgWords, nameWords) as denominator to prevent short messages
+    // from scoring disproportionately high against long entry names.
     const nameWords = entry.name.toLowerCase().split(/\s+/).filter(w => w.length > 2);
     const overlap = nameWords.filter(w => msgWords.has(w)).length;
-    const nameScore = nameWords.length > 0 ? overlap / nameWords.length : 0;
+    const nameScore = nameWords.length > 0
+      ? overlap / Math.max(msgWords.size, nameWords.length)
+      : 0;
 
     // Recency score (0..1), decays linearly over 30 days
     const updatedMs = new Date(entry.updated).getTime();

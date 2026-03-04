@@ -102,10 +102,8 @@ export { cosineSimilarity } from './embeddings.js';
 
 // --- Embedding migration detection ---
 
-function hashModel(modelName: string): number {
-  return modelName.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-}
-
+// BUG-7 fix: store full model name string in settings table instead of a char-code sum hash.
+// Char-code sums can collide (e.g. "abc" == "bca"), causing silent false negatives.
 export async function reIndexAllEntries(): Promise<void> {
   try {
     const entries = queryEntries({}).filter(e => e.status !== 'archived');
@@ -131,23 +129,22 @@ export async function checkEmbeddingMigration(): Promise<void> {
   try {
     const d = getDb();
     const currentModel = process.env.EMBEDDING_MODEL ?? '';
-    const currentHash = hashModel(currentModel);
 
-    const row = d.prepare("SELECT current FROM counters WHERE type = 'embedding_model_hash'")
-      .get() as { current: number } | undefined;
-    const storedHash = row?.current ?? 0;
+    const row = d.prepare("SELECT value FROM settings WHERE key = 'embedding_model'")
+      .get() as { value: string } | undefined;
+    const storedModel = row?.value ?? '';
 
-    if (storedHash !== 0 && storedHash !== currentHash) {
+    if (storedModel !== '' && storedModel !== currentModel) {
       console.warn(
-        `[embed-migration] Embedding model changed (hash ${storedHash} → ${currentHash}). Re-indexing all entries...`,
+        `[embed-migration] Embedding model changed ("${storedModel}" → "${currentModel}"). Re-indexing all entries...`,
       );
       await reIndexAllEntries();
     }
 
-    // Update stored hash
+    // Update stored model name (upsert)
     d.prepare(
-      "INSERT INTO counters (type, current) VALUES ('embedding_model_hash', ?) ON CONFLICT(type) DO UPDATE SET current = excluded.current"
-    ).run(currentHash);
+      "INSERT INTO settings (key, value) VALUES ('embedding_model', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+    ).run(currentModel);
   } catch {
     // Never block any caller
   }

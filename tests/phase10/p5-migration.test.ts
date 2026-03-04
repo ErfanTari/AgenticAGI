@@ -28,15 +28,15 @@ describe('Priority 5: Embedding migration detection', () => {
     vi.restoreAllMocks();
   });
 
-  it('P5A: first run stores the hash', async () => {
+  it('P5A: first run stores the model name in settings', async () => {
     process.env.EMBEDDING_MODEL = 'model-a';
     await checkEmbeddingMigration();
 
     const d = getDb();
-    const row = d.prepare("SELECT current FROM counters WHERE type = 'embedding_model_hash'")
-      .get() as { current: number } | undefined;
+    const row = d.prepare("SELECT value FROM settings WHERE key = 'embedding_model'")
+      .get() as { value: string } | undefined;
     expect(row).not.toBeUndefined();
-    expect(row!.current).toBeGreaterThan(0);
+    expect(row!.value).toBe('model-a');
   });
 
   it('P5B: second run with same model → no re-index', async () => {
@@ -76,10 +76,10 @@ describe('Priority 5: Embedding migration detection', () => {
     await expect(checkEmbeddingMigration()).resolves.not.toThrow();
   });
 
-  it('P5F: embedding_model_hash row exists after initDatabase', () => {
+  it('P5F: settings table exists after initDatabase', () => {
     const d = getDb();
-    const row = d.prepare("SELECT current FROM counters WHERE type = 'embedding_model_hash'")
-      .get() as { current: number } | undefined;
-    expect(row).not.toBeUndefined();
+    // Settings table should exist (query succeeds without error)
+    const rows = d.prepare("SELECT key, value FROM settings").all();
+    expect(Array.isArray(rows)).toBe(true);
   });
 });
