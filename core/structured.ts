@@ -32,6 +32,8 @@ export function extractFirstJsonObject(text: string): string | null {
       depth++;
     } else if (char === '}') {
       depth--;
+      // BUG-M3 fix: clamp depth to 0 — ignore unmatched closing braces before any opening brace
+      if (depth < 0) { depth = 0; continue; }
       if (depth === 0 && start !== -1) {
         return text.slice(start, i + 1);
       }
@@ -82,11 +84,24 @@ export function flattenSingleKeyObjects(value: unknown, depth = 0): unknown {
 /**
  * Apply all repair passes to raw JSON-like text.
  * Returns cleaned string, or original if no passes apply.
+ *
+ * BUG-H3/H4 fix: if the input is already valid JSON, return it immediately.
+ * This prevents the unquoted-key repair pass from corrupting string values that
+ * contain {key: value} patterns, and prevents think-tag stripping from deleting
+ * content inside JSON string values.
  */
 export function applyRepairPasses(raw: string): string {
+  // Fast path: already valid JSON — no repairs needed
+  try {
+    JSON.parse(raw);
+    return raw;
+  } catch {
+    // Not valid JSON — apply repairs
+  }
+
   let s = raw;
 
-  // Remove thinking tags and LM Studio tokens
+  // Remove thinking tags and LM Studio tokens (only on non-valid JSON)
   s = s.replace(/<\|im_start\|>/g, '').replace(/<\|im_end\|>/g, '');
   s = s.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 
@@ -176,7 +191,9 @@ export async function parseStructured<T>(
 
   attempts++;
   let repaired = applyRepairPasses(extracted);
+
   // Try to parse and validate
+  let lastError = '';
   try {
     const json = JSON.parse(repaired);
     const flat = flattenSingleKeyObjects(json);
@@ -184,52 +201,43 @@ export async function parseStructured<T>(
     if (result.success) {
       return { success: true, data: result.data, raw, attempts };
     }
-
-    // Try LLM repair
-    if (options?.llmHandler && attempts <= maxRepairs) {
-      const repairResult = await llmRepair(repaired, JSON.stringify(result.error), schema, options.llmHandler);
-      if (repairResult) {
-        attempts++;
-        const repairExtracted = extractFirstJsonObject(repairResult);
-        if (repairExtracted) {
-          const repairJson = JSON.parse(applyRepairPasses(repairExtracted));
-          const repairFlat = flattenSingleKeyObjects(repairJson);
-          const repairParsed = schema.safeParse(repairFlat);
-          if (repairParsed.success) {
-            return { success: true, data: repairParsed.data, raw, attempts };
-          }
-        }
-      }
-    }
-
-    return {
-      success: false,
-      raw,
-      attempts,
-      error: `Schema validation failed: ${JSON.stringify(result.error.issues?.slice(0, 3) ?? {})}`,
-    };
+    lastError = JSON.stringify(result.error.issues?.slice(0, 3) ?? {});
   } catch (err) {
-    // JSON parse failed, try LLM repair
-    if (options?.llmHandler && attempts <= maxRepairs) {
-      const repairResult = await llmRepair(repaired, String(err), schema, options.llmHandler);
-      if (repairResult) {
-        attempts++;
-        try {
-          const repairExtracted = extractFirstJsonObject(repairResult);
-          if (repairExtracted) {
-            const repairJson = JSON.parse(applyRepairPasses(repairExtracted));
-            const repairFlat = flattenSingleKeyObjects(repairJson);
-            const repairParsed = schema.safeParse(repairFlat);
-            if (repairParsed.success) {
-              return { success: true, data: repairParsed.data, raw, attempts };
-            }
-          }
-        } catch {
-          // repair also failed
+    lastError = String(err);
+  }
+
+  // BUG-M2 fix: loop LLM repair up to maxRepairAttempts times, breaking on success.
+  if (options?.llmHandler) {
+    while (attempts <= maxRepairs) {
+      const repairResult = await llmRepair(repaired, lastError, schema, options.llmHandler);
+      attempts++;
+      if (!repairResult) break;
+
+      const repairExtracted = extractFirstJsonObject(repairResult);
+      if (!repairExtracted) break;
+
+      try {
+        const repairJson = JSON.parse(applyRepairPasses(repairExtracted));
+        const repairFlat = flattenSingleKeyObjects(repairJson);
+        const repairParsed = schema.safeParse(repairFlat);
+        if (repairParsed.success) {
+          return { success: true, data: repairParsed.data, raw, attempts };
         }
+        lastError = JSON.stringify(repairParsed.error.issues?.slice(0, 3) ?? {});
+        repaired = repairExtracted; // use latest repaired version for next attempt
+      } catch (err) {
+        lastError = String(err);
+        break;
       }
     }
-
-    return { success: false, raw, attempts, error: `JSON parse error: ${String(err)}` };
   }
+
+  return {
+    success: false,
+    raw,
+    attempts,
+    error: lastError.startsWith('{') || lastError.startsWith('[')
+      ? `Schema validation failed: ${lastError}`
+      : `JSON parse error: ${lastError}`,
+  };
 }

@@ -73,21 +73,48 @@ export async function executePlan(
       };
     }
 
-    // Dependency check
+    // BUG-H1 fix: enforce declared dependencies before executing each step.
+    // If a dependency has not yet completed (not in results), check why:
+    // - Failed non-optional dep: abort plan (was already aborting — kept)
+    // - Failed optional dep: mark current step as BLOCKED and skip
+    // - Pending dep (plan ordering error): log warning and skip
     const unmetDeps = step.dependsOn.filter(dep => !results.has(dep + '_result') && !results.has(dep));
     if (unmetDeps.length > 0) {
-      // Check if any unmet dep is in failed (non-optional)
-      const depFailed = unmetDeps.some(dep =>
-        failed.some(f => f.stepId === dep && !f.optional),
-      );
-      if (depFailed) {
+      const firstUnmet = unmetDeps[0];
+      const depFailedRequired = failed.some(f => f.stepId === firstUnmet && !f.optional);
+      const depFailedOptional = failed.some(f => f.stepId === firstUnmet && f.optional);
+      const depPending = !depFailedRequired && !depFailedOptional;
+
+      if (depFailedRequired) {
         return {
           success: false,
           completed,
           failed,
-          abortReason: `Dependency '${unmetDeps[0]}' failed`,
+          abortReason: `Dependency '${firstUnmet}' failed`,
         };
       }
+
+      // Dep failed (optional) or dep is still pending — skip this step
+      if (depPending) {
+        console.warn(`[executor] Step '${step.id}' has unmet pending dependency '${firstUnmet}' — plan ordering error, skipping`);
+      }
+
+      failed.push({
+        stepId: step.id,
+        skill: step.skill,
+        error: `Blocked: dependency '${firstUnmet}' ${depPending ? 'not yet completed (ordering error)' : 'failed'}`,
+        optional: step.optional ?? false,
+      });
+
+      if (!step.optional) {
+        return {
+          success: false,
+          completed,
+          failed,
+          abortReason: `Required step '${step.id}' blocked by dependency '${firstUnmet}'`,
+        };
+      }
+      continue;
     }
 
     // Resolve templates in input

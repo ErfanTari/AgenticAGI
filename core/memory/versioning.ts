@@ -3,7 +3,7 @@ import path from 'node:path';
 import { simpleGit } from 'simple-git';
 import type { SimpleGit } from 'simple-git';
 import { PATHS } from '../../config/agent.config.js';
-import { upsertEntry } from './write.js';
+import { getDb, insertEntry } from './index.js';
 
 export interface VersionHistory {
   hash: string;
@@ -99,7 +99,9 @@ export async function rollbackEntry(code: string, commitHash: string): Promise<b
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
     fs.writeFileSync(fullPath, oldContent, 'utf-8');
 
-    // Parse the frontmatter to re-upsert properly
+    // BUG-C1 fix: parse the frontmatter to extract the EXACT original code,
+    // then restore it in SQLite with that exact code — never use upsertEntry
+    // which would create a new sequential code if the row is missing.
     const frontmatterMatch = oldContent.match(/^---\n([\s\S]*?)\n---\n?/);
     if (frontmatterMatch) {
       const meta: Record<string, string> = {};
@@ -108,18 +110,37 @@ export async function rollbackEntry(code: string, commitHash: string): Promise<b
         if (sep === -1) continue;
         meta[line.slice(0, sep).trim()] = line.slice(sep + 1).trim();
       }
-      const bodyStart = oldContent.indexOf('\n---', 4);
-      const bodyContent = bodyStart >= 0 ? oldContent.slice(oldContent.indexOf('\n', bodyStart + 4)).trim() : '';
 
-      if (meta.nb && meta.type && meta.name) {
-        upsertEntry({
-          nb: meta.nb,
-          type: meta.type,
-          name: meta.name,
-          status: meta.status ?? 'active',
-          summary: meta.summary ?? '',
-          body: bodyContent,
-        });
+      const originalCode = meta.code ?? code;
+
+      if (meta.nb && meta.type && meta.name && originalCode) {
+        const d = getDb();
+        const existing = d.prepare('SELECT code FROM index_entries WHERE code = ?').get(originalCode);
+        if (existing) {
+          // Row exists — update in-place
+          d.prepare(
+            'UPDATE index_entries SET summary = ?, status = ?, updated = ?, path = ? WHERE code = ?'
+          ).run(
+            meta.summary ?? '',
+            meta.status ?? 'active',
+            new Date().toISOString().slice(0, 10),
+            fullPath,
+            originalCode,
+          );
+        } else {
+          // Row missing — re-insert with the EXACT original code, bypassing counter
+          insertEntry({
+            code: originalCode,
+            nb: meta.nb,
+            type: meta.type,
+            name: meta.name,
+            status: meta.status ?? 'active',
+            updated: new Date().toISOString().slice(0, 10),
+            summary: meta.summary ?? '',
+            path: fullPath,
+            due_date: meta.due_date ?? null,
+          });
+        }
         return true;
       }
     }

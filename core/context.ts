@@ -75,18 +75,27 @@ export interface ContextHistory {
 /**
  * Trim history to fit within a token budget, walking backwards to keep the most recent turns.
  * BUG-6 fix: always returns at least the most recent message, even if it alone exceeds budget.
+ * BUG-M1 fix: always preserve the last 2 turns (1 user + 1 assistant) regardless of budget.
+ *             Falls back to just the last user message if even 2 turns exceed budget.
  */
 export function trimHistoryToTokenBudget(history: Message[], budget: number): Message[] {
   if (history.length === 0) return [];
-  const kept: Message[] = [];
-  let tokens = 0;
-  for (let i = history.length - 1; i >= 0; i--) {
+
+  // Always guarantee at least the last 2 turns (pair) if available
+  const minKeep = Math.min(2, history.length);
+  const mandatorySlice = history.slice(-minKeep);
+
+  const kept: Message[] = [...mandatorySlice];
+  let tokens = estimateTokens(kept.map(m => m.content).join('\n'));
+
+  // Walk backwards from just before the mandatory slice and add more if budget allows
+  for (let i = history.length - minKeep - 1; i >= 0; i--) {
     const msgTokens = estimateTokens(history[i].content);
-    // kept.length === 0 means we haven't added anything yet — always include the most recent msg
-    if (tokens + msgTokens > budget && kept.length > 0) break;
+    if (tokens + msgTokens > budget) break;
     kept.unshift(history[i]);
     tokens += msgTokens;
   }
+
   return kept;
 }
 
@@ -238,6 +247,12 @@ export async function buildContext(
     systemParts.push(getIndexSummary());
   }
 
+  // BUG-H2 fix: rank memory entries by relevance BEFORE formatting and injecting into prompt.
+  // Previously rankByRelevance was called AFTER formatResolved, making it dead code.
+  if (resolved && resolved.entries.length > 1) {
+    resolved = { ...resolved, entries: rankByRelevance(resolved.entries, userMessage) };
+  }
+
   systemParts.push(formatResolved(resolved));
   systemParts.push(formatSkills(skills));
 
@@ -252,16 +267,10 @@ export async function buildContext(
     { role: 'system', content: systemContent },
   ];
 
-  // Rank memory entries by relevance before formatting
-  if (resolved && resolved.entries.length > 1) {
-    resolved = { ...resolved, entries: rankByRelevance(resolved.entries, userMessage) };
-  }
-
   // Use rolling context summarization if llmHandler provided and history is long
   // Then trim to token budget
   let recentHistory: Message[];
   let conversationSummary: string | undefined;
-
   if (llmHandler && history.length > SUMMARY_THRESHOLD * 2) {
     const rollingContext = await buildRollingContext(history, llmHandler);
     recentHistory = rollingContext.turns;

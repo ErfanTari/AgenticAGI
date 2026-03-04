@@ -106,8 +106,15 @@ export { cosineSimilarity } from './embeddings.js';
 // Char-code sums can collide (e.g. "abc" == "bca"), causing silent false negatives.
 export async function reIndexAllEntries(): Promise<void> {
   try {
+    const d = getDb();
     const entries = queryEntries({}).filter(e => e.status !== 'archived');
     console.log(`[embed-migration] Re-indexing ${entries.length} entries...`);
+
+    // BUG-H5 fix: clear all FTS rows before full rebuild to prevent duplicates
+    d.prepare('DELETE FROM fts_content').run();
+
+    // BUG-H6 fix: clear stale chunk vectors so hybrid search doesn't use wrong-model embeddings
+    d.prepare('DELETE FROM chunks').run();
 
     for (const entry of entries) {
       try {
@@ -119,7 +126,7 @@ export async function reIndexAllEntries(): Promise<void> {
       }
     }
 
-    console.log('[embed-migration] Re-indexing complete.');
+    console.log('[embed-migration] Re-indexing complete. Chunk vectors cleared — will regenerate on next write.');
   } catch (err) {
     console.warn('[embed-migration] reIndexAllEntries failed:', err);
   }

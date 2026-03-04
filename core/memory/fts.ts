@@ -18,9 +18,11 @@ export function initFTS(): void {
 /**
  * Index an entry's content into FTS5.
  * Called inside createEntry transaction (sync).
+ * BUG-H5 fix: delete existing row first so re-indexing is idempotent.
  */
 export function indexContent(code: string, nb: string, content: string): void {
   const d = getDb();
+  d.prepare('DELETE FROM fts_content WHERE code = ?').run(code);
   d.prepare(
     'INSERT INTO fts_content (code, nb, content) VALUES (?, ?, ?)'
   ).run(code, nb, content);

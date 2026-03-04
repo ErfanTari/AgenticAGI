@@ -325,6 +325,7 @@ async function _processMessage(
     let writeData: {
       nb: string; type: string; name: string; status: string; summary: string; body: string;
       relationships?: Array<{ relation: string; to_code: string }>;
+      due_date?: string;
     } | null = null;
     let lastLLMResponse: string | undefined;
 
@@ -360,6 +361,8 @@ async function _processMessage(
                 summary: zodResult.data.summary,
                 body: zodResult.data.body,
                 relationships: zodResult.data.relationships,
+                // BUG-M6 fix: propagate due_date from Zod-parsed LLM response
+                due_date: zodResult.data.due_date,
               };
               break; // Schema-validated success
             }

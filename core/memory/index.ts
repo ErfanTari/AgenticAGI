@@ -160,6 +160,12 @@ export function initDatabase(dbPath?: string): Database.Database {
   const resolvedPath = dbPath ?? PATHS.db;
   fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
 
+  // BUG-M5 fix: close any existing connection before opening a new one
+  if (db) {
+    try { db.close(); } catch { /* ignore */ }
+    db = null;
+  }
+
   db = new Database(resolvedPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
@@ -180,6 +186,10 @@ export function initDatabase(dbPath?: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_nb     ON index_entries(nb);
     CREATE INDEX IF NOT EXISTS idx_type   ON index_entries(type);
     CREATE INDEX IF NOT EXISTS idx_status ON index_entries(status);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_entry
+    ON index_entries(nb, type, LOWER(name))
+    WHERE status != 'archived';
 
     CREATE TABLE IF NOT EXISTS relationships (
       from_code  TEXT NOT NULL,

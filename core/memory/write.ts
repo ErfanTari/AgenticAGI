@@ -62,26 +62,30 @@ export function createEntry(input: CreateEntryInput): IndexEntry {
   const filePath = resolveEntryPath(input.nb, input.type, code, input.name);
   const markdown = buildMarkdown(entryData, input.body);
 
-  // Step 2: Write file to disk BEFORE transaction
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, markdown, 'utf-8');
-
-  // Step 3: Run SQLite transaction (insertEntry + FTS + chunks)
+  // BUG-C2 fix: SQLite transaction FIRST, file write SECOND.
+  // The index is always authoritative — a file without an index row is unfindable.
+  // If the file write fails after the transaction, the row exists and can be repaired.
   const entry: IndexEntry = { ...entryData, path: filePath };
+
+  // Step 2: Run SQLite transaction (insertEntry + FTS + chunks)
+  const run = d.transaction(() => {
+    insertEntry(entry);
+    indexContent(code, input.nb, `${input.name} ${input.summary} ${input.body}`);
+    const chunks = chunkMarkdown(code, markdown);
+    if (chunks.length > 0) {
+      storeChunks(chunks);
+    }
+  });
+  run(); // throws on failure — no file written yet
+
+  // Step 3: Write file to disk after successful transaction
   try {
-    const run = d.transaction(() => {
-      insertEntry(entry);
-      indexContent(code, input.nb, `${input.name} ${input.summary} ${input.body}`);
-      const chunks = chunkMarkdown(code, markdown);
-      if (chunks.length > 0) {
-        storeChunks(chunks);
-      }
-    });
-    run();
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, markdown, 'utf-8');
   } catch (err) {
-    // Step 4: If transaction fails, clean up the file
-    try { fs.unlinkSync(filePath); } catch { /* ignore cleanup errors */ }
-    throw err;
+    // File write failed after SQLite committed — log error but do NOT throw.
+    // The SQLite row is valid; the entry can be repaired on next upsert.
+    console.warn(`[memory-write] File write failed for ${code} at ${filePath}:`, err);
   }
 
   // Schedule embedding computation — fire-and-forget, best-effort
@@ -117,6 +121,38 @@ export function upsertEntry(
   if (existing) {
     const entry = getEntryByCode(existing.code);
     const updated = new Date().toISOString().slice(0, 10);
+
+    // BUG-C4 fix: if the Markdown file is missing, treat as a create operation —
+    // write the new file and update the SQLite row with the new path/content.
+    if (entry && !fs.existsSync(entry.path)) {
+      const newFilePath = resolveEntryPath(input.nb, input.type, existing.code, input.name);
+      const entryMeta: Omit<IndexEntry, 'path'> = {
+        code: existing.code,
+        nb: input.nb,
+        type: input.type,
+        name: input.name,
+        status: input.status ?? 'active',
+        updated,
+        summary: input.summary ?? '',
+        due_date: input.due_date ?? null,
+      };
+      const markdown = buildMarkdown(entryMeta, input.body ?? '');
+      // SQLite update first, then file write
+      d.prepare(
+        'UPDATE index_entries SET summary = ?, status = ?, updated = ?, path = ? WHERE code = ?'
+      ).run(input.summary ?? '', input.status ?? 'active', updated, newFilePath, existing.code);
+      try {
+        fs.mkdirSync(path.dirname(newFilePath), { recursive: true });
+        fs.writeFileSync(newFilePath, markdown, 'utf-8');
+      } catch (err) {
+        console.warn(`[memory-write] File recreate failed for ${existing.code}:`, err);
+      }
+      try {
+        indexContent(existing.code, input.nb, `${input.name} ${input.summary ?? ''} ${input.body ?? ''}`);
+      } catch { /* non-fatal */ }
+      commitMemoryWrite(existing.code, input.name, 'agent').catch(err => console.warn('[memory-write] git commit failed:', err));
+      return { code: existing.code, created: false };
+    }
 
     // Atomic: DB row update + markdown file rewrite in the same transaction.
     // If either fails the whole transaction rolls back — no partial updates.
