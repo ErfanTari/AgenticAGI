@@ -125,6 +125,8 @@ export function upsertEntry(
         const header = md.slice(0, headerEnd + 5);
         const newMd = header + '\n# ' + entry.name + '\n\n' + (input.body ?? '') + '\n';
         fs.writeFileSync(entry.path, newMd, 'utf-8');
+        // Re-index FTS so search reflects updated content
+        indexContent(existing.code, input.nb, `${input.name} ${input.summary} ${input.body ?? ''}`);
       }
     }
     return { code: existing.code, created: false };

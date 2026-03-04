@@ -343,7 +343,8 @@ const FORMAT_INSTRUCTIONS: Record<ContentFormat, string> = {
 
 function validateFormat(content: string, format: ContentFormat): { valid: boolean; reason?: string } {
   if (format === 'markdown') {
-    if (/<html[\s>]|<body[\s>]|<div[\s>]|<p[\s>]/i.test(content)) {
+    // Match any opening HTML tag — catches <div>, <p>, <section>, <span>, <a>, <br>, etc.
+    if (/<[a-z][a-z0-9]*[\s/>]/i.test(content)) {
       return { valid: false, reason: 'HTML tags detected in markdown output' };
     }
   }

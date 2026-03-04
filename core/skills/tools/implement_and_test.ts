@@ -38,6 +38,14 @@ function cleanCode(raw: string): string {
     .replace(/<\/think>/gi, '')
     .replace(/<think>/gi, '');
 
+  // Remove preamble sentences line by line (same patterns as stripThinkingTags in llm.ts)
+  s = s.replace(/^Let me [^\n]+\n/gim, '');
+  s = s.replace(/^I need to [^\n]+\n/gim, '');
+  s = s.replace(/^I will [^\n]+\n/gim, '');
+  s = s.replace(/^I can see [^\n]+\n/gim, '');
+  s = s.replace(/^I should [^\n]+\n/gim, '');
+  s = s.replace(/^Let['´]s [^\n]+\n/gim, '');
+
   // Strategy 1: extract content from the first fenced code block
   const fenceMatch = s.match(/```(?:[a-zA-Z0-9_-]*)?\n([\s\S]*?)```/);
   if (fenceMatch) {

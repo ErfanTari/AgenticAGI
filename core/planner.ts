@@ -173,10 +173,13 @@ export async function isComplexTask(
 
 // --- Task Decomposer (Priority 3) ---
 
-function flattenSingleKeyObjects(value: unknown): unknown {
+function flattenSingleKeyObjects(value: unknown, depth = 0): unknown {
+  // Hard depth limit to prevent unbounded recursion on pathological LLM output
+  if (depth > 10) return value;
+
   if (value === null || value === undefined) return value;
   if (typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map(flattenSingleKeyObjects);
+  if (Array.isArray(value)) return value.map(v => flattenSingleKeyObjects(v, depth + 1));
 
   const obj = value as Record<string, unknown>;
   const keys = Object.keys(obj);
@@ -196,7 +199,7 @@ function flattenSingleKeyObjects(value: unknown): unknown {
 
     // Nested object → recurse until we reach a primitive or multi-key object
     if (typeof val === 'object') {
-      const inner = flattenSingleKeyObjects(val);
+      const inner = flattenSingleKeyObjects(val, depth + 1);
       // Recursion returned a primitive → use it directly
       if (typeof inner !== 'object' || inner === null) return inner;
       // Recursion returned an object → the outer key is likely the actual value
@@ -207,7 +210,7 @@ function flattenSingleKeyObjects(value: unknown): unknown {
   // Multi-key object: recurse into each value
   const result: Record<string, unknown> = {};
   for (const key of keys) {
-    result[key] = flattenSingleKeyObjects(obj[key]);
+    result[key] = flattenSingleKeyObjects(obj[key], depth + 1);
   }
   return result;
 }
@@ -244,16 +247,16 @@ function fixEscapedQuotes(json: string): string {
 }
 
 function sanitizePlannerJson(raw: string): string {
-  // Remove thinking tags if present
-  let cleaned = raw
+  // Step 1: Extract JSON boundaries FIRST to avoid stripping content inside JSON string values
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  let cleaned = jsonMatch ? jsonMatch[0] : raw.trim();
+
+  // Step 2: Remove any thinking/special tokens that appeared within the extracted JSON
+  cleaned = cleaned
     .replace(/<\|im_start\|>/g, '')
     .replace(/<\|im_end\|>/g, '')
     .replace(/<think>[\s\S]*?<\/think>/g, '')
     .trim();
-
-  // Extract JSON object if wrapped in text
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (jsonMatch) cleaned = jsonMatch[0];
 
   // Fix escaped quotes that appear outside of string values (malformed LLM output).
   // Uses a char-by-char parser tracking inString state to avoid corrupting valid
