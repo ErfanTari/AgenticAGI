@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { getAllSkills } from './skills/registry.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CARD_PATH = path.join(__dirname, '..', 'agent-card.json');
+// Use process.cwd() so the path resolves to the project root both in source (core/)
+// and in compiled output (dist/core/), avoiding the dist/agent-card.json misresolution.
+const CARD_PATH = path.join(process.cwd(), 'agent-card.json');
 
 export interface AgentCapabilities {
   memory: {

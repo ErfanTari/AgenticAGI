@@ -4,6 +4,7 @@ import { simpleGit } from 'simple-git';
 import type { SimpleGit } from 'simple-git';
 import { PATHS } from '../../config/agent.config.js';
 import { getDb, insertEntry } from './index.js';
+import { indexContent } from './fts.js';
 
 export interface VersionHistory {
   hash: string;
@@ -46,9 +47,14 @@ export async function commitMemoryWrite(
   name: string,
   source = 'agent',
 ): Promise<void> {
-  const git = await getGit();
-  await git.add('.');
-  await git.commit(`${code}: ${name} [${source}]`);
+  // Never rejects — all errors are caught and logged so fire-and-forget callers are safe.
+  try {
+    const git = await getGit();
+    await git.add('.');
+    await git.commit(`${code}: ${name} [${source}]`);
+  } catch (err) {
+    console.warn(`[versioning] git commit failed for ${code}:`, err);
+  }
 }
 
 export async function getEntryHistory(code: string): Promise<VersionHistory[]> {
@@ -141,11 +147,22 @@ export async function rollbackEntry(code: string, commitHash: string): Promise<b
             due_date: meta.due_date ?? null,
           });
         }
+
+        // Reindex FTS so search reflects the restored content
+        try {
+          indexContent(originalCode, meta.nb, `${meta.name} ${meta.summary ?? ''} ${oldContent}`);
+        } catch {
+          // FTS reindex is best-effort — SQLite row is already restored
+        }
+
         return true;
       }
+      // Frontmatter missing required fields — SQLite was not restored
+      return false;
     }
 
-    return true;
+    // No frontmatter at all — file restored on disk but SQLite not updated
+    return false;
   } catch {
     return false;
   }
