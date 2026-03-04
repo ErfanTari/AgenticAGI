@@ -7,6 +7,7 @@ import { getDb, insertEntry, getEntryByCode } from './index.js';
 import { indexContent } from './fts.js';
 import { chunkMarkdown } from './chunks.js';
 import { storeChunks, fetchEmbeddings } from './embeddings.js';
+import { commitMemoryWrite } from './versioning.js';
 
 function sanitizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -86,6 +87,9 @@ export function createEntry(input: CreateEntryInput): IndexEntry {
   // Schedule embedding computation — fire-and-forget, best-effort
   scheduleEmbedding(entry.code);
 
+  // Git version commit — fire-and-forget, never blocks write
+  commitMemoryWrite(code, input.name, 'agent').catch(() => {});
+
   return entry;
 }
 
@@ -144,6 +148,9 @@ export function upsertEntry(
     } catch (err) {
       console.warn(`[memory] FTS reindex failed for ${existing.code}:`, err);
     }
+
+    // Git version commit for update — fire-and-forget
+    commitMemoryWrite(existing.code, input.name, 'agent').catch(() => {});
 
     return { code: existing.code, created: false };
   }

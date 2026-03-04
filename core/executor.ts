@@ -4,6 +4,7 @@ import { VerificationResultSchema, verificationJsonSchema } from './schemas.js';
 import { runWithRetry } from './react.js';
 import { resolveTemplates } from './planner.js';
 import { transparency } from './transparency.js';
+import { upsertEntry } from './memory/write.js';
 
 // Flatten nested objects to primitives (fixes [object Object] issue)
 function flattenInput(input: Record<string, unknown>): Record<string, unknown> {
@@ -359,6 +360,59 @@ export function buildUserReport(
   }
 
   return lines.join('\n').trim();
+}
+
+/**
+ * Write episodic HOW.PR memory entry for successful multi-step plans.
+ * Only writes when 2+ steps completed AND verification passed.
+ * Returns the created/updated code, or null if conditions not met.
+ */
+export async function writeEpisodicMemory(
+  plan: TaskPlan,
+  result: ExecutionResult,
+  verification: VerificationResult,
+): Promise<string | null> {
+  if (result.completed.length < 2) return null;
+  if (!verification.verified) return null;
+
+  const skillSequence = result.completed.map(s => s.skill).join(' → ');
+  const verificationSummary = verification.issues.length > 0
+    ? `Issues: ${verification.issues.join(', ')}`
+    : 'All steps verified.';
+
+  const body = `## Goal
+${plan.goal}
+
+## Skill Sequence
+${skillSequence}
+
+## Steps Completed
+${result.completed.map(s => `- ${s.skill}: ${(s.display ?? s.output).slice(0, 100)}`).join('\n')}
+
+## Verification
+- Confidence: ${verification.confidence}
+- ${verificationSummary}
+
+## Notes
+- Estimated duration: ${plan.estimatedDuration ?? 'unknown'}
+- Steps: ${result.completed.length} completed, ${result.failed.length} failed/skipped
+`;
+
+  const name = 'Pattern: ' + plan.goal.slice(0, 60);
+
+  try {
+    const { code } = upsertEntry({
+      nb: 'HOW',
+      type: 'PR',
+      name,
+      status: 'active',
+      summary: `Auto-generated procedure for: ${plan.goal.slice(0, 80)}`,
+      body,
+    });
+    return code;
+  } catch {
+    return null;
+  }
 }
 
 /**

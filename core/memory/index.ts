@@ -220,6 +220,12 @@ export function initDatabase(dbPath?: string): Database.Database {
   initChunksTable();
   bootstrapIndexFromMemoryFiles();
 
+  // Phase 10: Ensure embedding_model_hash counter row exists
+  db.prepare("INSERT OR IGNORE INTO counters (type, current) VALUES ('embedding_model_hash', 0)").run();
+
+  // Phase 10: Run embedding migration check async — never blocks init
+  import('./search.js').then(s => s.checkEmbeddingMigration().catch(() => {})).catch(() => {});
+
   return db;
 }
 

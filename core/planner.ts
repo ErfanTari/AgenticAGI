@@ -2,6 +2,8 @@ import type { Classification, LLMHandler, Message } from './types.js';
 import { TaskPlanSchema, taskPlanJsonSchema } from './schemas.js';
 import type { TaskPlan } from './schemas.js';
 import { transparency } from './transparency.js';
+import { queryEntries } from './memory/index.js';
+import { fetchByCode } from './memory/fetch.js';
 
 // --- Complexity Detection (Priority 2) ---
 
@@ -499,11 +501,63 @@ function hasMemoryReadFirst(steps: unknown[]): boolean {
   return skill === 'memory_read';
 }
 
+/**
+ * Find a relevant HOW.PR procedure that matches the message.
+ * Returns the body of the best matching procedure, or null if none found.
+ */
+async function findRelevantProcedure(message: string): Promise<string | null> {
+  try {
+    const procedures = queryEntries({ nb: 'HOW', type: 'PR' });
+    if (procedures.length === 0) return null;
+
+    const msgWords = new Set(
+      message.toLowerCase().split(/\s+/).filter(w => w.length > 3),
+    );
+
+    let bestScore = 0;
+    let bestCode: string | null = null;
+
+    for (const entry of procedures) {
+      const nameWords = entry.name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      if (nameWords.length === 0) continue;
+      const overlap = nameWords.filter(w => msgWords.has(w)).length;
+      const score = overlap / nameWords.length;
+      if (score > bestScore) {
+        bestScore = score;
+        bestCode = entry.code;
+      }
+    }
+
+    // Only use if there's meaningful overlap
+    if (bestScore < 0.3 || !bestCode) return null;
+
+    const fetched = fetchByCode(bestCode);
+    return fetched?.content ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function decomposeTask(
   message: string,
   context: { skills: string; history?: string },
   llmHandler: LLMHandler,
 ): Promise<TaskPlan> {
+  // Look for a relevant past procedure to use as starting point
+  let procedurePreamble = '';
+  try {
+    const procedure = await findRelevantProcedure(message);
+    if (procedure) {
+      procedurePreamble = `RELEVANT PAST PROCEDURE:\n${procedure.slice(0, 800)}\nUse as starting point.\n\n`;
+    }
+  } catch {
+    // findRelevantProcedure failure is non-fatal
+  }
+
+  const userMessageWithProcedure = procedurePreamble
+    ? `${procedurePreamble}User request: ${message}`
+    : message;
+
   const planningPrompt: Message[] = [
     {
       role: 'system',
@@ -717,7 +771,7 @@ WEB BROWSING RULES (NEVER BREAK THESE):
 - Use -L flag with curl to follow redirects
 - url_extract output is a single clean URL string — use it directly in next step`,
     },
-    { role: 'user', content: message },
+    { role: 'user', content: userMessageWithProcedure },
   ];
 
   const MAX_RETRIES = 2;

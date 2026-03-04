@@ -1,7 +1,9 @@
 import type { Message, ResolvedMemory, Intent, LLMHandler } from './types.js';
 import type { Skill } from './skills/types.js';
+import type { IndexEntry } from './memory/types.js';
 import { getNotebookCounts } from './memory/mod.js';
 import { encode } from 'gpt-tokenizer';
+import { transparency } from './transparency.js';
 
 const SYSTEM_PROMPT = `You are a personal AI agent with memory, skills, and reasoning capabilities.
 
@@ -10,10 +12,16 @@ Your capabilities:
 - Skills: web_search, calculator, file_reader, file_writer, run_bash, web_fetch, url_extract, memory_read, content_writer, relationship_write, implement_and_test
 - You can search the web, write files, run code, and remember information across sessions
 
+Use skills for their domains. Never substitute your own reasoning:
+- calculator: ANY math. Never compute directly.
+- web_search: ANY current events or real-time data. Never answer from training.
+- file_reader: ANY file read. Never invent contents.
+- run_bash: ANY commands. Never simulate output.
+- memory_read: ANY user data or saved entries. Never guess.
+Use skills. No exceptions.
+
 How to respond:
 - Use memory context when it contains relevant information
-- Use skills when the task requires external data or actions
-- Use your own knowledge for general questions
 - Be direct and helpful — do not refuse tasks you can do
 - Never expose your internal reasoning process
 - Never show thinking steps, analysis, or decision trees
@@ -62,6 +70,50 @@ const SUMMARY_PATTERNS = [
 export interface ContextHistory {
   turns: Message[];
   summary?: string;
+}
+
+/**
+ * Trim history to fit within a token budget, walking backwards to keep the most recent turns.
+ */
+function trimHistoryToTokenBudget(history: Message[], budget: number): Message[] {
+  if (history.length === 0) return [];
+  const kept: Message[] = [];
+  let tokens = 0;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msgTokens = estimateTokens(history[i].content);
+    if (tokens + msgTokens > budget) break;
+    kept.unshift(history[i]);
+    tokens += msgTokens;
+  }
+  return kept;
+}
+
+/**
+ * Rank memory entries by relevance to the current message.
+ * 60% name word overlap + 40% recency (decays over 30 days).
+ */
+function rankByRelevance(entries: IndexEntry[], message: string): IndexEntry[] {
+  const msgWords = new Set(
+    message.toLowerCase().split(/\s+/).filter(w => w.length > 2),
+  );
+  const now = Date.now();
+  const DECAY_DAYS = 30;
+
+  const scored = entries.map(entry => {
+    // Name overlap score (0..1)
+    const nameWords = entry.name.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    const overlap = nameWords.filter(w => msgWords.has(w)).length;
+    const nameScore = nameWords.length > 0 ? overlap / nameWords.length : 0;
+
+    // Recency score (0..1), decays linearly over 30 days
+    const updatedMs = new Date(entry.updated).getTime();
+    const ageDays = (now - updatedMs) / (1000 * 60 * 60 * 24);
+    const recencyScore = Math.max(0, 1 - ageDays / DECAY_DAYS);
+
+    return { entry, score: 0.6 * nameScore + 0.4 * recencyScore };
+  });
+
+  return scored.sort((a, b) => b.score - a.score).map(s => s.entry);
 }
 
 export function getIndexSummary(): string {
@@ -194,14 +246,23 @@ export async function buildContext(
     { role: 'system', content: systemContent },
   ];
 
+  // Rank memory entries by relevance before formatting
+  if (resolved && resolved.entries.length > 1) {
+    resolved = { ...resolved, entries: rankByRelevance(resolved.entries, userMessage) };
+  }
+
   // Use rolling context summarization if llmHandler provided and history is long
-  let recentHistory = history.slice(-12); // Default: last 6 turns
+  // Then trim to token budget
+  let recentHistory: Message[];
   let conversationSummary: string | undefined;
 
   if (llmHandler && history.length > SUMMARY_THRESHOLD * 2) {
     const rollingContext = await buildRollingContext(history, llmHandler);
     recentHistory = rollingContext.turns;
     conversationSummary = rollingContext.summary;
+  } else {
+    // Default: last 6 turns (12 messages) — same as before
+    recentHistory = history.slice(-12);
   }
 
   // Inject conversation summary if present
@@ -224,9 +285,12 @@ export async function buildContext(
   }
 
   if (tokens > MAX_TOKENS) {
-    // Step 1: Reduce history to 3 turns (6 messages)
+    // Step 1: Token-budget-aware history trim (keep as many turns as fit in budget)
     messages.length = 1; // keep system prompt
-    recentHistory = history.slice(-6);
+    const historyBudget = Math.floor(MAX_TOKENS * 0.4);
+    const tokenTrimmed = trimHistoryToTokenBudget(history, historyBudget);
+    // Fallback to 3-turn limit if trimmer returns nothing
+    recentHistory = tokenTrimmed.length > 0 ? tokenTrimmed : history.slice(-6);
     messages.push(...recentHistory);
     messages.push({ role: 'user', content: userMessage });
     tokens = estimateTokens(messages);
@@ -275,6 +339,20 @@ export async function buildContext(
       console.warn(`Token ceiling hit: input truncated from ${userTokens} tokens`);
     }
   }
+
+  // Emit context_built transparency event
+  const sections: string[] = ['system'];
+  if (conversationSummary) sections.push('conversation_summary');
+  if (recentHistory.length > 0) sections.push('history');
+  if (resolved && resolved.entries.length > 0) sections.push('memory');
+  if (skills.length > 0) sections.push('skills');
+  if (skillOutput) sections.push('skill_output');
+  sections.push('user_message');
+
+  transparency.emit({
+    type: 'context_built',
+    data: { tokens: estimateTokens(messages), sections },
+  });
 
   return messages;
 }

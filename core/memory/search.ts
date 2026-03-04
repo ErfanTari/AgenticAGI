@@ -1,7 +1,9 @@
+import fs from 'node:fs';
 import { EMBEDDING_CONFIG } from '../../config/agent.config.js';
-import { getEntryByCode } from './index.js';
+import { getDb, getEntryByCode, queryEntries } from './index.js';
 import { searchBM25 } from './fts.js';
 import { fetchEmbeddings, searchVectors } from './embeddings.js';
+import { indexContent } from './fts.js';
 import type { IndexEntry } from './types.js';
 
 export interface SearchResult {
@@ -97,3 +99,56 @@ export async function hybridSearch(
 
 // Keep backward-compatible export name
 export { cosineSimilarity } from './embeddings.js';
+
+// --- Embedding migration detection ---
+
+function hashModel(modelName: string): number {
+  return modelName.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+}
+
+export async function reIndexAllEntries(): Promise<void> {
+  try {
+    const entries = queryEntries({}).filter(e => e.status !== 'archived');
+    console.log(`[embed-migration] Re-indexing ${entries.length} entries...`);
+
+    for (const entry of entries) {
+      try {
+        if (!fs.existsSync(entry.path)) continue;
+        const content = fs.readFileSync(entry.path, 'utf-8');
+        indexContent(entry.code, entry.nb, content);
+      } catch {
+        // per-entry errors are silently ignored
+      }
+    }
+
+    console.log('[embed-migration] Re-indexing complete.');
+  } catch (err) {
+    console.warn('[embed-migration] reIndexAllEntries failed:', err);
+  }
+}
+
+export async function checkEmbeddingMigration(): Promise<void> {
+  try {
+    const d = getDb();
+    const currentModel = process.env.EMBEDDING_MODEL ?? '';
+    const currentHash = hashModel(currentModel);
+
+    const row = d.prepare("SELECT current FROM counters WHERE type = 'embedding_model_hash'")
+      .get() as { current: number } | undefined;
+    const storedHash = row?.current ?? 0;
+
+    if (storedHash !== 0 && storedHash !== currentHash) {
+      console.warn(
+        `[embed-migration] Embedding model changed (hash ${storedHash} → ${currentHash}). Re-indexing all entries...`,
+      );
+      await reIndexAllEntries();
+    }
+
+    // Update stored hash
+    d.prepare(
+      "INSERT INTO counters (type, current) VALUES ('embedding_model_hash', ?) ON CONFLICT(type) DO UPDATE SET current = excluded.current"
+    ).run(currentHash);
+  } catch {
+    // Never block any caller
+  }
+}

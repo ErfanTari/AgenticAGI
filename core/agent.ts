@@ -12,7 +12,7 @@ import { startHeartbeat, stopHeartbeat } from './heartbeat.js';
 import { getDb } from './memory/index.js';
 import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
 import { isComplexTask, decomposeTask } from './planner.js';
-import { executePlan, verifyExecution, buildUserReport } from './executor.js';
+import { executePlan, verifyExecution, buildUserReport, writeEpisodicMemory } from './executor.js';
 import { getSkillDescriptions } from './skills/registry.js';
 import { transparency } from './transparency.js';
 
@@ -22,6 +22,8 @@ export let isProcessingMessage = false;
 // FIX 1: Agent lifecycle
 export function startAgent(): void {
   startHeartbeat();
+  // Keep agent card skills in sync
+  import('./agent-card.js').then(m => m.updateAgentCard()).catch(() => {});
 }
 
 export function stopAgent(): void {
@@ -172,6 +174,7 @@ async function _processMessage(
       const verification = await verifyExecution(plan, execResult, plannerHandler);
       const report = buildUserReport(plan, execResult, verification);
       const cleanReport = report.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      writeEpisodicMemory(plan, execResult, verification).catch(() => {});
       return {
         reply: findingsPrefix + cleanReport,
         intent: 'synthesis_query',
@@ -213,6 +216,9 @@ async function _processMessage(
 
         // Strip <think> tags from Kimi/reasoning models
         const cleanReport = report.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+        // Write episodic HOW.PR — fire-and-forget
+        writeEpisodicMemory(plan, execResult, verification).catch(() => {});
 
         return {
           reply: findingsPrefix + cleanReport,
