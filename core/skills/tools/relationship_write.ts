@@ -7,35 +7,50 @@ const CODE_PATTERN = /^[A-Z]+\.[A-Z]+-\d{6,}$/i;
 /**
  * Resolve a name-or-code string to a canonical code.
  *
- * Priority:
+ * Priority order:
  *  1. Already a valid code → return as-is
- *  2. Exact case-insensitive name match → most recently updated wins
- *  3. Contains match (LIKE %...%) → most recently updated wins
+ *  2. Exact case-insensitive name match (excluding archived) → most recently updated wins
+ *  3. Starts-with match (excluding archived) → most recently updated wins
+ *  4. Contains match (excluding archived) → most recently updated wins
  */
 function resolveEntity(nameOrCode: string): string | null {
+  // Priority 1: already a valid code
   if (CODE_PATTERN.test(nameOrCode)) return nameOrCode;
 
   const d = getDb();
 
-  // Priority 2: exact name match
+  // Priority 2: exact name match, most recent first, excluding archived
   const exact = d.prepare(`
     SELECT code FROM index_entries
     WHERE LOWER(name) = LOWER(?)
+    AND status != 'archived'
     ORDER BY updated DESC
     LIMIT 1
   `).get(nameOrCode) as { code: string } | undefined;
 
   if (exact) return exact.code;
 
-  // Priority 3: contains match
-  const fuzzy = d.prepare(`
+  // Priority 3: starts-with match, most recent first, excluding archived
+  const startsWith = d.prepare(`
     SELECT code FROM index_entries
     WHERE LOWER(name) LIKE LOWER(?)
+    AND status != 'archived'
+    ORDER BY updated DESC
+    LIMIT 1
+  `).get(`${nameOrCode}%`) as { code: string } | undefined;
+
+  if (startsWith) return startsWith.code;
+
+  // Priority 4: contains match, most recent first, excluding archived
+  const contains = d.prepare(`
+    SELECT code FROM index_entries
+    WHERE LOWER(name) LIKE LOWER(?)
+    AND status != 'archived'
     ORDER BY updated DESC
     LIMIT 1
   `).get(`%${nameOrCode}%`) as { code: string } | undefined;
 
-  if (fuzzy) return fuzzy.code;
+  if (contains) return contains.code;
 
   return null;
 }
@@ -99,14 +114,16 @@ export const relationshipWriteSkill: MCPSkill = {
 
     if (!fromCode) {
       return {
-        success: false, output: '',
-        error: `Could not find entry for: "${rawFrom}". Use the entry code directly instead of the name.`,
+        success: false,
+        output: '',
+        error: `Could not find entry for: "${rawFrom}". Use the entry code directly (e.g. WHAT.PJ-000014) or create the entry first.`,
       };
     }
     if (!toCode) {
       return {
-        success: false, output: '',
-        error: `Could not find entry for: "${rawTo}". Use the entry code directly instead of the name.`,
+        success: false,
+        output: '',
+        error: `Could not find entry for: "${rawTo}". Use the entry code directly (e.g. WHAT.PJ-000014) or create the entry first.`,
       };
     }
 
