@@ -1,6 +1,7 @@
 import type { Classification, LLMHandler, Message } from './types.js';
 import { TaskPlanSchema, taskPlanJsonSchema } from './schemas.js';
 import type { TaskPlan } from './schemas.js';
+import { transparency } from './transparency.js';
 
 // --- Complexity Detection (Priority 2) ---
 
@@ -96,24 +97,29 @@ export async function isComplexTask(
 ): Promise<ComplexityResult> {
   const { count, signals, skills } = countHeuristicSignals(message);
 
+  function emitAndReturn(result: ComplexityResult): ComplexityResult {
+    transparency.emit({ type: 'complexity', data: result });
+    return result;
+  }
+
   // Fast path: 2+ signals → complex
   if (count >= 2) {
-    return {
+    return emitAndReturn({
       isComplex: true,
       reason: `Heuristic: ${signals.join(', ')}`,
       estimatedSteps: Math.max(2, skills.length + 1),
       requiresSkills: skills,
-    };
+    });
   }
 
   // Fast path: 0 signals and short message → simple
   if (count === 0 && message.length < 100) {
-    return {
+    return emitAndReturn({
       isComplex: false,
       reason: 'Short message, no complexity signals',
       estimatedSteps: 1,
       requiresSkills: skills,
-    };
+    });
   }
 
   // Ambiguous: 1 signal or long message with 0 signals → ask LLM
@@ -134,22 +140,22 @@ export async function isComplexTask(
         if (process.env.DEBUG_PLANNER === 'true') {
           console.debug('[planner] LLM complexity check empty after sanitization, defaulting to complex');
         }
-        return {
+        return emitAndReturn({
           isComplex: true,
           reason: 'LLM response empty after sanitization, defaulting to complex',
           estimatedSteps: 3,
           requiresSkills: skills,
-        };
+        });
       }
       const jsonMatch = sanitized.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        return {
+        return emitAndReturn({
           isComplex: Boolean(parsed.isComplex),
           reason: String(parsed.reason ?? 'LLM assessment'),
           estimatedSteps: Number(parsed.estimatedSteps ?? 1),
           requiresSkills: Array.isArray(parsed.requiresSkills) ? parsed.requiresSkills : skills,
-        };
+        });
       }
     } catch {
       // LLM failed — fall back to heuristic
@@ -157,12 +163,12 @@ export async function isComplexTask(
   }
 
   // Fallback: 1 signal → borderline complex
-  return {
+  return emitAndReturn({
     isComplex: count >= 1,
     reason: count >= 1 ? `Borderline: ${signals.join(', ')}` : 'No signals detected',
     estimatedSteps: count >= 1 ? 2 : 1,
     requiresSkills: skills,
-  };
+  });
 }
 
 // --- Task Decomposer (Priority 3) ---
@@ -745,12 +751,14 @@ WEB BROWSING RULES (NEVER BREAK THESE):
 
         const result = TaskPlanSchema.safeParse(trimmed);
         if (result.success) {
-          return {
+          const plan: TaskPlan = {
             goal: result.data.goal,
             steps: result.data.steps,
             estimatedDuration: result.data.estimatedDuration,
             createdAt: new Date().toISOString(),
           };
+          transparency.emit({ type: 'plan', data: plan });
+          return plan;
         } else if (process.env.DEBUG_PLANNER === 'true') {
           console.log('[planner] Zod validation failed:', JSON.stringify(result.error.issues.slice(0, 3)));
         }

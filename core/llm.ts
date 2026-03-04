@@ -1,5 +1,6 @@
 import { LLM_CONFIG, LLM_FALLBACK_CONFIG } from '../config/agent.config.js';
 import type { Message } from './types.js';
+import { transparency } from './transparency.js';
 
 /**
  * Strip model reasoning/thinking artifacts from LLM responses.
@@ -14,6 +15,9 @@ function stripThinkingTags(raw: string): string {
 
   // Remove orphaned closing </think> tags (when opening tag was on earlier chunk)
   cleaned = cleaned.replace(/<\/think>/gi, '');
+
+  // Remove orphaned opening <think> tags (when closing tag was missing or stripped)
+  cleaned = cleaned.replace(/<think>/gi, '');
 
   // Remove "Let me X" preamble sentences (common reasoning prefix)
   cleaned = cleaned.replace(/^Let me [^\n]+\n/gim, '');
@@ -163,14 +167,24 @@ export async function callLLM(
   messages: Message[],
   options?: { responseSchema?: Record<string, unknown>; maxTokens?: number },
 ): Promise<string> {
+  // Emit llm_request event (system message + message count)
+  const systemMsg = messages.find(m => m.role === 'system');
+  transparency.emit({
+    type: 'llm_request',
+    data: { system: systemMsg?.content ?? '', messages, schema: options?.responseSchema },
+  });
+
   // Try primary
   if (LLM_CONFIG.endpoint) {
     const start = performance.now();
     try {
-      const result = await callPrimary(messages, options);
+      const raw = await callPrimary(messages, options);
       const elapsed = Math.round(performance.now() - start);
       console.log('[llm] Provider: primary (%s) — %dms', LLM_CONFIG.model, elapsed);
-      return stripThinkingTags(result);
+      transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
+      const stripped = stripThinkingTags(raw);
+      transparency.emit({ type: 'llm_stripped', data: { stripped } });
+      return stripped;
     } catch (err) {
       const elapsed = Math.round(performance.now() - start);
       console.warn('[llm] Primary failed after %dms: %s — trying fallback', elapsed, String(err));
@@ -181,10 +195,13 @@ export async function callLLM(
   if (LLM_FALLBACK_CONFIG) {
     const start = performance.now();
     try {
-      const result = await callAnthropic(messages);
+      const raw = await callAnthropic(messages);
       const elapsed = Math.round(performance.now() - start);
       console.log('[llm] Provider: fallback (%s/%s) — %dms', LLM_FALLBACK_CONFIG.provider, LLM_FALLBACK_CONFIG.model, elapsed);
-      return stripThinkingTags(result);
+      transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
+      const stripped = stripThinkingTags(raw);
+      transparency.emit({ type: 'llm_stripped', data: { stripped } });
+      return stripped;
     } catch (err) {
       const elapsed = Math.round(performance.now() - start);
       console.warn('[llm] Fallback failed after %dms: %s', elapsed, String(err));

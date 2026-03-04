@@ -14,6 +14,7 @@ import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
 import { isComplexTask, decomposeTask } from './planner.js';
 import { executePlan, verifyExecution, buildUserReport } from './executor.js';
 import { getSkillDescriptions } from './skills/registry.js';
+import { transparency } from './transparency.js';
 
 // FIX 1: Processing flag — heartbeat checks this to skip when agent is busy
 export let isProcessingMessage = false;
@@ -154,6 +155,7 @@ async function _processMessage(
 
   // 1. Classify intent
   const classification = classifyIntent(message);
+  transparency.emit({ type: 'intent', data: classification });
 
   // 2. Greeting — no memory, no LLM
   if (classification.intent === 'greeting') {

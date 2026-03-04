@@ -3,6 +3,7 @@ import type { TaskPlan, VerificationResult } from './schemas.js';
 import { VerificationResultSchema, verificationJsonSchema } from './schemas.js';
 import { runWithRetry } from './react.js';
 import { resolveTemplates } from './planner.js';
+import { transparency } from './transparency.js';
 
 // Flatten nested objects to primitives (fixes [object Object] issue)
 function flattenInput(input: Record<string, unknown>): Record<string, unknown> {
@@ -165,8 +166,16 @@ export async function executePlan(
       console.log(`[executor:DEEP] step=${step.id} skill=${step.skill} input=${inputPreview}`);
     }
 
+    // Emit step_start
+    transparency.emit({ type: 'step_start', data: { step } });
+
     // Execute via runWithRetry
+    const stepStart = performance.now();
     const skillResult = await runWithRetry(step.skill, resolvedInput, llmHandler);
+    const stepMs = Math.round(performance.now() - stepStart);
+
+    // Emit step_result
+    transparency.emit({ type: 'step_result', data: { step, result: skillResult, ms: stepMs } });
 
     if (skillResult.success) {
       completed.push({
