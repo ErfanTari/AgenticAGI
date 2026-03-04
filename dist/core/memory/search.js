@@ -30,16 +30,15 @@ export async function hybridSearch(query, options) {
     // BM25 always available
     const bm25Results = searchBM25(query, { nb: options?.nb, limit: 10 });
     // Vector search — optional, best-effort
+    // Always attempt embeddings (tries external API first, falls back to LLM)
     let vectorResults = [];
-    if (EMBEDDING_CONFIG) {
-        try {
-            const [queryEmbedding] = await fetchEmbeddings([query], EMBEDDING_CONFIG);
-            const rawVector = searchVectors(queryEmbedding, { nb: options?.nb, limit: 10 });
-            vectorResults = rawVector.map(r => ({ code: r.code, score: r.score }));
-        }
-        catch {
-            console.log('[search] Embedding server unreachable — using BM25 only');
-        }
+    try {
+        const [queryEmbedding] = await fetchEmbeddings([query], EMBEDDING_CONFIG ?? undefined);
+        const rawVector = searchVectors(queryEmbedding, { nb: options?.nb, limit: 10 });
+        vectorResults = rawVector.map(r => ({ code: r.code, score: r.score }));
+    }
+    catch {
+        console.log('[search] Vector embedding failed — using BM25 only');
     }
     // Determine source and merge
     let merged;

@@ -58,7 +58,9 @@ export const LLM_CONFIG = {
   timeoutMs: getTimeoutForModel(_llmModel),
 };
 
-export const EMBEDDING_TIMEOUT_MS = 10000;
+// Extended timeout for LLM-based embeddings (inference can be slow)
+// External APIs typically complete in 100-500ms, LLM inference takes 5-30s
+export const EMBEDDING_TIMEOUT_MS = 45000;
 
 // --- LLM (fallback) ---
 // Supports multiple providers: anthropic, gemini

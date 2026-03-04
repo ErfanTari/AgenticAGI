@@ -89,7 +89,7 @@ export declare const LLM_CONFIG: {
     temperature: number;
     timeoutMs: number;
 };
-export declare const EMBEDDING_TIMEOUT_MS = 10000;
+export declare const EMBEDDING_TIMEOUT_MS = 45000;
 export declare const LLM_FALLBACK_CONFIG: {
     provider: string;
     model: string;

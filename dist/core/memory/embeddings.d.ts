@@ -13,10 +13,10 @@ export declare function storeChunks(chunks: Chunk[], embeddings?: Float32Array[]
  */
 export declare function cosineSimilarity(a: Float32Array, b: Float32Array): number;
 /**
- * Fetch embeddings from an OpenAI-compatible embeddings API.
- * config.endpoint is the full URL (e.g. http://host:port/v1/embeddings).
+ * Fetch embeddings from external API or LLM fallback.
+ * First tries configured embedding endpoint, falls back to LLM-based generation.
  */
-export declare function fetchEmbeddings(texts: string[], config: {
+export declare function fetchEmbeddings(texts: string[], config?: {
     endpoint: string;
     model: string;
     dimensions: number;
