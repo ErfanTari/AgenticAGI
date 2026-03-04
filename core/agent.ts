@@ -5,7 +5,7 @@ import { buildContext } from './context.js';
 import { callLLM } from './llm.js';
 import { getSkillsForIntent } from './skills/registry.js';
 import { runWithRetry } from './react.js';
-import { createEntry, hybridSearch } from './memory/mod.js';
+import { createEntry, upsertEntry, hybridSearch, getEntryByCode } from './memory/mod.js';
 import { addRelationship } from './memory/relationships.js';
 import { fetchByCode } from './memory/mod.js';
 import { startHeartbeat, stopHeartbeat } from './heartbeat.js';
@@ -401,7 +401,7 @@ async function _processMessage(
       const due_date = (writeData as Record<string, unknown>).due_date as string | undefined
         ?? classification.due_date;
 
-      const entry = createEntry({
+      const { code, created } = upsertEntry({
         nb: writeData.nb,
         type: writeData.type,
         name: writeData.name,
@@ -411,11 +411,14 @@ async function _processMessage(
         due_date,
       });
 
-      // Add relationships if present
-      if (writeData.relationships) {
+      const action = created ? 'Created' : 'Updated';
+      const entry = getEntryByCode(code);
+
+      // Add relationships if present (only on new entries to avoid duplicate links)
+      if (created && writeData.relationships) {
         for (const rel of writeData.relationships) {
           try {
-            addRelationship({ from_code: entry.code, relation: rel.relation, to_code: rel.to_code });
+            addRelationship({ from_code: code, relation: rel.relation, to_code: rel.to_code });
           } catch {
             // relationship target may not exist — skip silently
           }
@@ -423,10 +426,10 @@ async function _processMessage(
       }
 
       return {
-        reply: findingsPrefix + `Created ${entry.code} — ${entry.name} (${writeData.nb}.${writeData.type})`,
+        reply: findingsPrefix + `${action} ${code} — ${writeData.name} (${writeData.nb}.${writeData.type})`,
         intent: 'memory_write',
-        resolved: { step: 0, entries: [entry], contents: [], relationships: [] },
-        created: entry,
+        resolved: entry ? { step: 0, entries: [entry], contents: [], relationships: [] } : null,
+        created: entry ?? undefined,
       };
     } catch (err) {
       return {

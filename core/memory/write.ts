@@ -110,25 +110,41 @@ export function upsertEntry(
   `).get(input.nb, input.type, input.name) as { code: string } | undefined;
 
   if (existing) {
-    // Update summary and body content of the existing entry
-    updateEntry(existing.code, {
-      status: input.status ?? undefined,
-      summary: input.summary,
-    });
-    // Also rewrite the markdown body on disk if content changed
     const entry = getEntryByCode(existing.code);
-    if (entry && fs.existsSync(entry.path)) {
-      const md = fs.readFileSync(entry.path, 'utf-8');
-      // Replace body (everything after the closing ---)
-      const headerEnd = md.indexOf('\n---\n');
-      if (headerEnd >= 0) {
-        const header = md.slice(0, headerEnd + 5);
-        const newMd = header + '\n# ' + entry.name + '\n\n' + (input.body ?? '') + '\n';
-        fs.writeFileSync(entry.path, newMd, 'utf-8');
-        // Re-index FTS so search reflects updated content
-        indexContent(existing.code, input.nb, `${input.name} ${input.summary} ${input.body ?? ''}`);
+    const updated = new Date().toISOString().slice(0, 10);
+
+    // Atomic: DB row update + markdown file rewrite in the same transaction.
+    // If either fails the whole transaction rolls back — no partial updates.
+    const updateTx = d.transaction(() => {
+      d.prepare(
+        'UPDATE index_entries SET summary = ?, status = ?, updated = ? WHERE code = ?'
+      ).run(
+        input.summary ?? '',
+        input.status ?? 'active',
+        updated,
+        existing.code
+      );
+
+      if (entry && fs.existsSync(entry.path)) {
+        const md = fs.readFileSync(entry.path, 'utf-8');
+        const headerEnd = md.indexOf('\n---\n');
+        if (headerEnd >= 0) {
+          const header = md.slice(0, headerEnd + 5);
+          const newMd = header + '\n# ' + entry.name + '\n\n' + (input.body ?? '') + '\n';
+          fs.writeFileSync(entry.path, newMd, 'utf-8');
+        }
       }
+    });
+
+    updateTx();
+
+    // Re-index FTS after transaction — non-fatal if it fails (data safe, search may lag)
+    try {
+      indexContent(existing.code, input.nb, `${input.name} ${input.summary ?? ''} ${input.body ?? ''}`);
+    } catch (err) {
+      console.warn(`[memory] FTS reindex failed for ${existing.code}:`, err);
     }
+
     return { code: existing.code, created: false };
   }
 

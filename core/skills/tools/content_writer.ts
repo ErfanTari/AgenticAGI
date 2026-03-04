@@ -341,15 +341,34 @@ const FORMAT_INSTRUCTIONS: Record<ContentFormat, string> = {
   plain: 'Output ONLY plain text. No markdown. No HTML. No preamble. No headers, no bullets, just prose.',
 };
 
+// Known HTML structural tag names — excludes single-letter TypeScript generics like <T>, <U>, <K>
+const HTML_TAG_PATTERN = new RegExp(
+  '<(' +
+  'html|head|body|div|span|p|a|br|hr|' +
+  'h[1-6]|ul|ol|li|table|tr|td|th|' +
+  'section|article|nav|header|footer|' +
+  'main|aside|form|input|button|select|' +
+  'script|style|link|meta|title|' +
+  'strong|em|b|i|u|code|pre|' +
+  'blockquote|img|figure|figcaption|' +
+  'video|audio|canvas|svg' +
+  ')[\\s/>]',
+  'i'
+);
+
 function validateFormat(content: string, format: ContentFormat): { valid: boolean; reason?: string } {
   if (format === 'markdown') {
-    // Match any opening HTML tag — catches <div>, <p>, <section>, <span>, <a>, <br>, etc.
-    if (/<[a-z][a-z0-9]*[\s/>]/i.test(content)) {
-      return { valid: false, reason: 'HTML tags detected in markdown output' };
+    // Strip code blocks first — code legitimately contains < > syntax (generics, HTML examples)
+    const withoutCode = content
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`[^`\n]+`/g, '');
+
+    if (HTML_TAG_PATTERN.test(withoutCode)) {
+      return { valid: false, reason: 'HTML tags found in markdown output' };
     }
   }
   if (format === 'html') {
-    if (!/<[a-z][\s\S]*>/i.test(content)) {
+    if (!/<[a-z][\s\S]*?>/i.test(content)) {
       return { valid: false, reason: 'No HTML tags found in html output' };
     }
   }
@@ -418,6 +437,30 @@ const contentWriterSkill: MCPSkill = {
       }
 
       let output = stripFormatting(response);
+
+      // Guard: empty output after stripping is a stripping artifact, not a content failure.
+      // Re-prompt with prefix-forcing so the model skips the analysis and starts content directly.
+      if (!output || output.length < 10) {
+        if (process.env.DEBUG_DEEP === 'true') {
+          console.log(`[content_writer:DEEP] output too short after stripping (${output.length} chars) — forcing reprompt`);
+        }
+        const forceSeed = format === 'html' ? '<!DOCTYPE html>' : format === 'plain' ? '' : '# ';
+        const forceMessages: Message[] = [
+          {
+            role: 'system',
+            content: `You are a content generation assistant. ${formatInstruction} Start immediately with the first character of content.`,
+          },
+          { role: 'user', content: boundedPrompt },
+          { role: 'assistant', content: forceSeed },
+        ];
+        const forceResponse = await callLLM(forceMessages, { maxTokens });
+        const forceOutput = stripFormatting(forceSeed + '\n' + forceResponse);
+        if (forceOutput && forceOutput.length >= 10) {
+          output = forceOutput;
+        } else {
+          return { success: false, output: '', error: 'content_writer produced only a stripping artifact — model returned analysis instead of content' };
+        }
+      }
 
       // Re-prompt if the raw response starts with preamble — model wrote analysis instead of content.
       // Use prefix-forcing: seed the assistant turn with the opening line so the model

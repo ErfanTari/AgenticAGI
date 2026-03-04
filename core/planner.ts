@@ -246,10 +246,49 @@ function fixEscapedQuotes(json: string): string {
   return result;
 }
 
+/**
+ * Extract the first complete JSON object from text using bracket-depth counting.
+ * Stops at the closing brace of the first complete object — ignores any trailing text
+ * or second JSON objects the model may have appended.
+ */
+function extractFirstJsonObject(text: string): string | null {
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+
+    if (escape) { escape = false; continue; }
+    if (char === '\\' && inString) { escape = true; continue; }
+    if (char === '"') { inString = !inString; continue; }
+    if (inString) continue;
+
+    if (char === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (char === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
 function sanitizePlannerJson(raw: string): string {
-  // Step 1: Extract JSON boundaries FIRST to avoid stripping content inside JSON string values
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  let cleaned = jsonMatch ? jsonMatch[0] : raw.trim();
+  // Step 1: Extract first complete JSON object (bracket-depth counter stops at first complete object,
+  // preventing two concatenated JSON objects from being merged into an unparseable blob)
+  const extracted = extractFirstJsonObject(raw);
+  if (!extracted) {
+    if (process.env.DEBUG_PLANNER === 'true') {
+      console.log('[planner] No valid JSON object found');
+    }
+    return '';
+  }
+  let cleaned = extracted;
 
   // Step 2: Remove any thinking/special tokens that appeared within the extracted JSON
   cleaned = cleaned
