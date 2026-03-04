@@ -1,7 +1,22 @@
 import readline from 'node:readline';
 import { initDatabase } from './core/memory/mod.js';
 import { processMessage, startAgent, stopAgent } from './core/agent.js';
+import { transparency } from './core/transparency.js';
+import { attachConsoleRenderer } from './core/transparency-renderer.js';
 import type { Message } from './core/types.js';
+
+// Initialize transparency bus based on environment
+const TRANSPARENT = process.env.TRANSPARENT === 'true';
+const DEBUG_PLANNER = process.env.DEBUG_PLANNER === 'true';
+const DEBUG_DEEP = process.env.DEBUG_DEEP === 'true';
+
+if (TRANSPARENT || DEBUG_DEEP) {
+  transparency.enable();
+  attachConsoleRenderer();
+} else if (DEBUG_PLANNER) {
+  transparency.enable();
+  attachConsoleRenderer(['intent', 'complexity', 'plan', 'step_start', 'step_result', 'memory_write']);
+}
 
 // Initialize
 initDatabase();

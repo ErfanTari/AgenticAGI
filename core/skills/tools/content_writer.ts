@@ -491,6 +491,11 @@ const contentWriterSkill: MCPSkill = {
         return { success: false, output: '', error: 'content_writer produced empty output' };
       }
 
+      // Reject output that is just a count or number (e.g. "1" or "3")
+      if (/^\d+$/.test(output.trim())) {
+        return { success: false, output: '', error: 'content_writer returned invalid output (number only, expected content)' };
+      }
+
       // ── Format contract validation + one retry ──────────────────────────────
       const check = validateFormat(output, format);
       if (!check.valid) {

@@ -291,12 +291,26 @@ export function buildUserReport(
   lines.push(`## ${verification.verified ? 'Done' : 'Warning'}: ${plan.goal}`);
   lines.push('');
 
-  // Completed steps
-  if (result.completed.length > 0) {
+  // Primary: find content_writer output (the main content to show user)
+  const contentStep = result.completed.find(s => s.skill === 'content_writer');
+
+  if (
+    contentStep?.output &&
+    contentStep.output.length > 10 &&
+    !/^\d+$/.test(contentStep.output.trim())
+  ) {
+    // Valid content (not a count like "1" or "3")
+    lines.push(contentStep.output);
+    lines.push('');
+  }
+
+  // Completed steps summary
+  if (result.completed.length > 0 && !contentStep) {
     lines.push('**Completed:**');
     for (const step of result.completed) {
       const label = step.display ?? step.output;
-      const output = label.length > 150 ? label.slice(0, 150) + '...' : label;
+      const output =
+        label.length > 150 ? label.slice(0, 150) + '...' : label;
       lines.push(`- [Done] ${step.skill}: ${output}`);
     }
     lines.push('');
@@ -318,25 +332,31 @@ export function buildUserReport(
     lines.push('');
   }
 
-  // Verification
+  // Memory codes created
+  const memorySteps = result.completed.filter(s => s.skill === 'memory_write');
+  const createdCodes = memorySteps
+    .map(s => extractCreatedCode(s.output))
+    .filter(Boolean);
+
+  if (createdCodes.length > 0) {
+    lines.push(`**Memory:** ${createdCodes.join(', ')}`);
+    lines.push('');
+  }
+
+  // Verification suggestion
   if (verification.suggestion) {
     lines.push(`**Suggestion:** ${verification.suggestion}`);
     lines.push('');
   }
 
-  // Memory codes created
-  const memoryCodes = result.completed
-    .filter(s => s.skill === 'memory_write' || s.output.match(/[A-Z]+\.[A-Z]+-\d{6,}/))
-    .map(s => {
-      const codeMatch = s.output.match(/([A-Z]+\.[A-Z]+-\d{6,})/);
-      return codeMatch ? codeMatch[1] : null;
-    })
-    .filter(Boolean);
-
-  if (memoryCodes.length > 0) {
-    lines.push(`**Memory:** ${memoryCodes.join(', ')}`);
-    lines.push('');
-  }
-
   return lines.join('\n').trim();
+}
+
+/**
+ * Extract memory code from memory_write output.
+ * Handles both "WHO.CT-000067" and "Created WHO.CT-000067: Sara Ahmadi" formats.
+ */
+function extractCreatedCode(output: string): string | null {
+  const match = output.match(/([A-Z]+\.[A-Z]+-\d{6,})/);
+  return match ? match[1] : null;
 }
