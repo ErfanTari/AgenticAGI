@@ -30,7 +30,9 @@ Intents:
 - general: everything else — questions, chitchat, opinions, factual queries about the
   world, identity questions, simple calculations phrased as questions.
 
-Reply with ONLY the intent name. No explanation. No punctuation. One word.`;
+Reply with ONLY the intent name. No explanation. No punctuation. One word.
+IMPORTANT: Output the intent name only. No thinking. No explanation.
+If you need to think, think silently. Your response must be a single word from the list above.`;
 
 // Valid intents this classifier can return (maps to existing Intent type values)
 const VALID_OUTPUTS: ReadonlyArray<Intent> = [
@@ -42,6 +44,29 @@ const VALID_OUTPUTS: ReadonlyArray<Intent> = [
   'general',
 ];
 
+/**
+ * H7: Extract the intent word from raw LLM output that may contain reasoning preambles.
+ * Handles <think>...</think> blocks, "Thinking Process:" preambles, and other artifacts.
+ */
+function extractIntentFromRaw(raw: string): string {
+  let cleaned = raw;
+
+  // Strip <think>...</think> and <thought>...</thought> blocks
+  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  cleaned = cleaned.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
+
+  // Strip "Thinking Process:" style preambles (first line only)
+  cleaned = cleaned.replace(/^(?:thinking process:?|thought:|reasoning:)[^\n]*\n?/i, '');
+
+  // Strip markdown, punctuation, extra whitespace
+  cleaned = cleaned.replace(/[*#>\-\x60]/g, '').trim().toLowerCase();
+
+  // Take only the first non-empty word/line
+  const firstLine = cleaned.split('\n').find(l => l.trim().length > 0) ?? '';
+  const firstWord = firstLine.trim().split(/\s+/)[0] ?? '';
+
+  return firstWord.replace(/[^a-z_]/g, '');
+}
 /**
  * Classify a message using the LLM.
  * Always returns a valid Intent — falls back to 'general' on any error or unrecognized output.
@@ -60,8 +85,8 @@ export async function classifyIntentLLM(
       { maxTokens: 10 },
     );
 
-    // Normalize: lowercase, remove all non-letter/underscore chars, trim
-    const normalized = raw.trim().toLowerCase().replace(/[^a-z_]/g, '') as Intent;
+    // H7: Strip reasoning preambles before normalizing
+    const normalized = extractIntentFromRaw(raw) as Intent;
 
     // Exact match
     if ((VALID_OUTPUTS as readonly string[]).includes(normalized)) {

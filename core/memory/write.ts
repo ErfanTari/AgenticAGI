@@ -7,7 +7,7 @@ import { getDb, insertEntry, getEntryByCode } from './index.js';
 import { indexContent } from './fts.js';
 import { chunkMarkdown } from './chunks.js';
 import { storeChunks, fetchEmbeddings } from './embeddings.js';
-import { commitMemoryWrite } from './versioning.js';
+import { scheduleMemoryCommit } from './versioning.js';
 
 /**
  * FIX 3 — Atomic file write using a .tmp intermediate file.
@@ -39,16 +39,40 @@ function resolveEntryPath(nb: string, type: string, code: string, name: string):
   return path.join(PATHS.memory, subfolder, filename);
 }
 
-function buildFrontmatter(entry: Omit<IndexEntry, 'path'>): string {
+// C4: Operational metadata included in frontmatter for DB-rebuild resilience.
+// privacy_tier is intentionally excluded (information leak risk).
+interface OperationalMeta {
+  importance_score?: number;
+  utility_score?: number;
+  usage_count?: number;
+  decay_rate?: number;
+  active_page?: number;
+  confidence?: number;
+  last_accessed?: string;
+  pinned?: number;
+  source?: string;
+}
+
+function buildFrontmatter(entry: Omit<IndexEntry, 'path'> & OperationalMeta): string {
+  const today = entry.updated ?? new Date().toISOString().slice(0, 10);
   return [
     '---',
     `code: ${entry.code}`,
     `nb: ${entry.nb}`,
     `type: ${entry.type}`,
     `name: ${entry.name}`,
-    `status: ${entry.status}`,
-    `updated: ${entry.updated}`,
-    `summary: ${entry.summary}`,
+    `status: ${entry.status ?? 'active'}`,
+    `updated: ${today}`,
+    `summary: ${(entry.summary ?? '').replace(/\n/g, ' ')}`,
+    `importance_score: ${entry.importance_score ?? 0}`,
+    `utility_score: ${entry.utility_score ?? 0}`,
+    `usage_count: ${entry.usage_count ?? 0}`,
+    `decay_rate: ${entry.decay_rate ?? 0.1}`,
+    `active_page: ${entry.active_page ?? 1}`,
+    `confidence: ${entry.confidence ?? 1.0}`,
+    `last_accessed: ${entry.last_accessed ?? today}`,
+    `pinned: ${entry.pinned ?? 0}`,
+    `source: ${entry.source ?? 'agent'}`,
     '---',
   ].join('\n');
 }
@@ -110,7 +134,7 @@ export function createEntry(input: CreateEntryInput): IndexEntry {
 
   // Git version commit — fire-and-forget, never blocks write
   // BUG-2 fix: log errors to stderr so git commit failures are visible but non-blocking
-  commitMemoryWrite(code, input.name, 'agent').catch(err => console.warn('[memory-write] git commit failed:', err));
+  scheduleMemoryCommit(`${code}: ${input.name} [agent]`);
 
   return entry;
 }
@@ -167,7 +191,7 @@ export function upsertEntry(
       try {
         indexContent(existing.code, input.nb, `${input.name} ${input.summary ?? ''} ${input.body ?? ''}`);
       } catch { /* non-fatal */ }
-      commitMemoryWrite(existing.code, input.name, 'agent').catch(err => console.warn('[memory-write] git commit failed:', err));
+      scheduleMemoryCommit(`${existing.code}: ${input.name} [agent]`);
       return { code: existing.code, created: false };
     }
 
@@ -204,7 +228,7 @@ export function upsertEntry(
     }
 
     // Git version commit for update — fire-and-forget
-    commitMemoryWrite(existing.code, input.name, 'agent').catch(err => console.warn('[memory-write] git commit failed:', err));
+    scheduleMemoryCommit(`${existing.code}: ${input.name} [agent]`);
 
     return { code: existing.code, created: false };
   }

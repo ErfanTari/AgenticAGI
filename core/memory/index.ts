@@ -11,6 +11,17 @@ let db: Database.Database | null = null;
 
 interface ParsedDiskEntry {
   entry: IndexEntry;
+  operationalMeta: {
+    importance_score: number;
+    utility_score: number;
+    usage_count: number;
+    decay_rate: number;
+    active_page: number;
+    confidence: number;
+    last_accessed: string;
+    pinned: number;
+    source: string;
+  };
   markdown: string;
   searchableText: string;
   counterKey: string;
@@ -72,6 +83,23 @@ function parseDiskEntry(filePath: string): ParsedDiskEntry | null {
   const bodyStart = frontmatterEnd >= 0 ? markdown.indexOf('\n', frontmatterEnd + 4) : -1;
   const body = bodyStart >= 0 ? markdown.slice(bodyStart).trim() : markdown;
 
+  // C5: parse operational metadata for DB-rebuild resilience
+  const parseNum = (v: string | undefined, def: number) => {
+    const n = parseFloat(v ?? '');
+    return isNaN(n) ? def : n;
+  };
+  const operationalMeta = {
+    importance_score: parseNum(meta.importance_score, 0),
+    utility_score: parseNum(meta.utility_score, 0),
+    usage_count: Math.floor(parseNum(meta.usage_count, 0)),
+    decay_rate: parseNum(meta.decay_rate, 0.1),
+    active_page: Math.floor(parseNum(meta.active_page, 1)),
+    confidence: parseNum(meta.confidence, 1.0),
+    last_accessed: meta.last_accessed ?? meta.updated ?? '',
+    pinned: Math.floor(parseNum(meta.pinned, 0)),
+    source: meta.source ?? 'agent',
+  };
+
   const entry: IndexEntry = {
     code: meta.code,
     nb: meta.nb,
@@ -86,6 +114,7 @@ function parseDiskEntry(filePath: string): ParsedDiskEntry | null {
 
   return {
     entry,
+    operationalMeta,
     markdown,
     searchableText: `${entry.name} ${entry.summary} ${body}`,
     counterKey: `${entry.nb}.${entry.type}`,
@@ -136,8 +165,16 @@ function bootstrapIndexFromMemoryFiles(): void {
   }
 
   const insertEntryStmt = d.prepare(`
-    INSERT OR IGNORE INTO index_entries (code, nb, type, name, status, updated, summary, path, due_date)
-    VALUES (@code, @nb, @type, @name, @status, @updated, @summary, @path, @due_date)
+    INSERT OR IGNORE INTO index_entries (
+      code, nb, type, name, status, updated, summary, path, due_date,
+      importance_score, utility_score, usage_count, decay_rate, active_page,
+      confidence, last_accessed, pinned, source
+    )
+    VALUES (
+      @code, @nb, @type, @name, @status, @updated, @summary, @path, @due_date,
+      @importance_score, @utility_score, @usage_count, @decay_rate, @active_page,
+      @confidence, @last_accessed, @pinned, @source
+    )
   `);
 
   const upsertCounterStmt = d.prepare(`
@@ -153,6 +190,7 @@ function bootstrapIndexFromMemoryFiles(): void {
       insertEntryStmt.run({
         ...item.entry,
         due_date: item.entry.due_date ?? null,
+        ...item.operationalMeta,
       });
     }
 
@@ -283,6 +321,9 @@ export function initDatabase(dbPath?: string): Database.Database {
   initChunksTable();
   bootstrapIndexFromMemoryFiles();
 
+  // H2: Reconcile operational metadata from frontmatter for existing rows
+  try { reconcileOperationalMetadata(); } catch { /* non-fatal */ }
+
   // Phase 10: Ensure embedding_model_hash counter row exists
   db.prepare("INSERT OR IGNORE INTO counters (type, current) VALUES ('embedding_model_hash', 0)").run();
 
@@ -295,6 +336,66 @@ export function initDatabase(dbPath?: string): Database.Database {
 export function getDb(): Database.Database {
   if (!db) throw new Error('Database not initialized. Call initDatabase() first.');
   return db;
+}
+
+export function getSettingValue(d: Database.Database, key: string): string | null {
+  const row = d.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setSettingValue(d: Database.Database, key: string, value: string): void {
+  d.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+}
+
+/**
+ * H2 — Reconcile operational metadata from frontmatter into SQLite rows.
+ * Runs at startup: if a row has all-zero operational scores but the .md file
+ * has non-zero values (written by C4), restore them into SQLite.
+ */
+export function reconcileOperationalMetadata(): void {
+  const d = getDb();
+  const staleRows = d.prepare(`
+    SELECT code, path FROM index_entries
+    WHERE importance_score = 0 AND utility_score = 0 AND usage_count = 0
+    LIMIT 500
+  `).all() as Array<{ code: string; path: string }>;
+
+  let reconciled = 0;
+  for (const row of staleRows) {
+    try {
+      const content = fs.readFileSync(row.path, 'utf8');
+      const meta = parseFrontmatter(content);
+      if (!meta) continue;
+      const parseNum = (v: string | undefined, def: number) => {
+        const n = parseFloat(v ?? '');
+        return isNaN(n) ? def : n;
+      };
+      const importance = parseNum(meta.importance_score, 0);
+      const utility = parseNum(meta.utility_score, 0);
+      const usage = parseNum(meta.usage_count, 0);
+      if (importance > 0 || utility > 0 || usage > 0) {
+        d.prepare(`
+          UPDATE index_entries SET
+            importance_score = ?, utility_score = ?, usage_count = ?,
+            decay_rate = ?, active_page = ?, confidence = ?,
+            last_accessed = ?, pinned = ?
+          WHERE code = ?
+        `).run(
+          importance, utility, Math.floor(usage),
+          parseNum(meta.decay_rate, 0.1),
+          Math.floor(parseNum(meta.active_page, 1)),
+          parseNum(meta.confidence, 1.0),
+          meta.last_accessed ?? '',
+          Math.floor(parseNum(meta.pinned, 0)),
+          row.code,
+        );
+        reconciled++;
+      }
+    } catch { /* file missing or unreadable — skip */ }
+  }
+  if (reconciled > 0) {
+    console.log(`[startup] reconciled operational metadata for ${reconciled} entries`);
+  }
 }
 
 export function insertEntry(entry: IndexEntry): void {

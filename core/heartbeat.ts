@@ -1,5 +1,9 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import type { IndexEntry } from './memory/types.js';
-import { getDb } from './memory/index.js';
+import { getDb, getSettingValue, setSettingValue } from './memory/index.js';
+import { simpleGit } from 'simple-git';
+import { PATHS } from '../config/agent.config.js';
 import { createEntry, updateEntry } from './memory/write.js';
 import { isProcessingMessage } from './agent.js';
 
@@ -266,6 +270,31 @@ export function checkVisionAlignment(): Notification | null {
 // --- Main heartbeat ---
 
 /**
+ * H5 — Monthly git gc --auto to keep memory repo lean.
+ */
+async function checkGitMaintenance(): Promise<void> {
+  const d = getDb();
+  try {
+    const lastMaintenance = getSettingValue(d, 'last_git_maintenance');
+    const daysSince = lastMaintenance
+      ? (Date.now() - new Date(lastMaintenance).getTime()) / 86400000
+      : 999;
+
+    if (daysSince < 30) return;
+
+    const memoryPath = PATHS.memory;
+    if (!fs.existsSync(path.join(memoryPath, '.git'))) return;
+
+    const git = simpleGit(memoryPath);
+    await git.raw(['gc', '--auto', '--quiet']);
+    setSettingValue(d, 'last_git_maintenance', new Date().toISOString());
+    console.log('[heartbeat] git gc --auto completed');
+  } catch (err) {
+    console.warn('[heartbeat] git maintenance failed (non-fatal):', err);
+  }
+}
+
+/**
  * FIX 4 — Idempotent heartbeat alert creation.
  * If an active WHY.MT alert with the same type already exists, updates it in place
  * instead of creating a duplicate. Prevents alert accumulation on extended absence.
@@ -365,6 +394,9 @@ export async function runHeartbeat(): Promise<HeartbeatResult> {
       }
     }
   }
+
+  // H5: Monthly git maintenance
+  checkGitMaintenance().catch(() => {});
 
   return { ran_at, notifications, created };
 }

@@ -17,16 +17,18 @@ const c = (color: keyof typeof C, text: string) => `${C[color]}${text}${C.reset}
 
 function render(event: TransparencyEvent): string {
   switch (event.type) {
-    case 'intent':
+    case 'intent': {
+      const classifierTag = event.data.classifier ? ` ${c('dim', `[${event.data.classifier}]`)}` : '';
       return (
         c('cyan', '\n┌─ INTENT') +
-        `\n│  intent:   ${c('bold', event.data.intent)}` +
+        `\n│  intent:   ${c('bold', event.data.intent)}${classifierTag}` +
         `\n│  notebook: ${event.data.nb ?? '—'}` +
         `\n│  type:     ${event.data.type ?? '—'}` +
         `\n│  skill:    ${event.data.skill ?? '—'}` +
         `\n│  codes:    ${event.data.codes?.join(', ') || '—'}` +
         c('cyan', '\n└─────────────────')
       );
+    }
 
     case 'complexity': {
       const icon = event.data.isComplex ? c('red', '● COMPLEX') : c('green', '● SIMPLE');

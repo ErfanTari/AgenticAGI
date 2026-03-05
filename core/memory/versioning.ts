@@ -128,6 +128,82 @@ export async function commitMemoryWrite(
   return promise;
 }
 
+// ─── H3/H4: Debounced batch commit ───────────────────────────────────────────
+// Batches rapid writes into a single git commit (30s debounce from LAST write).
+// Short-circuits silently if memory dir has no .git (test environments).
+
+let commitTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingMessages: string[] = [];
+const DEBOUNCE_MS = 30_000;
+
+export function scheduleMemoryCommit(message: string): void {
+  // H4: Skip silently if no .git — avoids noisy log spam in test environments
+  if (!fs.existsSync(path.join(PATHS.memory, '.git'))) return;
+
+  pendingMessages.push(message);
+
+  // Reset timer on every write (debounce from LAST write, not first)
+  if (commitTimer) clearTimeout(commitTimer);
+
+  commitTimer = setTimeout(() => {
+    void flushCommit();
+  }, DEBOUNCE_MS);
+}
+
+export async function flushCommit(): Promise<void> {
+  if (pendingMessages.length === 0) return;
+
+  const messages = [...pendingMessages];
+  pendingMessages = [];
+  commitTimer = null;
+
+  try {
+    const memoryPath = PATHS.memory;
+    if (!fs.existsSync(path.join(memoryPath, '.git'))) return;
+
+    const git = simpleGit(memoryPath);
+    await git.add('.');
+    const status = await git.status();
+    if (status.files.length === 0) return;
+
+    const summary =
+      messages.length === 1
+        ? messages[0]
+        : `memory: batch update (${messages.length} writes)\n\n${messages
+            .slice(0, 10)
+            .join('\n')}${messages.length > 10 ? `\n...+${messages.length - 10} more` : ''}`;
+
+    await git.commit(summary);
+  } catch (err) {
+    console.warn('[versioning] batch commit failed:', err);
+  }
+}
+
+// Flush on graceful shutdown so no writes are lost
+let shutdownRegistered = false;
+function registerShutdownFlush(): void {
+  if (shutdownRegistered) return;
+  shutdownRegistered = true;
+  const flush = (): void => {
+    if (commitTimer) {
+      clearTimeout(commitTimer);
+      commitTimer = null;
+    }
+    if (pendingMessages.length === 0) return;
+    try {
+      const { execSync } = require('child_process');
+      execSync('git add . && git commit -m "memory: shutdown flush"', {
+        cwd: PATHS.memory,
+        stdio: 'ignore',
+      });
+    } catch { /* best-effort */ }
+  };
+  process.on('SIGTERM', flush);
+  process.on('SIGINT', flush);
+  process.on('beforeExit', flush);
+}
+registerShutdownFlush();
+
 export async function getEntryHistory(code: string): Promise<VersionHistory[]> {
   try {
     const git = await getGit();

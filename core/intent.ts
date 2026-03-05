@@ -467,6 +467,18 @@ function extractSearchQuery(message: string): string {
 export { getSkillDescriptions };
 
 export function classifyIntent(message: string): Classification {
+  const msg = message.trim();
+
+  // H6: /log must be first — cannot be shadowed by any other pattern
+  if (/^\/log\s+/i.test(msg)) {
+    return { intent: 'memory_write', nb: 'NOW', type: 'LOG', codes: [] };
+  }
+
+  // Second — other explicit commands
+  if (/^\/meeting/i.test(msg)) {
+    return { intent: 'meeting', codes: [] };
+  }
+
   const codes = extractCodes(message);
   let relation = extractRelation(message);
   const status = extractStatus(message);
