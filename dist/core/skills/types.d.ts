@@ -17,10 +17,15 @@ export interface MCPSkill {
         properties: Record<string, {
             type: string;
             description: string;
+            enum?: string[];
         }>;
         required: string[];
     };
     execute(input: Record<string, unknown>): Promise<SkillResult>;
+}
+/** Extended SkillResult with retries count */
+export interface SkillResultWithRetries extends SkillResult {
+    retries?: number;
 }
 /** Legacy skill descriptor (used by context builder for prompt injection) */
 export interface Skill {

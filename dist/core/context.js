@@ -1,5 +1,6 @@
 import { getNotebookCounts } from './memory/mod.js';
 import { encode } from 'gpt-tokenizer';
+import { transparency } from './transparency.js';
 const SYSTEM_PROMPT = `You are a personal AI agent with memory, skills, and reasoning capabilities.
 
 Your capabilities:
@@ -7,10 +8,16 @@ Your capabilities:
 - Skills: web_search, calculator, file_reader, file_writer, run_bash, web_fetch, url_extract, memory_read, content_writer, relationship_write, implement_and_test
 - You can search the web, write files, run code, and remember information across sessions
 
+Use skills for their domains. Never substitute your own reasoning:
+- calculator: ANY math. Never compute directly.
+- web_search: ANY current events or real-time data. Never answer from training.
+- file_reader: ANY file read. Never invent contents.
+- run_bash: ANY commands. Never simulate output.
+- memory_read: ANY user data or saved entries. Never guess.
+Use skills. No exceptions.
+
 How to respond:
 - Use memory context when it contains relevant information
-- Use skills when the task requires external data or actions
-- Use your own knowledge for general questions
 - Be direct and helpful — do not refuse tasks you can do
 - Never expose your internal reasoning process
 - Never show thinking steps, analysis, or decision trees
@@ -52,6 +59,83 @@ const SUMMARY_PATTERNS = [
     /\bhow\s+many\s+entries\b/i,
     /\bnotebook\s+counts?\b/i,
 ];
+/**
+ * Trim history to fit within a token budget, walking backwards to keep the most recent turns.
+ * BUG-6 fix: always returns at least the most recent message, even if it alone exceeds budget.
+ * BUG-M1 fix: always preserve the last 2 turns (1 user + 1 assistant) regardless of budget.
+ *             Falls back to just the last user message if even 2 turns exceed budget.
+ */
+export function trimHistoryToTokenBudget(history, budget) {
+    if (history.length === 0)
+        return [];
+    // Always guarantee at least the last 2 turns (pair) if available
+    const minKeep = Math.min(2, history.length);
+    const mandatorySlice = history.slice(-minKeep);
+    const kept = [...mandatorySlice];
+    let tokens = estimateTokens(kept.map(m => m.content).join('\n'));
+    // Walk backwards from just before the mandatory slice and add more if budget allows
+    for (let i = history.length - minKeep - 1; i >= 0; i--) {
+        const msgTokens = estimateTokens(history[i].content);
+        if (tokens + msgTokens > budget)
+            break;
+        kept.unshift(history[i]);
+        tokens += msgTokens;
+    }
+    return kept;
+}
+/**
+ * BM25F-inspired ranking with recency decay, importance, utility, and page boost.
+ * Replaces the old rankByRelevance for richer scoring.
+ */
+export function rankByLightRAG(entries, message) {
+    const msgWords = message.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    const msgWordSet = new Set(msgWords);
+    const now = Date.now();
+    // BM25F params
+    const k1 = 1.2;
+    const b = 0.75;
+    const NAME_WEIGHT = 5;
+    const SUMMARY_WEIGHT = 3;
+    const DECAY_SCALE = 0.05; // days
+    const scored = entries.map(entry => {
+        const nameTokens = entry.name.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+        const summaryTokens = (entry.summary ?? '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
+        // BM25F: weighted term frequency in name + summary fields
+        let bm25Score = 0;
+        for (const qw of msgWordSet) {
+            const tf_name = nameTokens.filter(w => w === qw).length;
+            const tf_summary = summaryTokens.filter(w => w === qw).length;
+            const tf_weighted = NAME_WEIGHT * tf_name + SUMMARY_WEIGHT * tf_summary;
+            const dl = nameTokens.length * NAME_WEIGHT + summaryTokens.length * SUMMARY_WEIGHT;
+            const avgdl = 10 * NAME_WEIGHT + 20 * SUMMARY_WEIGHT; // approximate
+            bm25Score += (tf_weighted * (k1 + 1)) / (tf_weighted + k1 * (1 - b + b * (dl / avgdl)));
+        }
+        // Recency decay: e^(-0.05 * days)
+        const updatedMs = new Date(entry.updated).getTime();
+        const ageDays = (now - updatedMs) / (1000 * 60 * 60 * 24);
+        const recencyScore = Math.exp(-DECAY_SCALE * ageDays);
+        // Importance and utility contributions
+        const entryAny = entry;
+        const importanceBoost = (entryAny.importance_score ?? 0.5) * 0.1;
+        const utilityBoost = (entryAny.utility_score ?? 1.0) * 0.1;
+        // Page boost
+        const activePage = entryAny.active_page ?? 1;
+        const pageBoost = activePage === 1 ? 1.2 : 0.8;
+        // PINNED entries get maximum boost
+        const pinned = entryAny.pinned ?? 0;
+        const pinnedBoost = pinned === 1 ? 2.0 : 1.0;
+        const totalScore = (bm25Score + recencyScore + importanceBoost + utilityBoost) * pageBoost * pinnedBoost;
+        return { entry, score: totalScore };
+    });
+    return scored.sort((a, b) => b.score - a.score).map(s => s.entry);
+}
+/**
+ * Rank memory entries by relevance to the current message.
+ * Alias for rankByLightRAG for backwards compatibility.
+ */
+export function rankByRelevance(entries, message) {
+    return rankByLightRAG(entries, message);
+}
 export function getIndexSummary() {
     const rows = getNotebookCounts();
     if (rows.length === 0)
@@ -143,6 +227,11 @@ export async function buildContext(userMessage, resolved, history, skills, inten
     if (needsSummary(intent ?? 'general', userMessage)) {
         systemParts.push(getIndexSummary());
     }
+    // BUG-H2 fix: rank memory entries by relevance BEFORE formatting and injecting into prompt.
+    // Previously rankByRelevance was called AFTER formatResolved, making it dead code.
+    if (resolved && resolved.entries.length > 1) {
+        resolved = { ...resolved, entries: rankByRelevance(resolved.entries, userMessage) };
+    }
     systemParts.push(formatResolved(resolved));
     systemParts.push(formatSkills(skills));
     // Inject skill output into context
@@ -154,12 +243,17 @@ export async function buildContext(userMessage, resolved, history, skills, inten
         { role: 'system', content: systemContent },
     ];
     // Use rolling context summarization if llmHandler provided and history is long
-    let recentHistory = history.slice(-12); // Default: last 6 turns
+    // Then trim to token budget
+    let recentHistory;
     let conversationSummary;
     if (llmHandler && history.length > SUMMARY_THRESHOLD * 2) {
         const rollingContext = await buildRollingContext(history, llmHandler);
         recentHistory = rollingContext.turns;
         conversationSummary = rollingContext.summary;
+    }
+    else {
+        // Default: last 6 turns (12 messages) — same as before
+        recentHistory = history.slice(-12);
     }
     // Inject conversation summary if present
     if (conversationSummary) {
@@ -170,16 +264,54 @@ export async function buildContext(userMessage, resolved, history, skills, inten
     }
     messages.push(...recentHistory);
     messages.push({ role: 'user', content: userMessage });
-    // Token ceiling guard (BUG 5)
+    // Context compaction at 70% of token budget (P5)
+    // Pinned messages (content starting with [PINNED]) are immune to compaction
     let tokens = estimateTokens(messages);
+    if (tokens > MAX_TOKENS * 0.7 && llmHandler && history.length > 4) {
+        // Compact non-pinned history
+        const nonPinned = recentHistory.filter(m => !m.content.startsWith('[PINNED]'));
+        const pinned = recentHistory.filter(m => m.content.startsWith('[PINNED]'));
+        if (nonPinned.length > 2) {
+            try {
+                const summaryPrompt = [
+                    {
+                        role: 'system',
+                        content: 'Summarize this conversation history in 2-3 sentences. Keep key facts and decisions.',
+                    },
+                    {
+                        role: 'user',
+                        content: nonPinned.map(m => `${m.role}: ${m.content}`).join('\n\n'),
+                    },
+                ];
+                const compactedSummary = await llmHandler(summaryPrompt, { maxTokens: 150 });
+                const summaryMsg = { role: 'system', content: compactedSummary.trim() };
+                recentHistory = [...pinned, summaryMsg];
+                messages.length = 1;
+                if (conversationSummary) {
+                    messages.push({ role: 'system', content: `## Previous Conversation\n${conversationSummary}` });
+                }
+                messages.push(...recentHistory);
+                messages.push({ role: 'user', content: userMessage });
+                const afterTokens = estimateTokens(messages);
+                transparency.emit({ type: 'context_compacted', data: { before: tokens, after: afterTokens } });
+                tokens = afterTokens;
+            }
+            catch { /* compaction failed — continue without */ }
+        }
+    }
+    // Token ceiling guard (BUG 5)
+    tokens = estimateTokens(messages);
     // Warn if context exceeds 80% of budget
     if (tokens > WARNING_THRESHOLD && tokens <= MAX_TOKENS) {
         console.warn(`[context] Context at ${tokens}/${MAX_TOKENS} tokens (${Math.round(tokens / MAX_TOKENS * 100)}%) — approaching limit`);
     }
     if (tokens > MAX_TOKENS) {
-        // Step 1: Reduce history to 3 turns (6 messages)
+        // Step 1: Token-budget-aware history trim (keep as many turns as fit in budget)
         messages.length = 1; // keep system prompt
-        recentHistory = history.slice(-6);
+        const historyBudget = Math.floor(MAX_TOKENS * 0.4);
+        const tokenTrimmed = trimHistoryToTokenBudget(history, historyBudget);
+        // Fallback to 3-turn limit if trimmer returns nothing
+        recentHistory = tokenTrimmed.length > 0 ? tokenTrimmed : history.slice(-6);
         messages.push(...recentHistory);
         messages.push({ role: 'user', content: userMessage });
         tokens = estimateTokens(messages);
@@ -223,6 +355,23 @@ export async function buildContext(userMessage, resolved, history, skills, inten
             console.warn(`Token ceiling hit: input truncated from ${userTokens} tokens`);
         }
     }
+    // Emit context_built transparency event
+    const sections = ['system'];
+    if (conversationSummary)
+        sections.push('conversation_summary');
+    if (recentHistory.length > 0)
+        sections.push('history');
+    if (resolved && resolved.entries.length > 0)
+        sections.push('memory');
+    if (skills.length > 0)
+        sections.push('skills');
+    if (skillOutput)
+        sections.push('skill_output');
+    sections.push('user_message');
+    transparency.emit({
+        type: 'context_built',
+        data: { tokens: estimateTokens(messages), sections },
+    });
     return messages;
 }
 /**

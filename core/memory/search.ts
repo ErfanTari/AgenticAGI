@@ -22,20 +22,31 @@ export function reciprocalRankFusion(
   k = 60,
 ): Array<{ code: string; score: number }> {
   const scores = new Map<string, number>();
+  // Track best (highest) original score for each code across both lists
+  const bestScore = new Map<string, number>();
 
   for (let i = 0; i < bm25.length; i++) {
     const code = bm25[i].code;
     scores.set(code, (scores.get(code) ?? 0) + 1 / (k + i + 1));
+    bestScore.set(code, Math.max(bestScore.get(code) ?? 0, bm25[i].score ?? 0));
   }
 
   for (let i = 0; i < vector.length; i++) {
     const code = vector[i].code;
+    // Vector scores weighted slightly higher than BM25 for tie-breaking (semantic signal)
+    const weightedScore = (vector[i].score ?? 0) * 1.01;
     scores.set(code, (scores.get(code) ?? 0) + 1 / (k + i + 1));
+    bestScore.set(code, Math.max(bestScore.get(code) ?? 0, weightedScore));
   }
 
   return Array.from(scores.entries())
     .map(([code, score]) => ({ code, score }))
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => {
+      const diff = b.score - a.score;
+      if (Math.abs(diff) > 1e-10) return diff;
+      // Tie-break: entry with higher best original score ranks first
+      return (bestScore.get(b.code) ?? 0) - (bestScore.get(a.code) ?? 0);
+    });
 }
 
 /**

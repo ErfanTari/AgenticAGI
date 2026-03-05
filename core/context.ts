@@ -100,35 +100,70 @@ export function trimHistoryToTokenBudget(history: Message[], budget: number): Me
 }
 
 /**
- * Rank memory entries by relevance to the current message.
- * 60% name word overlap + 40% recency (decays over 30 days).
+ * BM25F-inspired ranking with recency decay, importance, utility, and page boost.
+ * Replaces the old rankByRelevance for richer scoring.
  */
-export function rankByRelevance(entries: IndexEntry[], message: string): IndexEntry[] {
-  const msgWords = new Set(
-    message.toLowerCase().split(/\s+/).filter(w => w.length > 2),
-  );
+export function rankByLightRAG(entries: IndexEntry[], message: string): IndexEntry[] {
+  const msgWords = message.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  const msgWordSet = new Set(msgWords);
   const now = Date.now();
-  const DECAY_DAYS = 30;
+
+  // BM25F params
+  const k1 = 1.2;
+  const b = 0.75;
+  const NAME_WEIGHT = 5;
+  const SUMMARY_WEIGHT = 3;
+  const DECAY_SCALE = 0.05; // days
 
   const scored = entries.map(entry => {
-    // Name overlap score (0..1)
-    // BUG-5 fix: use max(msgWords, nameWords) as denominator to prevent short messages
-    // from scoring disproportionately high against long entry names.
-    const nameWords = entry.name.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-    const overlap = nameWords.filter(w => msgWords.has(w)).length;
-    const nameScore = nameWords.length > 0
-      ? overlap / Math.max(msgWords.size, nameWords.length)
-      : 0;
+    const nameTokens = entry.name.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    const summaryTokens = (entry.summary ?? '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
 
-    // Recency score (0..1), decays linearly over 30 days
+    // BM25F: weighted term frequency in name + summary fields
+    let bm25Score = 0;
+    for (const qw of msgWordSet) {
+      const tf_name = nameTokens.filter(w => w === qw).length;
+      const tf_summary = summaryTokens.filter(w => w === qw).length;
+
+      const tf_weighted = NAME_WEIGHT * tf_name + SUMMARY_WEIGHT * tf_summary;
+      const dl = nameTokens.length * NAME_WEIGHT + summaryTokens.length * SUMMARY_WEIGHT;
+      const avgdl = 10 * NAME_WEIGHT + 20 * SUMMARY_WEIGHT; // approximate
+
+      bm25Score += (tf_weighted * (k1 + 1)) / (tf_weighted + k1 * (1 - b + b * (dl / avgdl)));
+    }
+
+    // Recency decay: e^(-0.05 * days)
     const updatedMs = new Date(entry.updated).getTime();
     const ageDays = (now - updatedMs) / (1000 * 60 * 60 * 24);
-    const recencyScore = Math.max(0, 1 - ageDays / DECAY_DAYS);
+    const recencyScore = Math.exp(-DECAY_SCALE * ageDays);
 
-    return { entry, score: 0.6 * nameScore + 0.4 * recencyScore };
+    // Importance and utility contributions
+    const entryAny = entry as unknown as Record<string, unknown>;
+    const importanceBoost = ((entryAny.importance_score as number) ?? 0.5) * 0.1;
+    const utilityBoost = ((entryAny.utility_score as number) ?? 1.0) * 0.1;
+
+    // Page boost
+    const activePage = (entryAny.active_page as number) ?? 1;
+    const pageBoost = activePage === 1 ? 1.2 : 0.8;
+
+    // PINNED entries get maximum boost
+    const pinned = (entryAny.pinned as number) ?? 0;
+    const pinnedBoost = pinned === 1 ? 2.0 : 1.0;
+
+    const totalScore = (bm25Score + recencyScore + importanceBoost + utilityBoost) * pageBoost * pinnedBoost;
+
+    return { entry, score: totalScore };
   });
 
   return scored.sort((a, b) => b.score - a.score).map(s => s.entry);
+}
+
+/**
+ * Rank memory entries by relevance to the current message.
+ * Alias for rankByLightRAG for backwards compatibility.
+ */
+export function rankByRelevance(entries: IndexEntry[], message: string): IndexEntry[] {
+  return rankByLightRAG(entries, message);
 }
 
 export function getIndexSummary(): string {
@@ -291,8 +326,44 @@ export async function buildContext(
   messages.push(...recentHistory);
   messages.push({ role: 'user', content: userMessage });
 
-  // Token ceiling guard (BUG 5)
+  // Context compaction at 70% of token budget (P5)
+  // Pinned messages (content starting with [PINNED]) are immune to compaction
   let tokens = estimateTokens(messages);
+  if (tokens > MAX_TOKENS * 0.7 && llmHandler && history.length > 4) {
+    // Compact non-pinned history
+    const nonPinned = recentHistory.filter(m => !m.content.startsWith('[PINNED]'));
+    const pinned = recentHistory.filter(m => m.content.startsWith('[PINNED]'));
+
+    if (nonPinned.length > 2) {
+      try {
+        const summaryPrompt: Message[] = [
+          {
+            role: 'system',
+            content: 'Summarize this conversation history in 2-3 sentences. Keep key facts and decisions.',
+          },
+          {
+            role: 'user',
+            content: nonPinned.map(m => `${m.role}: ${m.content}`).join('\n\n'),
+          },
+        ];
+        const compactedSummary = await llmHandler(summaryPrompt, { maxTokens: 150 });
+        const summaryMsg: Message = { role: 'system', content: compactedSummary.trim() };
+        recentHistory = [...pinned, summaryMsg];
+        messages.length = 1;
+        if (conversationSummary) {
+          messages.push({ role: 'system', content: `## Previous Conversation\n${conversationSummary}` });
+        }
+        messages.push(...recentHistory);
+        messages.push({ role: 'user', content: userMessage });
+        const afterTokens = estimateTokens(messages);
+        transparency.emit({ type: 'context_compacted', data: { before: tokens, after: afterTokens } });
+        tokens = afterTokens;
+      } catch { /* compaction failed — continue without */ }
+    }
+  }
+
+  // Token ceiling guard (BUG 5)
+  tokens = estimateTokens(messages);
 
   // Warn if context exceeds 80% of budget
   if (tokens > WARNING_THRESHOLD && tokens <= MAX_TOKENS) {

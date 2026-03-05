@@ -3,6 +3,9 @@ export declare const PATHS: {
     readonly memory: string;
     readonly index: string;
     readonly db: string;
+    readonly workspace: string;
+    readonly logs: string;
+    readonly projects: string;
 };
 export declare const TYPE_MAP: {
     readonly 'WHO.CT': {
@@ -41,11 +44,35 @@ export declare const TYPE_MAP: {
         readonly meaning: "Deadline";
         readonly subfolder: "WHEN/deadlines";
     };
+    readonly 'WHEN.EV': {
+        readonly notebook: "WHEN";
+        readonly type: "EV";
+        readonly meaning: "Episodic event";
+        readonly subfolder: "WHEN/events";
+    };
+    readonly 'WHEN.RF': {
+        readonly notebook: "WHEN";
+        readonly type: "RF";
+        readonly meaning: "Reflection";
+        readonly subfolder: "WHEN/reflections";
+    };
+    readonly 'WHEN.HX': {
+        readonly notebook: "WHEN";
+        readonly type: "HX";
+        readonly meaning: "History entry";
+        readonly subfolder: "WHEN/history";
+    };
     readonly 'HOW.PR': {
         readonly notebook: "HOW";
         readonly type: "PR";
         readonly meaning: "Procedure";
         readonly subfolder: "HOW/procedures";
+    };
+    readonly 'HOW.SK': {
+        readonly notebook: "HOW";
+        readonly type: "SK";
+        readonly meaning: "Skill entry";
+        readonly subfolder: "HOW/skills";
     };
     readonly 'WHY.MT': {
         readonly notebook: "WHY";
@@ -71,11 +98,41 @@ export declare const TYPE_MAP: {
         readonly meaning: "Report";
         readonly subfolder: "NOW/reports";
     };
+    readonly 'NOW.LOG': {
+        readonly notebook: "NOW";
+        readonly type: "LOG";
+        readonly meaning: "Log entry";
+        readonly subfolder: "NOW/logs";
+    };
     readonly 'PLAN.PL': {
         readonly notebook: "PLAN";
         readonly type: "PL";
         readonly meaning: "Planning entry";
         readonly subfolder: "PLAN/planning";
+    };
+    readonly 'PLAN.EX': {
+        readonly notebook: "PLAN";
+        readonly type: "EX";
+        readonly meaning: "Execution state";
+        readonly subfolder: "PLAN/execution";
+    };
+    readonly 'PLAN.CT': {
+        readonly notebook: "PLAN";
+        readonly type: "CT";
+        readonly meaning: "Constraint";
+        readonly subfolder: "PLAN/constraints";
+    };
+    readonly 'PLAN.MS': {
+        readonly notebook: "PLAN";
+        readonly type: "MS";
+        readonly meaning: "Milestone";
+        readonly subfolder: "PLAN/milestones";
+    };
+    readonly 'PLAN.PJ': {
+        readonly notebook: "PLAN";
+        readonly type: "PJ";
+        readonly meaning: "Project brain";
+        readonly subfolder: "PLAN/projects";
     };
 };
 export type NotebookType = keyof typeof TYPE_MAP;

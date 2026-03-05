@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { LLMHandler, Message } from './types.js';
 import type { TaskPlan, VerificationResult } from './schemas.js';
 import { VerificationResultSchema, verificationJsonSchema } from './schemas.js';
@@ -5,6 +6,7 @@ import { runWithRetry } from './react.js';
 import { resolveTemplates } from './planner.js';
 import { transparency } from './transparency.js';
 import { upsertEntry } from './memory/write.js';
+import { logExecution } from './memory/execution-log.js';
 
 // Flatten nested objects to primitives (fixes [object Object] issue)
 function flattenInput(input: Record<string, unknown>): Record<string, unknown> {
@@ -22,6 +24,21 @@ function flattenInput(input: Record<string, unknown>): Record<string, unknown> {
   }
 
   return flattened;
+}
+
+// --- Failure classification ---
+
+export type FailureClass = 'SYNTAX_ERROR' | 'STATE_ERROR' | 'CAPABILITY_ERROR';
+
+export function classifyFailure(error: string): FailureClass {
+  const lower = error.toLowerCase();
+  if (/syntax|parse|json|unexpected token|invalid|malformed/.test(lower)) {
+    return 'SYNTAX_ERROR';
+  }
+  if (/not found|missing|does not exist|no such|undefined|null|empty|state/.test(lower)) {
+    return 'STATE_ERROR';
+  }
+  return 'CAPABILITY_ERROR';
 }
 
 // --- Executor interfaces (Priority 4) ---
@@ -117,6 +134,18 @@ export async function executePlan(
       continue;
     }
 
+    // High-risk / low-confidence abort
+    const confScore = (step as Record<string, unknown>).confidence_score as number ?? 0.8;
+    const riskLevel = (step as Record<string, unknown>).risk_level as string ?? 'LOW';
+    if (confScore < 0.75 && riskLevel === 'HIGH') {
+      return {
+        success: false,
+        completed,
+        failed,
+        abortReason: 'HIGH_RISK_LOW_CONFIDENCE',
+      };
+    }
+
     // Resolve templates in input
     let resolvedInput = resolveTemplates(step.input, results);
 
@@ -204,6 +233,32 @@ export async function executePlan(
 
     // Emit step_result
     transparency.emit({ type: 'step_result', data: { step, result: skillResult, ms: stepMs } });
+
+    // Log execution record — fire-and-forget
+    try {
+      const artifactHash = skillResult.success
+        ? createHash('sha256').update(skillResult.output ?? '').digest('hex').slice(0, 16)
+        : '';
+      logExecution({
+        ts: new Date().toISOString(),
+        session_id: plan.createdAt,
+        step_id: step.id,
+        skill: step.skill,
+        action: step.description,
+        success: skillResult.success,
+        pre_hash: '',
+        post_hash: artifactHash,
+        artifacts: skillResult.success ? [skillResult.output?.slice(0, 100) ?? ''] : [],
+        constraints: [],
+        ms: stepMs,
+      });
+    } catch { /* non-fatal */ }
+
+    // Emit failure classification if failed
+    if (!skillResult.success && skillResult.error) {
+      const failureClass = classifyFailure(skillResult.error);
+      transparency.emit({ type: 'failure_classified', data: { error: skillResult.error, class: failureClass } });
+    }
 
     if (skillResult.success) {
       completed.push({

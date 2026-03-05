@@ -1,4 +1,5 @@
 import { LLM_CONFIG, LLM_FALLBACK_CONFIG } from '../config/agent.config.js';
+import { transparency } from './transparency.js';
 /**
  * Strip model reasoning/thinking artifacts from LLM responses.
  * Applied to EVERY response before it touches any downstream logic.
@@ -6,31 +7,53 @@ import { LLM_CONFIG, LLM_FALLBACK_CONFIG } from '../config/agent.config.js';
  */
 function stripThinkingTags(raw) {
     let cleaned = raw;
-    // Remove complete <think>...</think> blocks
+    // 1. Remove complete <think>...</think> blocks
     cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
-    // Remove orphaned closing </think> tags (when opening tag was on earlier chunk)
+    // 2. Remove orphaned think tags
     cleaned = cleaned.replace(/<\/think>/gi, '');
-    // Remove "Let me X" preamble sentences (common reasoning prefix)
-    cleaned = cleaned.replace(/^Let me [^\n]+\n/gim, '');
-    // Remove "I need to X" preamble sentences
-    cleaned = cleaned.replace(/^I need to [^\n]+\n/gim, '');
-    // Remove "I will X" preamble sentences
-    cleaned = cleaned.replace(/^I will [^\n]+\n/gim, '');
-    // Remove "I can see X" preamble sentences
-    cleaned = cleaned.replace(/^I can see [^\n]+\n/gim, '');
-    // Remove "I should X" preamble sentences
-    cleaned = cleaned.replace(/^I should [^\n]+\n/gim, '');
-    // Remove "Let's X" preamble sentences
-    cleaned = cleaned.replace(/^Let['´]s [^\n]+\n/gim, '');
-    // Remove Thinking Process: blocks (Qwen format) — up to next blank line or end
-    cleaned = cleaned.replace(/Thinking Process:[\s\S]*?(?=\n\n|$)/gi, '');
-    // Remove numbered analysis blocks starting with **Analyze
-    cleaned = cleaned.replace(/\*\*Analyze[\s\S]*?(?=\n\n[A-Z]|$)/gi, '');
-    // Remove <|im_start|>...<|im_end|> tokens
+    cleaned = cleaned.replace(/<think>/gi, '');
+    // 3. Remove LM Studio special tokens
     cleaned = cleaned.replace(/<\|im_start\|>[\s\S]*?<\|im_end\|>/g, '');
     cleaned = cleaned.replace(/<\|im_start\|>/g, '');
     cleaned = cleaned.replace(/<\|im_end\|>/g, '');
-    return cleaned.trim();
+    // 4. Remove Thinking Process block — consume ALL numbered items that follow,
+    //    not just up to the first blank line
+    cleaned = cleaned.replace(/^Thinking Process:[\s\S]*?(?=\n\n(?!\d+\.|\*\*|\s*[-•]))/, '');
+    // 5. Remove standalone numbered analysis blocks at the start of the response
+    //    "1. **Analyze...**\n2. **Check...**\n..." (2+ items)
+    cleaned = cleaned.replace(/^(\s*\d+\.\s+\*\*[\s\S]*?){2,}(?=\n\n[^0-9])/, '');
+    // 6. Remove Constraint Checklist blocks
+    cleaned = cleaned.replace(/\*\*Constraint Checklist[\s\S]*$/gi, '');
+    // 7. Remove Confidence Score lines
+    cleaned = cleaned.replace(/Confidence Score:.*$/gim, '');
+    // 8. Remove Mental Sandbox blocks
+    cleaned = cleaned.replace(/\*\*Mental Sandbox[\s\S]*$/gi, '');
+    // 9. Remove numbered analysis blocks starting with **Analyze
+    cleaned = cleaned.replace(/\*\*Analyze[\s\S]*?(?=\n\n[A-Z]|$)/gi, '');
+    // 10. Preamble sentences at the START of the response only
+    //     Anchored to ^ so mid-content "Let me know" is NOT stripped
+    const OPENING_PREAMBLES = [
+        /^Let me [^\n]+\n+/,
+        /^I need to [^\n]+\n+/,
+        /^I will [^\n]+\n+/,
+        /^I can see [^\n]+\n+/,
+        /^I'm going to [^\n]+\n+/,
+        /^I should [^\n]+\n+/,
+        /^Let['´s][^\n]+\n+/,
+        // "The user wants/needs/is asking/asked..."
+        /^The user (wants|needs|is asking|asked)[^\n]+\n+/,
+        /^The user's [^\n]+\n+/,
+    ];
+    for (const pattern of OPENING_PREAMBLES) {
+        cleaned = cleaned.replace(pattern, '');
+    }
+    // 11. Artifact detection — if stripping left only a number or punctuation (e.g. "1.")
+    //     return empty string so callers treat this as a failed generation
+    const stripped = cleaned.trim();
+    if (/^\d+\.?\s*$/.test(stripped)) {
+        return '';
+    }
+    return stripped;
 }
 /**
  * Call the primary LLM (Mac Studio / OpenAI-compatible endpoint).
@@ -122,14 +145,23 @@ async function callAnthropic(messages) {
  * 4. Never crash — callers catch the final throw
  */
 export async function callLLM(messages, options) {
+    // Emit llm_request event (system message + message count)
+    const systemMsg = messages.find(m => m.role === 'system');
+    transparency.emit({
+        type: 'llm_request',
+        data: { system: systemMsg?.content ?? '', messages, schema: options?.responseSchema },
+    });
     // Try primary
     if (LLM_CONFIG.endpoint) {
         const start = performance.now();
         try {
-            const result = await callPrimary(messages, options);
+            const raw = await callPrimary(messages, options);
             const elapsed = Math.round(performance.now() - start);
             console.log('[llm] Provider: primary (%s) — %dms', LLM_CONFIG.model, elapsed);
-            return stripThinkingTags(result);
+            transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
+            const stripped = stripThinkingTags(raw);
+            transparency.emit({ type: 'llm_stripped', data: { stripped } });
+            return stripped;
         }
         catch (err) {
             const elapsed = Math.round(performance.now() - start);
@@ -140,10 +172,13 @@ export async function callLLM(messages, options) {
     if (LLM_FALLBACK_CONFIG) {
         const start = performance.now();
         try {
-            const result = await callAnthropic(messages);
+            const raw = await callAnthropic(messages);
             const elapsed = Math.round(performance.now() - start);
             console.log('[llm] Provider: fallback (%s/%s) — %dms', LLM_FALLBACK_CONFIG.provider, LLM_FALLBACK_CONFIG.model, elapsed);
-            return stripThinkingTags(result);
+            transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
+            const stripped = stripThinkingTags(raw);
+            transparency.emit({ type: 'llm_stripped', data: { stripped } });
+            return stripped;
         }
         catch (err) {
             const elapsed = Math.round(performance.now() - start);

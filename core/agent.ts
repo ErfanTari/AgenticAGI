@@ -45,11 +45,11 @@ Return a JSON object with these fields:
 Valid notebook + type combinations (use ONLY these):
   WHO: CT (contact), ORG (organization)
   WHAT: PJ (project), KN (knowledge)
-  WHEN: CA (calendar), DL (deadline)
-  HOW: PR (procedure)
+  WHEN: CA (calendar), DL (deadline), EV (episodic event), RF (reflection), HX (history)
+  HOW: PR (procedure), SK (skill)
   WHY: MT (meta), QU (question)
-  NOW: TD (todo), RP (report)
-  PLAN: PL (planning)
+  NOW: TD (todo), RP (report), LOG (log entry)
+  PLAN: PL (planning), EX (execution state), CT (constraint), MS (milestone), PJ (project brain)
 
 Never invent type codes outside this list.
 If uncertain, use the closest valid type.
@@ -59,6 +59,20 @@ Respond with ONLY the JSON object, no extra text.`;
 function inferWriteData(message: string, classification: Classification): {
   nb: string; type: string; name: string; status: string; summary: string; body: string;
 } | null {
+  // Handle /log prefix — extract log content and use ISO date as name
+  if (message.startsWith('/log ')) {
+    const logContent = message.slice(5).trim();
+    const isoDate = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    return {
+      nb: 'NOW',
+      type: 'LOG',
+      name: `Log ${isoDate}`,
+      status: 'active',
+      summary: logContent.slice(0, 80),
+      body: logContent,
+    };
+  }
+
   // Determine notebook + type from classification or message content
   let nb = classification.nb;
   let type = classification.type;
@@ -162,6 +176,42 @@ async function _processMessage(
   // 2. Greeting — no memory, no LLM
   if (classification.intent === 'greeting') {
     return { reply: findingsPrefix + 'Hello! How can I help you today?', intent: 'greeting', resolved: null };
+  }
+
+  // 2b-episodic: Episodic query intent
+  if (classification.intent === 'episodic_query') {
+    // Route to memory_query on WHEN notebook
+    const resolved = resolveQuery({ ...classification, intent: 'memory_query', nb: 'WHEN' });
+    const handler = options?.llmHandler ?? callLLM;
+    const messages = await buildContext(message, resolved, history, [], 'episodic_query', undefined, handler);
+    try {
+      const reply = await handler(messages);
+      const cleanReply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      return { reply: findingsPrefix + cleanReply, intent: 'episodic_query', resolved };
+    } catch {
+      return { reply: findingsPrefix + 'Could not retrieve episodic history.', intent: 'episodic_query', resolved: null };
+    }
+  }
+
+  // 2b-meeting: Meeting mode intent
+  if (classification.intent === 'meeting') {
+    const handler = options?.llmHandler ?? callLLM;
+    try {
+      const { runMeetingMode } = await import('./meeting.js');
+      const briefing = await runMeetingMode(history, handler);
+      return {
+        reply: findingsPrefix + briefing.prompt,
+        intent: 'meeting',
+        resolved: null,
+      };
+    } catch (err) {
+      return {
+        reply: findingsPrefix + 'Could not start meeting mode. Please try again.',
+        intent: 'meeting',
+        resolved: null,
+        error: String(err),
+      };
+    }
   }
 
   // 2b. Synthesis query — always complex, bypass isComplexTask(), go straight to planner

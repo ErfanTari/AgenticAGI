@@ -52,8 +52,11 @@ beforeAll(() => {
   addRelationship({ from_code: contactCode, relation: 'owns', to_code: projectCode });
 });
 
-afterAll(() => {
+afterAll(async () => {
   closeDatabase();
+  const { _resetGitInstance } = await import('../../core/memory/versioning.js');
+  _resetGitInstance();
+  await new Promise(r => setTimeout(r, 100));
   fs.rmSync(TEST_DIR, { recursive: true, force: true });
   (PATHS as Record<string, string>).db = origDb;
   (PATHS as Record<string, string>).memory = origMemory;

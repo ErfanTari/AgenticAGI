@@ -33,6 +33,8 @@ export const TaskStepSchema = z.object({
   dependsOn: z.array(z.string()).default([]),
   storeResultAs: z.string().nullable().optional(),
   optional: z.boolean().optional().default(false),
+  confidence_score: z.number().min(0).max(1).default(0.8),
+  risk_level: z.enum(['LOW', 'MED', 'HIGH']).default('LOW'),
 });
 
 export type TaskStep = z.infer<typeof TaskStepSchema>;

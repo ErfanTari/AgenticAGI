@@ -93,6 +93,26 @@ const FILE_WRITER_PATTERNS = [
   /\bmake\s+(a\s+)?(text\s+)?(file|document)\b/i,
 ];
 
+// --- Episodic query patterns ---
+const EPISODIC_QUERY_PATTERNS = [
+  /\bwhat\s+happened\s+(last|recently|yesterday|before|with|in)\b/i,
+  /\blast\s+week\b/i,
+  /\blast\s+month\b/i,
+  /\bwhy\s+did\b.*\bfail\b/i,
+  /\bhistory\s+of\b/i,
+  /\bepisode\b/i,
+];
+
+// --- /log prefix for NOW.LOG ---
+const LOG_PREFIX_PATTERN = /^\/log\s+/;
+
+// --- Meeting intent patterns ---
+const MEETING_PATTERNS = [
+  /^\/meeting\b/i,
+  /\bstart\s+meeting\s+mode\b/i,
+  /\bmeeting\s+briefing\b/i,
+];
+
 // --- Synthesis patterns — cross-notebook queries that span multiple notebooks ---
 const SYNTHESIS_PATTERNS = [
   /\bweekly\s+(status\s+)?report\b/i,
@@ -484,6 +504,20 @@ export function classifyIntent(message: string): Classification {
   else if (matchesAny(message, SYNTHESIS_PATTERNS)) {
     intent = 'synthesis_query';
     // nb intentionally undefined — reads all notebooks
+  }
+  // Priority 3c: /log prefix → NOW.LOG entry
+  else if (LOG_PREFIX_PATTERN.test(message)) {
+    intent = 'memory_write';
+    nb = 'NOW';
+    type = 'LOG';
+  }
+  // Priority 3d: Meeting intent
+  else if (matchesAny(message, MEETING_PATTERNS)) {
+    intent = 'meeting';
+  }
+  // Priority 3e: Episodic query
+  else if (matchesAny(message, EPISODIC_QUERY_PATTERNS)) {
+    intent = 'episodic_query';
   }
   // Priority 4: Skill detection (web_search, calculator, file_reader)
   // Checked BEFORE notebook patterns — same priority position web_search had before

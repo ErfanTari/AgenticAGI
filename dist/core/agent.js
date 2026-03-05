@@ -4,20 +4,23 @@ import { buildContext } from './context.js';
 import { callLLM } from './llm.js';
 import { getSkillsForIntent } from './skills/registry.js';
 import { runWithRetry } from './react.js';
-import { createEntry, hybridSearch } from './memory/mod.js';
+import { createEntry, upsertEntry, hybridSearch, getEntryByCode } from './memory/mod.js';
 import { addRelationship } from './memory/relationships.js';
 import { fetchByCode } from './memory/mod.js';
 import { startHeartbeat, stopHeartbeat } from './heartbeat.js';
 import { getDb } from './memory/index.js';
 import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
 import { isComplexTask, decomposeTask } from './planner.js';
-import { executePlan, verifyExecution, buildUserReport } from './executor.js';
+import { executePlan, verifyExecution, buildUserReport, writeEpisodicMemory } from './executor.js';
 import { getSkillDescriptions } from './skills/registry.js';
+import { transparency } from './transparency.js';
 // FIX 1: Processing flag — heartbeat checks this to skip when agent is busy
 export let isProcessingMessage = false;
 // FIX 1: Agent lifecycle
 export function startAgent() {
     startHeartbeat();
+    // Keep agent card skills in sync
+    import('./agent-card.js').then(m => m.updateAgentCard()).catch(() => { });
 }
 export function stopAgent() {
     stopHeartbeat();
@@ -37,17 +40,30 @@ Return a JSON object with these fields:
 Valid notebook + type combinations (use ONLY these):
   WHO: CT (contact), ORG (organization)
   WHAT: PJ (project), KN (knowledge)
-  WHEN: CA (calendar), DL (deadline)
-  HOW: PR (procedure)
+  WHEN: CA (calendar), DL (deadline), EV (episodic event), RF (reflection), HX (history)
+  HOW: PR (procedure), SK (skill)
   WHY: MT (meta), QU (question)
-  NOW: TD (todo), RP (report)
-  PLAN: PL (planning)
+  NOW: TD (todo), RP (report), LOG (log entry)
+  PLAN: PL (planning), EX (execution state), CT (constraint), MS (milestone), PJ (project brain)
 
 Never invent type codes outside this list.
 If uncertain, use the closest valid type.
 Only include "relationships" if the user mentions a connection to an existing entry by code.
 Respond with ONLY the JSON object, no extra text.`;
 function inferWriteData(message, classification) {
+    // Handle /log prefix — extract log content and use ISO date as name
+    if (message.startsWith('/log ')) {
+        const logContent = message.slice(5).trim();
+        const isoDate = new Date().toISOString().slice(0, 16).replace('T', ' ');
+        return {
+            nb: 'NOW',
+            type: 'LOG',
+            name: `Log ${isoDate}`,
+            status: 'active',
+            summary: logContent.slice(0, 80),
+            body: logContent,
+        };
+    }
     // Determine notebook + type from classification or message content
     let nb = classification.nb;
     let type = classification.type;
@@ -160,9 +176,46 @@ async function _processMessage(message, history, options) {
     }
     // 1. Classify intent
     const classification = classifyIntent(message);
+    transparency.emit({ type: 'intent', data: classification });
     // 2. Greeting — no memory, no LLM
     if (classification.intent === 'greeting') {
         return { reply: findingsPrefix + 'Hello! How can I help you today?', intent: 'greeting', resolved: null };
+    }
+    // 2b-episodic: Episodic query intent
+    if (classification.intent === 'episodic_query') {
+        // Route to memory_query on WHEN notebook
+        const resolved = resolveQuery({ ...classification, intent: 'memory_query', nb: 'WHEN' });
+        const handler = options?.llmHandler ?? callLLM;
+        const messages = await buildContext(message, resolved, history, [], 'episodic_query', undefined, handler);
+        try {
+            const reply = await handler(messages);
+            const cleanReply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+            return { reply: findingsPrefix + cleanReply, intent: 'episodic_query', resolved };
+        }
+        catch {
+            return { reply: findingsPrefix + 'Could not retrieve episodic history.', intent: 'episodic_query', resolved: null };
+        }
+    }
+    // 2b-meeting: Meeting mode intent
+    if (classification.intent === 'meeting') {
+        const handler = options?.llmHandler ?? callLLM;
+        try {
+            const { runMeetingMode } = await import('./meeting.js');
+            const briefing = await runMeetingMode(history, handler);
+            return {
+                reply: findingsPrefix + briefing.prompt,
+                intent: 'meeting',
+                resolved: null,
+            };
+        }
+        catch (err) {
+            return {
+                reply: findingsPrefix + 'Could not start meeting mode. Please try again.',
+                intent: 'meeting',
+                resolved: null,
+                error: String(err),
+            };
+        }
     }
     // 2b. Synthesis query — always complex, bypass isComplexTask(), go straight to planner
     if (classification.intent === 'synthesis_query') {
@@ -174,6 +227,7 @@ async function _processMessage(message, history, options) {
             const verification = await verifyExecution(plan, execResult, plannerHandler);
             const report = buildUserReport(plan, execResult, verification);
             const cleanReport = report.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+            writeEpisodicMemory(plan, execResult, verification).catch(err => console.warn('[agent] writeEpisodicMemory failed:', err));
             return {
                 reply: findingsPrefix + cleanReport,
                 intent: 'synthesis_query',
@@ -213,6 +267,8 @@ async function _processMessage(message, history, options) {
                     const report = buildUserReport(plan, execResult, verification);
                     // Strip <think> tags from Kimi/reasoning models
                     const cleanReport = report.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+                    // Write episodic HOW.PR — fire-and-forget
+                    writeEpisodicMemory(plan, execResult, verification).catch(err => console.warn('[agent] writeEpisodicMemory failed:', err));
                     return {
                         reply: findingsPrefix + cleanReport,
                         intent: 'planned_workflow',
@@ -345,6 +401,8 @@ async function _processMessage(message, history, options) {
                                 summary: zodResult.data.summary,
                                 body: zodResult.data.body,
                                 relationships: zodResult.data.relationships,
+                                // BUG-M6 fix: propagate due_date from Zod-parsed LLM response
+                                due_date: zodResult.data.due_date,
                             };
                             break; // Schema-validated success
                         }
@@ -390,7 +448,7 @@ async function _processMessage(message, history, options) {
             // due_date from LLM response, classification, or undefined
             const due_date = writeData.due_date
                 ?? classification.due_date;
-            const entry = createEntry({
+            const { code, created } = upsertEntry({
                 nb: writeData.nb,
                 type: writeData.type,
                 name: writeData.name,
@@ -399,11 +457,13 @@ async function _processMessage(message, history, options) {
                 body: writeData.body,
                 due_date,
             });
-            // Add relationships if present
-            if (writeData.relationships) {
+            const action = created ? 'Created' : 'Updated';
+            const entry = getEntryByCode(code);
+            // Add relationships if present (only on new entries to avoid duplicate links)
+            if (created && writeData.relationships) {
                 for (const rel of writeData.relationships) {
                     try {
-                        addRelationship({ from_code: entry.code, relation: rel.relation, to_code: rel.to_code });
+                        addRelationship({ from_code: code, relation: rel.relation, to_code: rel.to_code });
                     }
                     catch {
                         // relationship target may not exist — skip silently
@@ -411,10 +471,10 @@ async function _processMessage(message, history, options) {
                 }
             }
             return {
-                reply: findingsPrefix + `Created ${entry.code} — ${entry.name} (${writeData.nb}.${writeData.type})`,
+                reply: findingsPrefix + `${action} ${code} — ${writeData.name} (${writeData.nb}.${writeData.type})`,
                 intent: 'memory_write',
-                resolved: { step: 0, entries: [entry], contents: [], relationships: [] },
-                created: entry,
+                resolved: entry ? { step: 0, entries: [entry], contents: [], relationships: [] } : null,
+                created: entry ?? undefined,
             };
         }
         catch (err) {

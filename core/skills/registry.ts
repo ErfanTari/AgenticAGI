@@ -17,6 +17,7 @@ import urlExtractSkill from './tools/url_extract.js';
 import { relationshipWriteSkill } from './tools/relationship_write.js';
 import { implementAndTestSkill } from './tools/implement_and_test.js';
 import memoryHistorySkill from './tools/memory_history.js';
+import verifyStateSkill from './tools/verify_state.js';
 
 // --- MCP Skill Registry (Map-based) ---
 
@@ -54,6 +55,7 @@ registerSkill(urlExtractSkill);
 registerSkill(relationshipWriteSkill);
 registerSkill(implementAndTestSkill);
 registerSkill(memoryHistorySkill);
+registerSkill(verifyStateSkill);
 
 // --- Legacy skill loading (used by context builder) ---
 

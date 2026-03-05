@@ -1048,6 +1048,100 @@ Added `due_date?: string` to `writeData` type in `agent.ts`. Zod-parsed branch n
 
 ---
 
+## Phase 11 — Project Brain, Autonomous Execution & Meeting Mode (COMPLETE)
+
+Phase 11 adds eight capabilities. 587 tests pass. Build clean.
+
+### Pre-Flight Schema Changes
+
+- `config/agent.config.ts` — Added `PATHS.workspace`, `PATHS.logs`, `PATHS.projects`; extended `TYPE_MAP` with 9 new types: `WHEN.EV`, `WHEN.RF`, `WHEN.HX`, `HOW.SK`, `PLAN.EX`, `PLAN.CT`, `PLAN.MS`, `PLAN.PJ`, `NOW.LOG`
+- `core/memory/index.ts` — Added 12 new columns to `index_entries`: `importance_score`, `utility_score`, `usage_count`, `last_accessed`, `decay_rate`, `active_page`, `pinned`, `privacy_tier`, `source`, `confidence`, `atomic_facts`, `embedding`; added indexes `idx_importance`, `idx_active_page`, `idx_privacy`
+
+### P1: PLAN.PJ Project Brain (`core/memory/project.ts`)
+- `ProjectEntry` interface with `vision`, `phase`, `blocked_by`, `priority`, `last_worked`
+- `createProjectEntry()` — creates PLAN.PJ entry + workspace overview markdown in `PATHS.projects/`
+- `getActiveProjects()`, `updateProjectEntry()`, `parseProjectEntry()`
+- `checkStalePlanPJ()` in `core/heartbeat.ts` — detects PLAN.PJ entries not updated in 7+ days; adds `stale_project_brain` notification type
+
+### P2: PLAN.EX Execution State + Execution Log (`core/memory/plan-ex.ts`, `core/memory/execution-log.ts`)
+- `PlanEXEntry` interface: milestones, todos, conf_score, session_id, checkpoint_ts, attempt_counts, last_failures, recent_turns, loaded_memory_utility, file_checksums
+- `createPlanEX()`, `updatePlanEX()`, `loadActivePlanEX()`, `savePlanEX()`, `validateChecksums()`
+- `ExecutionRecord` interface: JSONL-based execution log at `workspace/logs/execution-{YYYY-MM-DD}.jsonl`
+- `logExecution()` (fire-and-forget), `readExecutionLog()`
+- `classifyFailure()` in `core/executor.ts` — classifies errors as `SYNTAX_ERROR`, `STATE_ERROR`, or `CAPABILITY_ERROR`
+- `failure_classified` transparency event emitted after each failed step
+
+### P3: Episodic Memory (`core/memory/episodic.ts`)
+- `writeEpisodicEvent()` → WHEN.EV, `writeReflection()` → WHEN.RF, `compactEpisodicHistory()` → WHEN.HX, `detectMacroSkills()` → HOW.SK
+- `episodic_query` intent added — routes to WHEN notebook search
+- `EPISODIC_QUERY_PATTERNS` in `core/intent.ts` — tightened to prevent false positives
+
+### P4: Memory Lifecycle (`core/memory/lifecycle.ts`)
+- `NOTEBOOK_DECAY_RATES` — NOW=0.3 (highest), WHEN=0.2, WHAT=0.1, WHO=0.05, HOW=0.03, PLAN=0.02, WHY=0.01 (lowest)
+- `computeDecayScore(entry, now)` — exponential decay: S(t) = importance × e^(-decay × days) + usage × 0.1 × e^(-decay × days)
+- `runDecayCycle()` — updates `importance_score` and `active_page` (entries below threshold become inactive page)
+- `updateUtilityScore(code, delta)` — clamps to [0.1, 10.0], increments `usage_count`, sets `last_accessed`
+- `extractMemoryMetadata(code, body, summary, llm)` — LLM-based atomic fact extraction (fire-and-forget)
+- `resolveConflict(existing, incoming, llm)` — triggers only when name similarity > 0.6; returns `APPEND_NEW`, `SUPERSEDE_OLD`, or `MERGE_FACTS`
+
+### P5: LightRAG Relevance + RRF (`core/context.ts`, `core/memory/search.ts`)
+- `rankByLightRAG(entries, message)` — BM25F scoring (NAME_WEIGHT=5, SUMMARY_WEIGHT=3, k1=1.2, b=0.75) + recency decay + importance/utility boost + active_page boost + pinned boost
+- `rankByRelevance` kept as alias
+- Context compaction at 70% token budget — drops inactive-page entries while protecting PINNED messages
+- `context_compacted` transparency event emitted with `{ before, after }` token counts
+- `reciprocalRankFusion(bm25, vector, k=60)` in `core/memory/search.ts` — tie-breaking uses best original score (vector scores weighted 1.01× for semantic preference)
+- `computeAndStoreEmbedding(code, text)` in `core/memory/embeddings.ts` — Ollama endpoint, BLOB storage, no-op when unconfigured
+
+### P6: Enhanced Planner (`core/planner.ts`)
+- `ComplexityLevel` type: `'LOW' | 'MEDIUM' | 'HIGH' | 'MAX'`
+- `assessComplexity(message, classification)` — multi-signal heuristic returning `{ level, estimatedSteps, reason }`
+- `isComplexTask()` remains as backward-compatible wrapper
+- `extractThought(text)` — extracts `<thought>...</thought>` blocks from LLM output
+- `verifyPlanAssertions(plan, llm)` — post-plan assertion checking; returns `{ passed, failedAssertions }`
+- `planner_reasoning` transparency event with extracted CoT thought
+- `confidence_score` (0-1, default 0.8) and `risk_level` ('LOW'|'MED'|'HIGH', default 'LOW') fields added to `TaskStepSchema`
+- `HIGH_RISK_LOW_CONFIDENCE` abort in `executePlan()` — aborts when `confidence_score < 0.75` AND `risk_level === 'HIGH'`
+
+### P7: Meeting Mode (`core/meeting.ts`)
+- `MeetingBriefing` interface: `{ prompt, context, suggestedUpdates }`
+- `runMeetingMode(history, llm)` — gathers memory (todos, projects, upcoming events), generates structured briefing
+- `processMeetingResponse(response, briefing, llm)` — extracts updates from user response, writes NOW.LOG entries
+- `meeting` intent added — classified from `/meeting` command or "start meeting mode" phrase
+- `/log` prefix intent — creates NOW.LOG entry directly from message
+- `meeting_complete` transparency event
+- `NOW.LOG` added to TYPE_MAP
+
+### P8: Autonomous Execution Loop (`core/autonomous.ts`, `core/skills/tools/verify_state.ts`)
+- `runAutonomousLoop(projectCode, llm)` — drives milestone execution via PLAN.EX state machine; returns `AutonomousResult { completed, pauseReason }`
+- `withRollback<T>(operation, rollback, verify)` — runs operation, calls rollback on failure or verify failure, throws with reason
+- `commitCheckpoint(planEx)` — saves `checkpoint_ts` to PLAN.EX entry
+- `verify_state` MCP skill — validates `file_write`, `memory_write`, `run_bash` outcomes; optional `expected` content check
+- `saga_rollback` and `linker_pass` and `project_transition` transparency events added
+
+### Versioning Stability Fix (`core/memory/versioning.ts`)
+- Added `generation` counter — incremented on `_resetGitInstance()` to invalidate all in-flight commit operations
+- Added `pendingCommits` set — tracks in-flight commit promises for `_drainGitCommits()`
+- `isTempPath` detection — skips git init/commit for `/tmp/` and macOS temp paths (`/var/folders/`) to prevent cleanup races in tests
+- Exported `_drainGitCommits()` — awaits all pending commits before filesystem cleanup
+
+### New Files
+- `core/memory/project.ts` (PLAN.PJ Project Brain)
+- `core/memory/execution-log.ts` (JSONL execution log)
+- `core/memory/plan-ex.ts` (PLAN.EX execution state)
+- `core/memory/episodic.ts` (WHEN.EV/RF/HX episodic memory)
+- `core/memory/lifecycle.ts` (decay, utility, conflict resolution)
+- `core/meeting.ts` (Meeting Mode)
+- `core/autonomous.ts` (Autonomous Execution Loop)
+- `core/skills/tools/verify_state.ts` (verify_state skill)
+- `tests/phase11/p1-project.test.ts` through `p8-autonomous.test.ts` (120 new tests)
+
+### Test Results
+- 587/587 tests pass (120 new Phase 11 tests)
+- Build: zero TypeScript errors
+- Tag: `phase-11-complete`
+
+---
+
 *This document is the source of truth for this project.
 Update it when architecture decisions change.
 Do not let implementation drift from it silently.*

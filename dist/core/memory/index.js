@@ -140,6 +140,14 @@ function bootstrapIndexFromMemoryFiles() {
 export function initDatabase(dbPath) {
     const resolvedPath = dbPath ?? PATHS.db;
     fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+    // BUG-M5 fix: close any existing connection before opening a new one
+    if (db) {
+        try {
+            db.close();
+        }
+        catch { /* ignore */ }
+        db = null;
+    }
     db = new Database(resolvedPath);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
@@ -160,6 +168,10 @@ export function initDatabase(dbPath) {
     CREATE INDEX IF NOT EXISTS idx_type   ON index_entries(type);
     CREATE INDEX IF NOT EXISTS idx_status ON index_entries(status);
 
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_entry
+    ON index_entries(nb, type, LOWER(name))
+    WHERE status != 'archived';
+
     CREATE TABLE IF NOT EXISTS relationships (
       from_code  TEXT NOT NULL,
       relation   TEXT NOT NULL,
@@ -178,6 +190,11 @@ export function initDatabase(dbPath) {
       current INTEGER NOT NULL DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS heartbeat_queue (
       id       INTEGER PRIMARY KEY AUTOINCREMENT,
       code     TEXT NOT NULL,
@@ -193,10 +210,44 @@ export function initDatabase(dbPath) {
     catch {
         // Column already exists — ignore
     }
+    // Phase 11 migrations: add new columns for lifecycle, importance, etc.
+    const NEW_COLUMNS = [
+        "ALTER TABLE index_entries ADD COLUMN importance_score REAL DEFAULT 0.5",
+        "ALTER TABLE index_entries ADD COLUMN utility_score REAL DEFAULT 1.0",
+        "ALTER TABLE index_entries ADD COLUMN usage_count INTEGER DEFAULT 0",
+        "ALTER TABLE index_entries ADD COLUMN last_accessed TEXT",
+        "ALTER TABLE index_entries ADD COLUMN decay_rate REAL DEFAULT 0.1",
+        "ALTER TABLE index_entries ADD COLUMN active_page INTEGER DEFAULT 1",
+        "ALTER TABLE index_entries ADD COLUMN pinned INTEGER DEFAULT 0",
+        "ALTER TABLE index_entries ADD COLUMN privacy_tier TEXT DEFAULT 'MIXED'",
+        "ALTER TABLE index_entries ADD COLUMN source TEXT DEFAULT 'user'",
+        "ALTER TABLE index_entries ADD COLUMN confidence REAL DEFAULT 1.0",
+        "ALTER TABLE index_entries ADD COLUMN atomic_facts TEXT",
+        "ALTER TABLE index_entries ADD COLUMN embedding BLOB",
+    ];
+    for (const sql of NEW_COLUMNS) {
+        try {
+            db.exec(sql);
+        }
+        catch { /* column already exists */ }
+    }
+    // Phase 11 indexes
+    try {
+        db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_importance ON index_entries(importance_score);
+      CREATE INDEX IF NOT EXISTS idx_active_page ON index_entries(active_page);
+      CREATE INDEX IF NOT EXISTS idx_privacy ON index_entries(privacy_tier);
+    `);
+    }
+    catch { /* indexes may already exist */ }
     // Phase 4: Initialize FTS5 and chunks tables
     initFTS();
     initChunksTable();
     bootstrapIndexFromMemoryFiles();
+    // Phase 10: Ensure embedding_model_hash counter row exists
+    db.prepare("INSERT OR IGNORE INTO counters (type, current) VALUES ('embedding_model_hash', 0)").run();
+    // Phase 10: Run embedding migration check async — never blocks init
+    import('./search.js').then(s => s.checkEmbeddingMigration().catch(() => { })).catch(() => { });
     return db;
 }
 export function getDb() {

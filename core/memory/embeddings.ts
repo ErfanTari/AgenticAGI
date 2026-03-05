@@ -1,5 +1,5 @@
 import { getDb } from './index.js';
-import { EMBEDDING_TIMEOUT_MS, LLM_CONFIG } from '../../config/agent.config.js';
+import { EMBEDDING_TIMEOUT_MS, LLM_CONFIG, EMBEDDING_CONFIG } from '../../config/agent.config.js';
 import type { Chunk } from './chunks.js';
 
 /**
@@ -301,6 +301,30 @@ function generateFallbackEmbedding(text: string): Float32Array {
   }
 
   return embedding;
+}
+
+/**
+ * Compute and store an embedding BLOB directly on index_entries row.
+ * Tries Ollama/embedding endpoint; on failure silently skips.
+ */
+export async function computeAndStoreEmbedding(code: string, text: string): Promise<void> {
+  if (!EMBEDDING_CONFIG) return;
+
+  try {
+    const embeddings = await fetchEmbeddingsFromAPI([text], EMBEDDING_CONFIG);
+    if (embeddings.length === 0) return;
+
+    const buf = Buffer.from(
+      embeddings[0].buffer,
+      embeddings[0].byteOffset,
+      embeddings[0].byteLength,
+    );
+
+    const db = getDb();
+    db.prepare('UPDATE index_entries SET embedding = ? WHERE code = ?').run(buf, code);
+  } catch {
+    // Silent skip — not having an embedding is acceptable
+  }
 }
 
 /**

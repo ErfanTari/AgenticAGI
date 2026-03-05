@@ -28,3 +28,5 @@ export declare function hybridSearch(query: string, options?: {
     limit?: number;
 }): Promise<SearchResult[]>;
 export { cosineSimilarity } from './embeddings.js';
+export declare function reIndexAllEntries(): Promise<void>;
+export declare function checkEmbeddingMigration(): Promise<void>;

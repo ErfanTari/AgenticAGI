@@ -1,0 +1,174 @@
+/**
+ * P7: Meeting Mode — structured briefing and updates capture.
+ */
+import type { LLMHandler, Message } from './types.js';
+import { queryEntries } from './memory/index.js';
+import { upsertEntry } from './memory/write.js';
+import { transparency } from './transparency.js';
+
+export interface MeetingBriefing {
+  prompt: string;
+  context: string;
+  suggestedUpdates: string[];
+}
+
+/**
+ * Run meeting mode — generates a structured briefing from current memory state
+ * and prompts the user for updates.
+ */
+export async function runMeetingMode(
+  _history: Message[],
+  llmHandler: LLMHandler,
+): Promise<MeetingBriefing> {
+  // Gather relevant memory for the meeting
+  const todos = queryEntries({ nb: 'NOW', type: 'TD', status: 'open' }).slice(0, 5);
+  const projects = queryEntries({ nb: 'WHAT', type: 'PJ', status: 'active' }).slice(0, 5);
+  const planProjects = queryEntries({ nb: 'PLAN', type: 'PJ', status: 'active' }).slice(0, 3);
+  const upcoming = queryEntries({ nb: 'WHEN', status: 'upcoming' }).slice(0, 5);
+
+  const contextParts: string[] = [];
+
+  if (projects.length > 0) {
+    contextParts.push('## Active Projects\n' + projects.map(e => `- [${e.code}] ${e.name}: ${e.summary}`).join('\n'));
+  }
+  if (planProjects.length > 0) {
+    contextParts.push('## Project Brain Entries\n' + planProjects.map(e => `- [${e.code}] ${e.name}: ${e.summary}`).join('\n'));
+  }
+  if (todos.length > 0) {
+    contextParts.push('## Open Todos\n' + todos.map(e => `- [${e.code}] ${e.name}`).join('\n'));
+  }
+  if (upcoming.length > 0) {
+    contextParts.push('## Upcoming Events\n' + upcoming.map(e => `- [${e.code}] ${e.name} (${e.due_date ?? e.updated})`).join('\n'));
+  }
+
+  const context = contextParts.join('\n\n') || 'No active memory entries found.';
+
+  // Generate a structured briefing prompt
+  const suggestedUpdates: string[] = [];
+  for (const entry of [...projects, ...planProjects]) {
+    suggestedUpdates.push(`Update status of "${entry.name}" (${entry.code})`);
+  }
+  for (const todo of todos) {
+    suggestedUpdates.push(`Mark todo as done: "${todo.name}" (${todo.code})`);
+  }
+
+  let briefingText = '';
+  try {
+    const messages: Message[] = [
+      {
+        role: 'system',
+        content: `You are a meeting facilitator. Generate a concise meeting briefing based on the current project state. Include: 1) Status summary 2) Key questions to answer 3) What needs updating. Keep it under 300 words.`,
+      },
+      {
+        role: 'user',
+        content: `Current state:\n${context}`,
+      },
+    ];
+
+    briefingText = await llmHandler(messages, { maxTokens: 400 });
+    briefingText = briefingText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  } catch {
+    briefingText = `Meeting Mode started.\n\n${context}\n\nWhat would you like to update?`;
+  }
+
+  const prompt = `## Meeting Briefing\n\n${briefingText}\n\n---\nPlease provide updates or say "done" to finish the meeting.`;
+
+  return { prompt, context, suggestedUpdates };
+}
+
+/**
+ * Process a user's meeting response and write updates to memory.
+ */
+export async function processMeetingResponse(
+  response: string,
+  briefing: MeetingBriefing,
+  llmHandler: LLMHandler,
+): Promise<{ updatesWritten: string[]; nextStep: string }> {
+  const updatesWritten: string[] = [];
+
+  if (/^\s*(done|finish|end|complete)\s*$/i.test(response)) {
+    // Meeting complete
+    transparency.emit({ type: 'meeting_complete', data: { updatesWritten } });
+    return { updatesWritten, nextStep: 'Meeting complete. Memory updated.' };
+  }
+
+  // Try to parse updates from the response
+  try {
+    const messages: Message[] = [
+      {
+        role: 'system',
+        content: `Extract memory updates from the user's meeting response. Return JSON array of updates:
+[{"action": "update|create|complete", "type": "todo|project|note", "name": "entry name", "content": "update text"}]`,
+      },
+      {
+        role: 'user',
+        content: `Extract memory updates from the following meeting response.\n\nContext:\n${briefing.context}\n\nUser response:\n${response}`,
+      },
+    ];
+
+    const extracted = await llmHandler(messages, { maxTokens: 400 });
+    const cleaned = extracted.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
+
+    if (jsonMatch) {
+      const updates = JSON.parse(jsonMatch[0]) as Array<{
+        action: string;
+        type: string;
+        name: string;
+        content: string;
+      }>;
+
+      for (const update of updates) {
+        try {
+          if (update.action === 'complete' && update.type === 'todo') {
+            // Mark todo as done via upsert
+            const { code } = upsertEntry({
+              nb: 'NOW',
+              type: 'TD',
+              name: update.name,
+              status: 'closed',
+              summary: `Completed in meeting: ${update.content?.slice(0, 60)}`,
+              body: update.content ?? '',
+            });
+            updatesWritten.push(code);
+          } else {
+            // Create a log entry
+            const { code } = upsertEntry({
+              nb: 'NOW',
+              type: 'LOG',
+              name: `Meeting Update: ${update.name}`,
+              status: 'active',
+              summary: update.content?.slice(0, 80) ?? '',
+              body: `## ${update.name}\n${update.content ?? response}`,
+            });
+            updatesWritten.push(code);
+          }
+        } catch (err) {
+          console.warn('[meeting] Failed to write update:', err);
+        }
+      }
+    }
+  } catch {
+    // If extraction fails, write the whole response as a log
+    try {
+      const { code } = upsertEntry({
+        nb: 'NOW',
+        type: 'LOG',
+        name: `Meeting Notes: ${new Date().toISOString().slice(0, 10)}`,
+        status: 'active',
+        summary: response.slice(0, 80),
+        body: response,
+      });
+      updatesWritten.push(code);
+    } catch { /* non-fatal */ }
+  }
+
+  transparency.emit({ type: 'meeting_complete', data: { updatesWritten } });
+
+  return {
+    updatesWritten,
+    nextStep: updatesWritten.length > 0
+      ? `Updated ${updatesWritten.length} entries. Continue or say "done" to finish.`
+      : 'No updates extracted. Continue or say "done" to finish.',
+  };
+}

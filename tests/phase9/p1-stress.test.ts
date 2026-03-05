@@ -33,8 +33,11 @@ beforeAll(() => {
   initDatabase(':memory:');
 });
 
-afterAll(() => {
+afterAll(async () => {
   closeDatabase();
+  const { _resetGitInstance } = await import('../../core/memory/versioning.js');
+  _resetGitInstance();
+  await new Promise(r => setTimeout(r, 100));
   (PATHS as Record<string, string>).memory = origMemory;
   process.chdir(ORIG_CWD);
   // Cleanup

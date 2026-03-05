@@ -1,9 +1,27 @@
 import type { Message, ResolvedMemory, Intent, LLMHandler } from './types.js';
 import type { Skill } from './skills/types.js';
+import type { IndexEntry } from './memory/types.js';
 export interface ContextHistory {
     turns: Message[];
     summary?: string;
 }
+/**
+ * Trim history to fit within a token budget, walking backwards to keep the most recent turns.
+ * BUG-6 fix: always returns at least the most recent message, even if it alone exceeds budget.
+ * BUG-M1 fix: always preserve the last 2 turns (1 user + 1 assistant) regardless of budget.
+ *             Falls back to just the last user message if even 2 turns exceed budget.
+ */
+export declare function trimHistoryToTokenBudget(history: Message[], budget: number): Message[];
+/**
+ * BM25F-inspired ranking with recency decay, importance, utility, and page boost.
+ * Replaces the old rankByRelevance for richer scoring.
+ */
+export declare function rankByLightRAG(entries: IndexEntry[], message: string): IndexEntry[];
+/**
+ * Rank memory entries by relevance to the current message.
+ * Alias for rankByLightRAG for backwards compatibility.
+ */
+export declare function rankByRelevance(entries: IndexEntry[], message: string): IndexEntry[];
 export declare function getIndexSummary(): string;
 /**
  * Build rolling context with summarization for long histories.

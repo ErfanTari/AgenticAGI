@@ -7,6 +7,7 @@ export declare function initFTS(): void;
 /**
  * Index an entry's content into FTS5.
  * Called inside createEntry transaction (sync).
+ * BUG-H5 fix: delete existing row first so re-indexing is idempotent.
  */
 export declare function indexContent(code: string, nb: string, content: string): void;
 /**

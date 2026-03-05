@@ -32,7 +32,8 @@
       "url_extract",
       "relationship_write",
       "implement_and_test",
-      "memory_history"
+      "memory_history",
+      "verify_state"
     ],
     "planning": {
       "max_steps": 8,

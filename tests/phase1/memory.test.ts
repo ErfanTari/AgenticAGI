@@ -27,8 +27,11 @@ beforeAll(() => {
   initDatabase(TEST_DB);
 });
 
-afterAll(() => {
+afterAll(async () => {
   closeDatabase();
+  const { _resetGitInstance } = await import('../../core/memory/versioning.js');
+  _resetGitInstance();
+  await new Promise(r => setTimeout(r, 100));
   // Clean up test artifacts
   const testDir = path.dirname(TEST_DB);
   fs.rmSync(testDir, { recursive: true, force: true });

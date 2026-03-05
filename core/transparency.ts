@@ -20,7 +20,14 @@ export type TransparencyEvent =
   | { type: 'memory_write'; data: { code: string; nb: string; name: string } }
   | { type: 'context_built'; data: { tokens: number; sections: string[] } }
   | { type: 'heartbeat'; data: { checks: string[]; findings: number } }
-  | { type: 'error'; data: { source: string; error: string } };
+  | { type: 'error'; data: { source: string; error: string } }
+  | { type: 'planner_reasoning'; data: { thought: string } }
+  | { type: 'failure_classified'; data: { error: string; class: string } }
+  | { type: 'context_compacted'; data: { before: number; after: number } }
+  | { type: 'project_transition'; data: { code: string; from: string; to: string } }
+  | { type: 'saga_rollback'; data: { step: string; reason: string } }
+  | { type: 'meeting_complete'; data: { updatesWritten: string[] } }
+  | { type: 'linker_pass'; data: { linked: number } };
 
 type TransparencyHandler = (event: TransparencyEvent) => void;
 

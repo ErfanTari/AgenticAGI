@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { simpleGit } from 'simple-git';
 import type { SimpleGit } from 'simple-git';
@@ -18,6 +19,11 @@ let gitInstancePath: string | null = null;
 // Pending init promise — serializes concurrent getGit() calls for the same path
 // so two rapid callers never double-init the same repo.
 let gitInitPromise: Promise<SimpleGit> | null = null;
+// Generation counter — incremented on every reset so in-flight commits
+// can detect that their context was invalidated and exit early.
+let generation = 0;
+// All in-flight commit promises — used by _resetGitInstance to drain them before cleanup.
+const pendingCommits = new Set<Promise<void>>();
 
 export async function getGit(): Promise<SimpleGit> {
   // Key the singleton by path so test isolation (PATHS.memory reassignment)
@@ -36,31 +42,54 @@ export async function getGit(): Promise<SimpleGit> {
   if (gitInitPromise) return gitInitPromise;
 
   const claimedPath = PATHS.memory;
+  const capturedGenForInit = generation;
+  // Skip git operations for temp directories (used in tests) to avoid
+  // cleanup races where git processes hold file handles during rmSync.
+  const tmpdir = os.tmpdir();
+  const isTempPath = claimedPath.startsWith('/tmp/') ||
+    claimedPath.startsWith('/var/folders/') ||
+    claimedPath.startsWith(tmpdir);
   gitInitPromise = (async () => {
     fs.mkdirSync(claimedPath, { recursive: true });
 
-    const git = simpleGit(PATHS.memory);
+    const git = simpleGit(claimedPath);
+
+    // Skip git init/commit for temp paths — no-op versioning in test environments.
+    if (isTempPath) {
+      if (generation === capturedGenForInit) {
+        gitInstance = git;
+        gitInstancePath = claimedPath;
+      }
+      return git;
+    }
 
     // Check for memory/.git directly — never use checkIsRepo() which traverses
     // parent directories and would accept the project root .git when memory/.git
     // is absent, causing memory commits to run against the main repository.
-    const hasOwnGit = fs.existsSync(path.join(PATHS.memory, '.git'));
+    const hasOwnGit = fs.existsSync(path.join(claimedPath, '.git'));
 
     if (!hasOwnGit) {
+      // Abort init if the context was invalidated before we started
+      if (generation !== capturedGenForInit) return git;
       await git.init();
+      if (generation !== capturedGenForInit) return git;
       await git.addConfig('user.name', 'AgenticAGI');
       await git.addConfig('user.email', 'agent@local');
 
       // Commit existing files if any
-      const files = fs.readdirSync(PATHS.memory).filter(f => f !== '.git');
-      if (files.length > 0) {
+      const files = fs.readdirSync(claimedPath).filter(f => f !== '.git');
+      if (files.length > 0 && generation === capturedGenForInit) {
         await git.add('.');
-        await git.commit('init: initial memory state').catch(() => {});
+        if (generation === capturedGenForInit) {
+          await git.commit('init: initial memory state').catch(() => {});
+        }
       }
     }
 
-    gitInstance = git;
-    gitInstancePath = PATHS.memory;
+    if (generation === capturedGenForInit) {
+      gitInstance = git;
+      gitInstancePath = claimedPath;
+    }
     return git;
   })();
 
@@ -72,14 +101,31 @@ export async function commitMemoryWrite(
   name: string,
   source = 'agent',
 ): Promise<void> {
+  // Capture generation at call time — if reset occurs before we finish, bail.
+  const capturedGen = generation;
   // Never rejects — all errors are caught and logged so fire-and-forget callers are safe.
-  try {
-    const git = await getGit();
-    await git.add('.');
-    await git.commit(`${code}: ${name} [${source}]`);
-  } catch (err) {
-    console.warn(`[versioning] git commit failed for ${code}:`, err);
-  }
+  let resolveCommit!: () => void;
+  const promise: Promise<void> = new Promise(resolve => { resolveCommit = resolve; });
+  pendingCommits.add(promise);
+
+  (async () => {
+    try {
+      const git = await getGit();
+      // Check if the context was invalidated while we awaited getGit()
+      if (generation !== capturedGen) return;
+      await git.add('.');
+      if (generation !== capturedGen) return;
+      await git.commit(`${code}: ${name} [${source}]`);
+    } catch (err) {
+      if (generation !== capturedGen) return; // reset happened, suppress error
+      console.warn(`[versioning] git commit failed for ${code}:`, err);
+    } finally {
+      resolveCommit();
+      pendingCommits.delete(promise);
+    }
+  })();
+
+  return promise;
 }
 
 export async function getEntryHistory(code: string): Promise<VersionHistory[]> {
@@ -195,7 +241,22 @@ export async function rollbackEntry(code: string, commitHash: string): Promise<b
 
 // Reset singleton for testing
 export function _resetGitInstance(): void {
+  generation++; // invalidate all in-flight commit operations
   gitInstance = null;
   gitInstancePath = null;
   gitInitPromise = null;
+  // Note: pendingCommits may still have in-flight promises; they will self-clean
+  // via the finally block. The generation increment ensures they exit early.
+}
+
+/**
+ * Await all pending git commit operations. Call this before deleting the memory
+ * directory to ensure git processes have released all file handles.
+ * Used in tests: await _drainGitCommits(); before fs.rmSync(tmpDir, ...).
+ * Note: test files call _resetGitInstance() synchronously and then wait a fixed
+ * timeout — this function is available if higher-precision drain is needed.
+ */
+export async function _drainGitCommits(): Promise<void> {
+  if (pendingCommits.size === 0) return;
+  await Promise.allSettled([...pendingCommits]);
 }

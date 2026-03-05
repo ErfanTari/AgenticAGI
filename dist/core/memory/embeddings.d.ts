@@ -13,6 +13,11 @@ export declare function storeChunks(chunks: Chunk[], embeddings?: Float32Array[]
  */
 export declare function cosineSimilarity(a: Float32Array, b: Float32Array): number;
 /**
+ * Compute and store an embedding BLOB directly on index_entries row.
+ * Tries Ollama/embedding endpoint; on failure silently skips.
+ */
+export declare function computeAndStoreEmbedding(code: string, text: string): Promise<void>;
+/**
  * Fetch embeddings from external API or LLM fallback.
  * First tries configured embedding endpoint, falls back to LLM-based generation.
  */

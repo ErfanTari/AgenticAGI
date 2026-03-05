@@ -5,6 +5,64 @@ import { transparency } from './transparency.js';
 import { queryEntries } from './memory/index.js';
 import { fetchByCode } from './memory/fetch.js';
 
+// --- Graded complexity (P6) ---
+
+export type ComplexityLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'MAX';
+
+export interface ComplexityAssessment {
+  level: ComplexityLevel;
+  reason: string;
+  estimatedSteps: number;
+}
+
+export async function assessComplexity(
+  message: string,
+  _classification: Classification,
+  llmHandler?: LLMHandler,
+): Promise<ComplexityAssessment> {
+  // We call the underlying complexity detection without going through isComplexTask wrapper
+  // to avoid potential circular reference issues
+  const { count, signals, skills } = countHeuristicSignals(message);
+
+  let isComplex = count >= 2;
+  let reason = count >= 2 ? `Heuristic: ${signals.join(', ')}` : 'No complexity signals';
+  let estimatedSteps = Math.max(1, skills.length + 1);
+
+  if (!isComplex && llmHandler && (count === 1 || message.length >= 100)) {
+    try {
+      const promptMsgs: Message[] = [
+        {
+          role: 'system',
+          content: `You are a task complexity analyzer. Return ONLY JSON: {"isComplex": true/false, "reason": "brief", "estimatedSteps": N}`,
+        },
+        { role: 'user', content: message },
+      ];
+      const resp = await llmHandler(promptMsgs, { maxTokens: 200 });
+      const cleaned = resp.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        isComplex = Boolean(parsed.isComplex);
+        reason = String(parsed.reason ?? reason);
+        estimatedSteps = Number(parsed.estimatedSteps ?? estimatedSteps);
+      }
+    } catch { /* use heuristic result */ }
+  }
+
+  let level: ComplexityLevel;
+  if (!isComplex) {
+    level = 'LOW';
+  } else if (estimatedSteps <= 3) {
+    level = 'MEDIUM';
+  } else if (estimatedSteps <= 6) {
+    level = 'HIGH';
+  } else {
+    level = 'MAX';
+  }
+
+  return { level, reason, estimatedSteps };
+}
+
 // --- Complexity Detection (Priority 2) ---
 
 export interface ComplexityResult {
@@ -540,6 +598,14 @@ async function findRelevantProcedure(message: string): Promise<string | null> {
   }
 }
 
+/**
+ * Extract CoT thought block from planner response.
+ */
+export function extractThought(raw: string): string | null {
+  const match = raw.match(/<thought>([\s\S]*?)<\/thought>/i);
+  return match ? match[1].trim() : null;
+}
+
 export async function decomposeTask(
   message: string,
   context: { skills: string; history?: string },
@@ -799,6 +865,12 @@ WEB BROWSING RULES (NEVER BREAK THESE):
       console.log(`[planner] Attempt ${attempt + 1} response (first 500 chars):`, response.slice(0, 500));
     }
 
+    // Extract CoT thought block and emit as transparency event
+    const thought = extractThought(response);
+    if (thought) {
+      transparency.emit({ type: 'planner_reasoning', data: { thought } });
+    }
+
     // Sanitize response before parsing
     const sanitized = sanitizePlannerJson(response);
     if (!sanitized || !sanitized.startsWith('{')) {
@@ -871,4 +943,42 @@ WEB BROWSING RULES (NEVER BREAK THESE):
   }
 
   throw new Error('Failed to decompose task after retries');
+}
+
+/**
+ * Verify boolean assertions about a plan before execution.
+ */
+export async function verifyPlanAssertions(
+  plan: TaskPlan,
+  llmHandler: LLMHandler,
+): Promise<{ passed: boolean; failedAssertions: string[]; rewritePrompt?: string }> {
+  try {
+    const stepSummary = plan.steps.map(s => `- ${s.id} (${s.skill}): ${s.description}`).join('\n');
+
+    const messages: Message[] = [
+      {
+        role: 'system',
+        content: 'You are a plan verifier. Check if the plan is safe, feasible, and correct. Return JSON: {"passed": true/false, "failedAssertions": ["assertion1"], "rewritePrompt": "optional fix hint"}',
+      },
+      {
+        role: 'user',
+        content: `Goal: ${plan.goal}\n\nSteps:\n${stepSummary}`,
+      },
+    ];
+
+    const response = await llmHandler(messages, { maxTokens: 300 });
+    const cleaned = response.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        passed: Boolean(parsed.passed),
+        failedAssertions: Array.isArray(parsed.failedAssertions) ? parsed.failedAssertions : [],
+        rewritePrompt: parsed.rewritePrompt,
+      };
+    }
+  } catch { /* advisory — non-fatal */ }
+
+  return { passed: true, failedAssertions: [] };
 }

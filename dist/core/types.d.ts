@@ -1,5 +1,5 @@
 import type { IndexEntry, Relationship } from './memory/types.js';
-export type Intent = 'greeting' | 'code_fetch' | 'memory_query' | 'synthesis_query' | 'relationship_query' | 'relationship_write' | 'memory_write' | 'web_search' | 'skill' | 'planned_workflow' | 'general';
+export type Intent = 'greeting' | 'code_fetch' | 'memory_query' | 'synthesis_query' | 'relationship_query' | 'relationship_write' | 'memory_write' | 'web_search' | 'skill' | 'planned_workflow' | 'episodic_query' | 'meeting' | 'general';
 export interface Classification {
     intent: Intent;
     codes: string[];

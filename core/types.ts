@@ -11,6 +11,8 @@ export type Intent =
   | 'web_search'
   | 'skill'
   | 'planned_workflow'
+  | 'episodic_query'
+  | 'meeting'
   | 'general';
 
 export interface Classification {

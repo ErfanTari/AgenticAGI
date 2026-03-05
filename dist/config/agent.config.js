@@ -11,6 +11,9 @@ export const PATHS = {
     memory: path.join(ROOT, 'memory'),
     index: path.join(ROOT, 'index'),
     db: path.join(ROOT, 'index', 'memory.sqlite'),
+    workspace: path.join(ROOT, 'workspace'),
+    logs: path.join(ROOT, 'workspace', 'logs'),
+    projects: path.join(ROOT, 'workspace', 'projects'),
 };
 export const TYPE_MAP = {
     'WHO.CT': { notebook: 'WHO', type: 'CT', meaning: 'Contact', subfolder: 'WHO/contacts' },
@@ -19,12 +22,21 @@ export const TYPE_MAP = {
     'WHAT.KN': { notebook: 'WHAT', type: 'KN', meaning: 'Knowledge entry', subfolder: 'WHAT/knowledge' },
     'WHEN.CA': { notebook: 'WHEN', type: 'CA', meaning: 'Calendar event', subfolder: 'WHEN/calendar' },
     'WHEN.DL': { notebook: 'WHEN', type: 'DL', meaning: 'Deadline', subfolder: 'WHEN/deadlines' },
+    'WHEN.EV': { notebook: 'WHEN', type: 'EV', meaning: 'Episodic event', subfolder: 'WHEN/events' },
+    'WHEN.RF': { notebook: 'WHEN', type: 'RF', meaning: 'Reflection', subfolder: 'WHEN/reflections' },
+    'WHEN.HX': { notebook: 'WHEN', type: 'HX', meaning: 'History entry', subfolder: 'WHEN/history' },
     'HOW.PR': { notebook: 'HOW', type: 'PR', meaning: 'Procedure', subfolder: 'HOW/procedures' },
+    'HOW.SK': { notebook: 'HOW', type: 'SK', meaning: 'Skill entry', subfolder: 'HOW/skills' },
     'WHY.MT': { notebook: 'WHY', type: 'MT', meaning: 'Meta reflection', subfolder: 'WHY/meta' },
     'WHY.QU': { notebook: 'WHY', type: 'QU', meaning: 'Open question', subfolder: 'WHY/questions' },
     'NOW.TD': { notebook: 'NOW', type: 'TD', meaning: 'Todo item', subfolder: 'NOW/todos' },
     'NOW.RP': { notebook: 'NOW', type: 'RP', meaning: 'Report', subfolder: 'NOW/reports' },
+    'NOW.LOG': { notebook: 'NOW', type: 'LOG', meaning: 'Log entry', subfolder: 'NOW/logs' },
     'PLAN.PL': { notebook: 'PLAN', type: 'PL', meaning: 'Planning entry', subfolder: 'PLAN/planning' },
+    'PLAN.EX': { notebook: 'PLAN', type: 'EX', meaning: 'Execution state', subfolder: 'PLAN/execution' },
+    'PLAN.CT': { notebook: 'PLAN', type: 'CT', meaning: 'Constraint', subfolder: 'PLAN/constraints' },
+    'PLAN.MS': { notebook: 'PLAN', type: 'MS', meaning: 'Milestone', subfolder: 'PLAN/milestones' },
+    'PLAN.PJ': { notebook: 'PLAN', type: 'PJ', meaning: 'Project brain', subfolder: 'PLAN/projects' },
 };
 export function resolveTypeKey(nb, type) {
     const key = `${nb}.${type}`;

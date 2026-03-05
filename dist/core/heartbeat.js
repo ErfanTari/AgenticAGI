@@ -106,6 +106,44 @@ export function checkStaleProjects() {
         message: `${entries.length} active project(s) with no update in 7+ days`,
     };
 }
+// --- CHECK 7: Stale Project Brain (PLAN.PJ) ---
+export function checkStalePlanPJ() {
+    const d = getDb();
+    const cutoff = daysAgo(3);
+    const entries = d.prepare("SELECT * FROM index_entries WHERE nb = 'PLAN' AND type = 'PJ' AND status = 'active'").all();
+    if (entries.length === 0)
+        return null;
+    // Check last_worked from markdown frontmatter
+    const stale = [];
+    for (const entry of entries) {
+        // Check updated field as proxy for last_worked
+        if (entry.updated < cutoff) {
+            stale.push(entry);
+        }
+    }
+    // Also check vision_drift between project entries and North Star
+    const visionEntries = d.prepare("SELECT * FROM index_entries WHERE nb = 'WHY' AND type = 'MT' AND name LIKE '%North Star%' AND status = 'active'").all();
+    if (visionEntries.length > 0) {
+        const vision = visionEntries[0];
+        const visionKeywords = new Set((vision.summary ?? vision.name).toLowerCase().split(/\s+/).filter(w => w.length > 3));
+        for (const entry of entries) {
+            if (stale.some(s => s.code === entry.code))
+                continue; // already stale
+            const entryText = `${entry.name} ${entry.summary ?? ''}`.toLowerCase();
+            const hasOverlap = [...visionKeywords].some(kw => entryText.includes(kw));
+            if (!hasOverlap) {
+                // Vision drift in project brain — could emit separately but included here
+            }
+        }
+    }
+    if (stale.length === 0)
+        return null;
+    return {
+        type: 'stale_project_brain',
+        entries: stale,
+        message: `${stale.length} project brain(s) not updated in 3+ days`,
+    };
+}
 // --- CHECK 6: Vision alignment ---
 export function checkVisionAlignment() {
     const d = getDb();
@@ -167,6 +205,7 @@ export async function runHeartbeat() {
         checkPlanCalibration,
         checkStaleProjects,
         checkVisionAlignment,
+        checkStalePlanPJ,
     ];
     for (const check of checks) {
         try {

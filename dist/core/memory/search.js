@@ -1,24 +1,38 @@
+import fs from 'node:fs';
 import { EMBEDDING_CONFIG } from '../../config/agent.config.js';
-import { getEntryByCode } from './index.js';
+import { getDb, getEntryByCode, queryEntries } from './index.js';
 import { searchBM25 } from './fts.js';
 import { fetchEmbeddings, searchVectors } from './embeddings.js';
+import { indexContent } from './fts.js';
 /**
  * Reciprocal Rank Fusion — merges two ranked lists into one.
  * Standard RRF with k=60. Higher score = more relevant.
  */
 export function reciprocalRankFusion(bm25, vector, k = 60) {
     const scores = new Map();
+    // Track best (highest) original score for each code across both lists
+    const bestScore = new Map();
     for (let i = 0; i < bm25.length; i++) {
         const code = bm25[i].code;
         scores.set(code, (scores.get(code) ?? 0) + 1 / (k + i + 1));
+        bestScore.set(code, Math.max(bestScore.get(code) ?? 0, bm25[i].score ?? 0));
     }
     for (let i = 0; i < vector.length; i++) {
         const code = vector[i].code;
+        // Vector scores weighted slightly higher than BM25 for tie-breaking (semantic signal)
+        const weightedScore = (vector[i].score ?? 0) * 1.01;
         scores.set(code, (scores.get(code) ?? 0) + 1 / (k + i + 1));
+        bestScore.set(code, Math.max(bestScore.get(code) ?? 0, weightedScore));
     }
     return Array.from(scores.entries())
         .map(([code, score]) => ({ code, score }))
-        .sort((a, b) => b.score - a.score);
+        .sort((a, b) => {
+        const diff = b.score - a.score;
+        if (Math.abs(diff) > 1e-10)
+            return diff;
+        // Tie-break: entry with higher best original score ranks first
+        return (bestScore.get(b.code) ?? 0) - (bestScore.get(a.code) ?? 0);
+    });
 }
 /**
  * Hybrid search — orchestrates BM25 + optional vector search + RRF merge.
@@ -73,3 +87,50 @@ export async function hybridSearch(query, options) {
 }
 // Keep backward-compatible export name
 export { cosineSimilarity } from './embeddings.js';
+// --- Embedding migration detection ---
+// BUG-7 fix: store full model name string in settings table instead of a char-code sum hash.
+// Char-code sums can collide (e.g. "abc" == "bca"), causing silent false negatives.
+export async function reIndexAllEntries() {
+    try {
+        const d = getDb();
+        const entries = queryEntries({}).filter(e => e.status !== 'archived');
+        console.log(`[embed-migration] Re-indexing ${entries.length} entries...`);
+        // BUG-H5 fix: clear all FTS rows before full rebuild to prevent duplicates
+        d.prepare('DELETE FROM fts_content').run();
+        // BUG-H6 fix: clear stale chunk vectors so hybrid search doesn't use wrong-model embeddings
+        d.prepare('DELETE FROM chunks').run();
+        for (const entry of entries) {
+            try {
+                if (!fs.existsSync(entry.path))
+                    continue;
+                const content = fs.readFileSync(entry.path, 'utf-8');
+                indexContent(entry.code, entry.nb, content);
+            }
+            catch {
+                // per-entry errors are silently ignored
+            }
+        }
+        console.log('[embed-migration] Re-indexing complete. Chunk vectors cleared — will regenerate on next write.');
+    }
+    catch (err) {
+        console.warn('[embed-migration] reIndexAllEntries failed:', err);
+    }
+}
+export async function checkEmbeddingMigration() {
+    try {
+        const d = getDb();
+        const currentModel = process.env.EMBEDDING_MODEL ?? '';
+        const row = d.prepare("SELECT value FROM settings WHERE key = 'embedding_model'")
+            .get();
+        const storedModel = row?.value ?? '';
+        if (storedModel !== '' && storedModel !== currentModel) {
+            console.warn(`[embed-migration] Embedding model changed ("${storedModel}" → "${currentModel}"). Re-indexing all entries...`);
+            await reIndexAllEntries();
+        }
+        // Update stored model name (upsert)
+        d.prepare("INSERT INTO settings (key, value) VALUES ('embedding_model', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(currentModel);
+    }
+    catch {
+        // Never block any caller
+    }
+}
