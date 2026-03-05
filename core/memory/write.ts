@@ -9,6 +9,23 @@ import { chunkMarkdown } from './chunks.js';
 import { storeChunks, fetchEmbeddings } from './embeddings.js';
 import { commitMemoryWrite } from './versioning.js';
 
+/**
+ * FIX 3 — Atomic file write using a .tmp intermediate file.
+ * Writes to filePath.tmp first, then atomically renames to filePath.
+ * On the same filesystem, rename() is atomic — no partial file is ever visible.
+ * If rename fails, the .tmp file is cleaned up before throwing.
+ */
+export function atomicWriteFile(filePath: string, content: string): void {
+  const tmpPath = filePath + '.tmp';
+  try {
+    fs.writeFileSync(tmpPath, content, 'utf8');
+    fs.renameSync(tmpPath, filePath);
+  } catch (err) {
+    try { fs.unlinkSync(tmpPath); } catch { /* ignore cleanup error */ }
+    throw err;
+  }
+}
+
 function sanitizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
@@ -81,7 +98,7 @@ export function createEntry(input: CreateEntryInput): IndexEntry {
   // Step 3: Write file to disk after successful transaction
   try {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, markdown, 'utf-8');
+    atomicWriteFile(filePath, markdown);
   } catch (err) {
     // File write failed after SQLite committed — log error but do NOT throw.
     // The SQLite row is valid; the entry can be repaired on next upsert.
@@ -143,7 +160,7 @@ export function upsertEntry(
       ).run(input.summary ?? '', input.status ?? 'active', updated, newFilePath, existing.code);
       try {
         fs.mkdirSync(path.dirname(newFilePath), { recursive: true });
-        fs.writeFileSync(newFilePath, markdown, 'utf-8');
+        atomicWriteFile(newFilePath, markdown);
       } catch (err) {
         console.warn(`[memory-write] File recreate failed for ${existing.code}:`, err);
       }
@@ -172,7 +189,7 @@ export function upsertEntry(
         if (headerEnd >= 0) {
           const header = md.slice(0, headerEnd + 5);
           const newMd = header + '\n# ' + entry.name + '\n\n' + (input.body ?? '') + '\n';
-          fs.writeFileSync(entry.path, newMd, 'utf-8');
+          atomicWriteFile(entry.path, newMd);
         }
       }
     });
@@ -216,7 +233,7 @@ export function updateEntry(code: string, updates: { status?: string; summary?: 
       .replace(/^status: .+$/m, `status: ${newStatus}`)
       .replace(/^summary: .+$/m, `summary: ${newSummary}`)
       .replace(/^updated: .+$/m, `updated: ${updated}`);
-    fs.writeFileSync(entry.path, newContent, 'utf-8');
+    atomicWriteFile(entry.path, newContent);
   }
 
   return { ...entry, status: newStatus, summary: newSummary, updated };

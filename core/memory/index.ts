@@ -94,6 +94,26 @@ function parseDiskEntry(filePath: string): ParsedDiskEntry | null {
 }
 
 function bootstrapIndexFromMemoryFiles(): void {
+  // FIX 3: Clean up any orphaned .tmp files left by a crashed atomic write.
+  if (fs.existsSync(PATHS.memory)) {
+    const cleanTmpFiles = (dir: string): void => {
+      let entries: string[];
+      try { entries = fs.readdirSync(dir); } catch { return; }
+      for (const entry of entries) {
+        const full = path.join(dir, entry);
+        try {
+          const stat = fs.statSync(full);
+          if (stat.isDirectory()) {
+            cleanTmpFiles(full);
+          } else if (entry.endsWith('.md.tmp')) {
+            try { fs.unlinkSync(full); } catch { /* ignore */ }
+          }
+        } catch { /* ignore stat errors */ }
+      }
+    };
+    cleanTmpFiles(PATHS.memory);
+  }
+
   const d = getDb();
   const countRow = d.prepare('SELECT COUNT(*) as count FROM index_entries').get() as { count: number };
   if (countRow.count > 0) return;

@@ -265,6 +265,43 @@ export function checkVisionAlignment(): Notification | null {
 
 // --- Main heartbeat ---
 
+/**
+ * FIX 4 — Idempotent heartbeat alert creation.
+ * If an active WHY.MT alert with the same type already exists, updates it in place
+ * instead of creating a duplicate. Prevents alert accumulation on extended absence.
+ */
+function upsertHeartbeatAlert(
+  type: string,
+  summary: string,
+  body: string,
+  ran_at: string,
+): IndexEntry {
+  const d = getDb();
+  const existing = d.prepare(`
+    SELECT code FROM index_entries
+    WHERE nb = 'WHY' AND type = 'MT'
+    AND status = 'active'
+    AND name LIKE ?
+    LIMIT 1
+  `).get(`%${type}%`) as { code: string } | undefined;
+
+  if (existing) {
+    // Update timestamp and summary — no new entry created
+    d.prepare('UPDATE index_entries SET updated = ?, summary = ? WHERE code = ?')
+      .run(ran_at, summary, existing.code);
+    const row = d.prepare('SELECT * FROM index_entries WHERE code = ?').get(existing.code) as IndexEntry;
+    return row;
+  }
+  return createEntry({
+    nb: 'WHY',
+    type: 'MT',
+    name: `Heartbeat — ${type}`,
+    status: 'active',
+    summary,
+    body,
+  });
+}
+
 export async function runHeartbeat(): Promise<HeartbeatResult> {
   // Guard: skip all checks if DB is not initialized
   try {
@@ -313,17 +350,19 @@ export async function runHeartbeat(): Promise<HeartbeatResult> {
       const body = `## Findings\n\n- **${notification.type}**: ${notification.message}\n\n## Details\n\n` +
         notification.entries.map(e => `- ${e.code} — ${e.name} (${e.status})`).join('\n');
 
-      const entry = createEntry({
-        nb: 'WHY',
-        type: 'MT',
-        name: `Heartbeat ${ran_at} — ${notification.type}`,
-        status: 'active',
-        summary: notification.message,
+      const entry = upsertHeartbeatAlert(
+        notification.type,
+        notification.message,
         body,
-      });
+        ran_at,
+      );
 
       created.push(entry);
-      insertQueue.run(entry.code, notification.message, ran_at);
+      try {
+        insertQueue.run(entry.code, notification.message, ran_at);
+      } catch {
+        // Duplicate key on heartbeat_queue — entry already queued, safe to ignore
+      }
     }
   }
 

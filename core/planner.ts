@@ -339,9 +339,17 @@ function extractFirstJsonObject(text: string): string | null {
 }
 
 function sanitizePlannerJson(raw: string): string {
+  // Step 0: Strip <think>/<thought> blocks BEFORE extracting JSON.
+  // If a think block appears before the real JSON and contains '{', extractFirstJsonObject
+  // would incorrectly grab content from inside the think block instead of the actual TaskPlan.
+  const preStripped = raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
+    .trim();
+
   // Step 1: Extract first complete JSON object (bracket-depth counter stops at first complete object,
   // preventing two concatenated JSON objects from being merged into an unparseable blob)
-  const extracted = extractFirstJsonObject(raw);
+  const extracted = extractFirstJsonObject(preStripped);
   if (!extracted) {
     if (process.env.DEBUG_PLANNER === 'true') {
       console.log('[planner] No valid JSON object found');

@@ -495,6 +495,15 @@ export async function buildContext(
     data: { tokens: estimateTokens(messages), sections },
   });
 
+  // FIX 2: Guard — LM Studio jinja templates require the last message to be role=user.
+  // If the last message is role=assistant, the template will generate a malformed prompt.
+  const lastMsg = messages[messages.length - 1];
+  if (lastMsg?.role !== 'user') {
+    throw new Error(
+      `buildContext: last message must be role=user, got role=${lastMsg?.role ?? 'undefined'}`,
+    );
+  }
+
   return messages;
 }
 

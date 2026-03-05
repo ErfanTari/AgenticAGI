@@ -1,5 +1,6 @@
 import type { Message, LLMHandler, AgentResponse, Classification } from './types.js';
 import { classifyIntent } from './intent.js';
+import { classifyIntentLLM } from './intent-llm.js';
 import { resolveQuery } from './resolver.js';
 import { buildContext } from './context.js';
 import { callLLM } from './llm.js';
@@ -176,7 +177,23 @@ async function _processMessage(
   }
 
   // 1. Classify intent
-  const classification = classifyIntent(message);
+  // FIX 5: Hybrid classification — regex fast-path, LLM fallback for ambiguous 'general'
+  let classification = classifyIntent(message);
+  if (classification.intent === 'general') {
+    const handler = options?.llmHandler ?? callLLM;
+    try {
+      const llmIntent = await classifyIntentLLM(message, handler);
+      if (llmIntent !== 'general') {
+        classification = { ...classification, intent: llmIntent, classifier: 'llm' };
+      } else {
+        classification = { ...classification, classifier: 'llm' };
+      }
+    } catch {
+      classification = { ...classification, classifier: 'regex' };
+    }
+  } else {
+    classification = { ...classification, classifier: 'regex' };
+  }
   transparency.emit({ type: 'intent', data: classification });
 
   // 2. Greeting — no memory, no LLM

@@ -26,6 +26,7 @@ export interface Classification {
   skill?: string;
   skillInput?: Record<string, unknown>;
   due_date?: string;
+  classifier?: 'regex' | 'llm';
 }
 
 export interface Message {

@@ -128,7 +128,7 @@ describe('BUG-C2: createEntry writes SQLite before file', () => {
     const originalWriteFileSync = fs.writeFileSync.bind(fs);
     vi.spyOn(fs, 'writeFileSync').mockImplementation((...args: Parameters<typeof fs.writeFileSync>) => {
       callCount++;
-      if (callCount === 1 && String(args[0]).endsWith('.md')) {
+      if (callCount === 1 && String(args[0]).endsWith(".md.tmp")) {
         throw new Error('Simulated file write failure');
       }
       return originalWriteFileSync(...args);
