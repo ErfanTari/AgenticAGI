@@ -1,6 +1,9 @@
 import type { Message, ResolvedMemory, Intent, LLMHandler } from './types.js';
 import type { Skill } from './skills/types.js';
 import type { IndexEntry } from './memory/types.js';
+export declare function fetchOwnerPersona(): string | null;
+/** Reset persona cache — used in tests */
+export declare function _resetPersonaCache(): void;
 export interface ContextHistory {
     turns: Message[];
     summary?: string;

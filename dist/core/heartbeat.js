@@ -144,6 +144,23 @@ export function checkStalePlanPJ() {
         message: `${stale.length} project brain(s) not updated in 3+ days`,
     };
 }
+// --- CHECK: AMemLinker — link entries with no relationships (max 5 per heartbeat) ---
+export function checkAMemLinker() {
+    const d = getDb();
+    const MAX_PER_RUN = 5;
+    // Find entries with no relationships, ordered by updated ASC (oldest first)
+    const entries = d.prepare(`
+    SELECT ie.code FROM index_entries ie
+    WHERE ie.status = 'active'
+      AND NOT EXISTS (
+        SELECT 1 FROM relationships r WHERE r.from_code = ie.code OR r.to_code = ie.code
+      )
+    ORDER BY ie.updated ASC
+    LIMIT ?
+  `).all(MAX_PER_RUN);
+    const codes = entries.map(e => e.code);
+    return { processed: codes.length, codes };
+}
 // --- CHECK 6: Vision alignment ---
 export function checkVisionAlignment() {
     const d = getDb();

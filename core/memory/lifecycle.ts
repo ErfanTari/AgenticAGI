@@ -68,6 +68,11 @@ export function runDecayCycle(): void {
     });
 
     updateAll();
+
+    // Always keep WHO entries and PLAN.CT entries on active page
+    db.prepare(
+      "UPDATE index_entries SET active_page = 1 WHERE nb = 'WHO' OR (nb = 'PLAN' AND type = 'CT')"
+    ).run();
   } catch (err) {
     console.warn('[lifecycle] runDecayCycle failed:', err);
   }

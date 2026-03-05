@@ -70,7 +70,16 @@ export async function runAutonomousLoop(
       const currentIdx: number = planEx.current_milestone ?? 0;
 
       if (currentIdx >= milestones.length) {
+        const { savePlanEX } = await import('./memory/plan-ex.js');
+        savePlanEX({ ...planEx, checkpoint_ts: new Date().toISOString() });
         return { completed: true, milestoneDone: 'All milestones completed' };
+      }
+
+      // conf_score check: pause if below threshold
+      if ((planEx.conf_score ?? 1) < 0.8) {
+        const { savePlanEX } = await import('./memory/plan-ex.js');
+        savePlanEX({ ...planEx, checkpoint_ts: new Date().toISOString() });
+        return { completed: false, pauseReason: `conf_score ${planEx.conf_score} below threshold 0.8` };
       }
 
       const milestone = milestones[currentIdx];
@@ -97,22 +106,28 @@ export async function runAutonomousLoop(
           // Mark milestone done
           const updatedMilestones = [...milestones];
           updatedMilestones[currentIdx] = { ...milestone, done: true };
-          const { updatePlanEX } = await import('./memory/plan-ex.js');
+          const { updatePlanEX, savePlanEX } = await import('./memory/plan-ex.js');
           updatePlanEX(planEx.code, {
             milestones: updatedMilestones,
             current_milestone: currentIdx + 1,
             last_action: milestone.name,
             checkpoint_ts: new Date().toISOString(),
           });
+          planEx = { ...planEx, milestones: updatedMilestones, current_milestone: currentIdx + 1, last_action: milestone.name };
+          savePlanEX({ ...planEx, checkpoint_ts: new Date().toISOString() });
 
           return { completed: false, milestoneDone: milestone.name };
         } else {
+          const { savePlanEX } = await import('./memory/plan-ex.js');
+          savePlanEX({ ...planEx, checkpoint_ts: new Date().toISOString(), last_action: milestone.name });
           return {
             completed: false,
             pauseReason: execResult.abortReason ?? `Milestone failed: ${milestone.name}`,
           };
         }
       } catch (err) {
+        const { savePlanEX } = await import('./memory/plan-ex.js');
+        savePlanEX({ ...planEx, checkpoint_ts: new Date().toISOString() });
         return {
           completed: false,
           pauseReason: `Error executing milestone "${milestone.name}": ${String(err)}`,
@@ -120,6 +135,8 @@ export async function runAutonomousLoop(
       }
     }
 
+    const { savePlanEX } = await import('./memory/plan-ex.js');
+    savePlanEX({ ...planEx, checkpoint_ts: new Date().toISOString() });
     return { completed: false, pauseReason: 'Maximum iterations reached' };
 
   } catch (err) {

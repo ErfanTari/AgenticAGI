@@ -56,6 +56,49 @@ function stripThinkingTags(raw) {
     return stripped;
 }
 /**
+ * Collapse consecutive system messages and validate message ordering.
+ *
+ * Qwen3.5's jinja template requires:
+ *   - Exactly one system message at index 0 (no consecutive system messages)
+ *   - The final message must have role "user"
+ *   - No two consecutive messages with the same role
+ *
+ * This function merges all system-role messages into the first system entry,
+ * then verifies the invariants, logging a warning for anything it cannot fix.
+ */
+function sanitizeMessages(messages) {
+    if (messages.length === 0)
+        return messages;
+    // 1. Merge all system messages into the first system entry
+    const systemContents = messages.filter(m => m.role === 'system').map(m => m.content);
+    const nonSystem = messages.filter(m => m.role !== 'system');
+    const result = systemContents.length > 0
+        ? [{ role: 'system', content: systemContents.join('\n\n') }, ...nonSystem]
+        : [...nonSystem];
+    // 2. Validate: last message must be role "user"
+    const last = result[result.length - 1];
+    if (last?.role !== 'user') {
+        console.warn(`[llm] WARNING: messages array does not end with role "user" — last role is "${last?.role}". ` +
+            `Qwen3.5 jinja template will reject this.`);
+    }
+    // 3. Validate: no two consecutive messages with the same role (after system merge)
+    for (let i = 1; i < result.length; i++) {
+        if (result[i].role === result[i - 1].role) {
+            console.warn(`[llm] WARNING: consecutive messages with role "${result[i].role}" at indices ${i - 1} and ${i}. ` +
+                `This will break Qwen3.5's jinja template.`);
+        }
+    }
+    // 4. Log the full array for debugging
+    if (process.env.DEBUG_LLM === 'true') {
+        console.log('[llm] messages sent to LM Studio:');
+        for (const [i, m] of result.entries()) {
+            const preview = m.content.length > 120 ? m.content.slice(0, 120) + '…' : m.content;
+            console.log(`  [${i}] role=${m.role}  content=${JSON.stringify(preview)}`);
+        }
+    }
+    return result;
+}
+/**
  * Call the primary LLM (Mac Studio / OpenAI-compatible endpoint).
  * Timeout is tiered by model size (70B+=90s, 7B-14B=20s, 1B-4B=10s, default=20s).
  * On timeout, logs a warning with model name so caller knows what happened.
@@ -67,6 +110,7 @@ async function callPrimary(messages, options) {
         console.warn('[llm] Still thinking — %s is processing a complex query. Timeout after %ds.', LLM_CONFIG.model, timeoutMs / 1000);
         controller.abort();
     }, timeoutMs);
+    const sanitized = sanitizeMessages(messages);
     try {
         const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY;
         const headers = { 'Content-Type': 'application/json' };
@@ -74,7 +118,7 @@ async function callPrimary(messages, options) {
             headers.Authorization = `Bearer ${apiKey}`;
         const requestBody = {
             model: LLM_CONFIG.model,
-            messages,
+            messages: sanitized,
             max_tokens: options?.maxTokens ?? LLM_CONFIG.maxTokens,
             temperature: LLM_CONFIG.temperature,
         };

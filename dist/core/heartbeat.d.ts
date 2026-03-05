@@ -17,5 +17,9 @@ export declare function checkStaleQuestions(): Notification | null;
 export declare function checkPlanCalibration(): Notification | null;
 export declare function checkStaleProjects(): Notification | null;
 export declare function checkStalePlanPJ(): Notification | null;
+export declare function checkAMemLinker(): {
+    processed: number;
+    codes: string[];
+};
 export declare function checkVisionAlignment(): Notification | null;
 export declare function runHeartbeat(): Promise<HeartbeatResult>;

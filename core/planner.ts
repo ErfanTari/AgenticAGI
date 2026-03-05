@@ -952,33 +952,53 @@ export async function verifyPlanAssertions(
   plan: TaskPlan,
   llmHandler: LLMHandler,
 ): Promise<{ passed: boolean; failedAssertions: string[]; rewritePrompt?: string }> {
-  try {
-    const stepSummary = plan.steps.map(s => `- ${s.id} (${s.skill}): ${s.description}`).join('\n');
+  const MAX_REJECTION_CYCLES = 2;
+  let rejectionCycles = 0;
+  let lastFailedAssertions: string[] = [];
+  let lastRewritePrompt: string | undefined;
 
-    const messages: Message[] = [
-      {
-        role: 'system',
-        content: 'You are a plan verifier. Check if the plan is safe, feasible, and correct. Return JSON: {"passed": true/false, "failedAssertions": ["assertion1"], "rewritePrompt": "optional fix hint"}',
-      },
-      {
-        role: 'user',
-        content: `Goal: ${plan.goal}\n\nSteps:\n${stepSummary}`,
-      },
-    ];
+  while (rejectionCycles < MAX_REJECTION_CYCLES) {
+    rejectionCycles++;
+    try {
+      const stepSummary = plan.steps.map(s => `- ${s.id} (${s.skill}): ${s.description}`).join('\n');
 
-    const response = await llmHandler(messages, { maxTokens: 300 });
-    const cleaned = response.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      const messages: Message[] = [
+        {
+          role: 'system',
+          content: 'You are a plan verifier. Check if the plan is safe, feasible, and correct. Return JSON: {"passed": true/false, "failedAssertions": ["assertion1"], "rewritePrompt": "optional fix hint"}',
+        },
+        {
+          role: 'user',
+          content: `Goal: ${plan.goal}\n\nSteps:\n${stepSummary}`,
+        },
+      ];
 
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return {
-        passed: Boolean(parsed.passed),
-        failedAssertions: Array.isArray(parsed.failedAssertions) ? parsed.failedAssertions : [],
-        rewritePrompt: parsed.rewritePrompt,
-      };
+      const response = await llmHandler(messages, { maxTokens: 300 });
+      const cleaned = response.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        const passed = Boolean(parsed.passed);
+        const failedAssertions = Array.isArray(parsed.failedAssertions) ? parsed.failedAssertions : [];
+        const rewritePrompt = parsed.rewritePrompt;
+
+        if (passed) {
+          return { passed: true, failedAssertions: [] };
+        }
+
+        lastFailedAssertions = failedAssertions;
+        lastRewritePrompt = rewritePrompt;
+        // Continue to next rejection cycle
+      } else {
+        // No JSON found — treat as passed to avoid false rejection
+        return { passed: true, failedAssertions: [] };
+      }
+    } catch { /* advisory — non-fatal, treat as passed */
+      return { passed: true, failedAssertions: [] };
     }
-  } catch { /* advisory — non-fatal */ }
+  }
 
-  return { passed: true, failedAssertions: [] };
+  // Exhausted rejection cycles — return failed
+  return { passed: false, failedAssertions: lastFailedAssertions, rewritePrompt: lastRewritePrompt };
 }

@@ -2,7 +2,7 @@
  * P3: WHEN.EV + WHEN.RF + WHEN.HX — Episodic memory system.
  */
 import { createEntry } from './write.js';
-import { queryEntries } from './index.js';
+import { queryEntries, getEntryByCode, getDb } from './index.js';
 import type { LLMHandler } from '../types.js';
 
 export interface EpisodicEvent {
@@ -132,7 +132,7 @@ export async function compactEpisodicHistory(llmHandler: LLMHandler): Promise<vo
       compacted = summaryText;
     }
 
-    createEntry({
+    const hxEntry = createEntry({
       nb: 'WHEN',
       type: 'HX',
       name: `History: ${new Date().toISOString().slice(0, 10)}`,
@@ -140,6 +140,21 @@ export async function compactEpisodicHistory(llmHandler: LLMHandler): Promise<vo
       summary: 'Compacted episodic history',
       body: compacted,
     });
+
+    // Only archive source entries AFTER confirming WHEN.HX was written to SQLite
+    const confirmed = getEntryByCode(hxEntry.code);
+    if (confirmed) {
+      const db = getDb();
+      const archiveStmt = db.prepare("UPDATE index_entries SET status = 'archived' WHERE code = ?");
+      const archiveAll = db.transaction(() => {
+        for (const ev of oldest) {
+          archiveStmt.run(ev.code);
+        }
+      });
+      archiveAll();
+    } else {
+      console.warn('[episodic] WHEN.HX not confirmed in SQLite — source WHEN.EV entries NOT archived');
+    }
   } catch (err) {
     console.warn('[episodic] compactEpisodicHistory failed:', err);
   }

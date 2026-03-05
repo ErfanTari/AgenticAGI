@@ -190,6 +190,27 @@ export function checkStalePlanPJ(): Notification | null {
   };
 }
 
+// --- CHECK: AMemLinker — link entries with no relationships (max 5 per heartbeat) ---
+
+export function checkAMemLinker(): { processed: number; codes: string[] } {
+  const d = getDb();
+  const MAX_PER_RUN = 5;
+
+  // Find entries with no relationships, ordered by updated ASC (oldest first)
+  const entries = d.prepare(`
+    SELECT ie.code FROM index_entries ie
+    WHERE ie.status = 'active'
+      AND NOT EXISTS (
+        SELECT 1 FROM relationships r WHERE r.from_code = ie.code OR r.to_code = ie.code
+      )
+    ORDER BY ie.updated ASC
+    LIMIT ?
+  `).all(MAX_PER_RUN) as Array<{ code: string }>;
+
+  const codes = entries.map(e => e.code);
+  return { processed: codes.length, codes };
+}
+
 // --- CHECK 6: Vision alignment ---
 
 export function checkVisionAlignment(): Notification | null {

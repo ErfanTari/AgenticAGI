@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { createEntry } from './write.js';
 import { queryEntries, getDb } from './index.js';
 import { fetchByCode } from './fetch.js';
+import { transparency } from '../transparency.js';
 import type { IndexEntry } from './types.js';
 
 export interface Milestone {
@@ -102,9 +103,35 @@ export function loadActivePlanEX(): PlanEXEntry | null {
   const entries = queryEntries({ nb: 'PLAN', type: 'EX', status: 'active' });
   if (entries.length === 0) return null;
 
-  // Return most recently updated
-  const sorted = entries.sort((a, b) => b.updated.localeCompare(a.updated));
-  const entry = sorted[0];
+  if (entries.length > 1) {
+    console.warn(`[plan-ex] WARNING: ${entries.length} active PLAN.EX entries found — expected at most 1`);
+    transparency.emit({
+      type: 'error',
+      data: {
+        source: 'plan-ex',
+        error: `Multiple active PLAN.EX entries (${entries.length}) — returning most recent by checkpoint_ts`,
+      },
+    });
+  }
+
+  // Sort by checkpoint_ts DESC by reading the file data
+  const withCheckpoint = entries.map(e => {
+    const fetched = fetchByCode(e.code);
+    let checkpoint_ts = e.updated;
+    if (fetched?.content) {
+      const bodyMatch = fetched.content.match(/^---\n[\s\S]*?\n---\n\n# [\s\S]*?\n\n([\s\S]*)$/);
+      if (bodyMatch?.[1]) {
+        try {
+          const data = JSON.parse(bodyMatch[1]);
+          if (data.checkpoint_ts) checkpoint_ts = data.checkpoint_ts;
+        } catch { /* ignore */ }
+      }
+    }
+    return { entry: e, checkpoint_ts };
+  });
+  withCheckpoint.sort((a, b) => b.checkpoint_ts.localeCompare(a.checkpoint_ts));
+
+  const entry = withCheckpoint[0].entry;
   const fetched = fetchByCode(entry.code);
 
   if (!fetched?.content) return null;
@@ -122,7 +149,21 @@ export function loadActivePlanEX(): PlanEXEntry | null {
 
 export function savePlanEX(entry: PlanEXEntry): void {
   if (entry.code) {
-    updatePlanEX(entry.code, entry);
+    // Verify the code exists in DB before updating
+    const db = getDb();
+    const existing = db.prepare('SELECT code FROM index_entries WHERE code = ?').get(entry.code);
+    if (existing) {
+      updatePlanEX(entry.code, entry);
+      return;
+    }
+  }
+  // No code or code not found — check if a PLAN.EX with this task_name already exists
+  const db = getDb();
+  const existingByName = db.prepare(
+    "SELECT code FROM index_entries WHERE nb = 'PLAN' AND type = 'EX' AND name = ? LIMIT 1"
+  ).get(entry.task_name) as { code: string } | undefined;
+  if (existingByName) {
+    updatePlanEX(existingByName.code, entry);
   } else {
     createPlanEX(entry);
   }

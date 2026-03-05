@@ -150,7 +150,8 @@ export function initDatabase(dbPath) {
     }
     db = new Database(resolvedPath);
     db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
+    // FK enforcement is enabled after the dedup + orphan cleanup block below.
+    // (1) Create all tables first (FK constraints not yet enforced).
     db.exec(`
     CREATE TABLE IF NOT EXISTS index_entries (
       code      TEXT PRIMARY KEY,
@@ -168,9 +169,8 @@ export function initDatabase(dbPath) {
     CREATE INDEX IF NOT EXISTS idx_type   ON index_entries(type);
     CREATE INDEX IF NOT EXISTS idx_status ON index_entries(status);
 
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_entry
-    ON index_entries(nb, type, LOWER(name))
-    WHERE status != 'archived';
+  `);
+    db.exec(`
 
     CREATE TABLE IF NOT EXISTS relationships (
       from_code  TEXT NOT NULL,
@@ -240,9 +240,46 @@ export function initDatabase(dbPath) {
     `);
     }
     catch { /* indexes may already exist */ }
-    // Phase 4: Initialize FTS5 and chunks tables
+    // Phase 4: Initialize FTS5 and chunks tables (must exist before orphan cleanup)
     initFTS();
     initChunksTable();
+    // (2) Dedup — remap child rows to the kept code, then delete duplicates.
+    // Must run before FK enforcement so deletes don't violate constraints.
+    const dupGroups = db.prepare(`
+    SELECT nb, type, LOWER(name) as lname
+    FROM index_entries
+    GROUP BY nb, type, LOWER(name)
+    HAVING COUNT(*) > 1
+  `).all();
+    for (const g of dupGroups) {
+        const rows = db.prepare(`
+      SELECT rowid, code FROM index_entries
+      WHERE nb=? AND type=? AND LOWER(name)=?
+      ORDER BY rowid DESC
+    `).all(g.nb, g.type, g.lname);
+        const keepCode = rows[0].code;
+        const deleteCodes = rows.slice(1).map(r => r.code);
+        if (deleteCodes.length === 0)
+            continue;
+        const ph = deleteCodes.map(() => '?').join(',');
+        // Remap child rows to the kept code before removing duplicates
+        db.prepare(`UPDATE relationships SET from_code=? WHERE from_code IN (${ph})`).run(keepCode, ...deleteCodes);
+        db.prepare(`UPDATE relationships SET to_code=?   WHERE to_code   IN (${ph})`).run(keepCode, ...deleteCodes);
+        db.prepare(`UPDATE chunks         SET code=?     WHERE code       IN (${ph})`).run(keepCode, ...deleteCodes);
+        // Delete the duplicate parent rows (child rows now all point to keepCode)
+        db.prepare(`DELETE FROM index_entries WHERE code IN (${ph})`).run(...deleteCodes);
+    }
+    // (3) Enforce unique entries per (nb, type, name) — safe now that dupes are gone
+    try {
+        db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_entry
+      ON index_entries(nb, type, LOWER(name))
+      WHERE status != 'archived'
+    `);
+    }
+    catch { /* index already exists */ }
+    // (4) Enable FK enforcement — no orphans or duplicates remain
+    db.pragma('foreign_keys = ON');
     bootstrapIndexFromMemoryFiles();
     // Phase 10: Ensure embedding_model_hash counter row exists
     db.prepare("INSERT OR IGNORE INTO counters (type, current) VALUES ('embedding_model_hash', 0)").run();

@@ -1,6 +1,8 @@
 import { getNotebookCounts } from './memory/mod.js';
 import { encode } from 'gpt-tokenizer';
 import { transparency } from './transparency.js';
+import { queryEntries } from './memory/index.js';
+import { fetchByCode } from './memory/fetch.js';
 const SYSTEM_PROMPT = `You are a personal AI agent with memory, skills, and reasoning capabilities.
 
 Your capabilities:
@@ -51,6 +53,32 @@ const WARNING_THRESHOLD = Math.floor(MAX_TOKENS * 0.8); // 80% = 1200 tokens
 // Rolling context summary thresholds
 const SUMMARY_THRESHOLD = 6; // When history has > 6 turns (12 messages), summarize old turns
 const KEEP_RECENT = 3; // Keep last 3 turns (6 messages) verbatim
+let _personaCache = null;
+const PERSONA_CACHE_TTL_MS = 60_000;
+export function fetchOwnerPersona() {
+    const now = Date.now();
+    if (_personaCache && now < _personaCache.expiresAt) {
+        return _personaCache.value;
+    }
+    let value = null;
+    try {
+        const whoCtEntries = queryEntries({ nb: 'WHO', type: 'CT', status: 'active' });
+        if (whoCtEntries.length > 0) {
+            const entry = whoCtEntries[0];
+            const fetched = fetchByCode(entry.code);
+            value = fetched ? `## Owner Persona\n${entry.name}: ${entry.summary ?? ''}` : null;
+        }
+    }
+    catch {
+        value = null;
+    }
+    _personaCache = { value, expiresAt: now + PERSONA_CACHE_TTL_MS };
+    return value;
+}
+/** Reset persona cache — used in tests */
+export function _resetPersonaCache() {
+    _personaCache = null;
+}
 const SUMMARY_INTENTS = new Set(['summary', 'overview']);
 const SUMMARY_PATTERNS = [
     /\bwhat\s+do\s+you\s+know\b/i,
@@ -223,6 +251,11 @@ function formatSkills(skills) {
 }
 export async function buildContext(userMessage, resolved, history, skills, intent, skillOutput, llmHandler) {
     const systemParts = [SYSTEM_PROMPT];
+    // Inject owner persona from WHO.CT (cached, non-throwing)
+    const persona = fetchOwnerPersona();
+    if (persona) {
+        systemParts.push(persona);
+    }
     // Only include notebook counts for summary/overview queries (BUG 4)
     if (needsSummary(intent ?? 'general', userMessage)) {
         systemParts.push(getIndexSummary());
@@ -238,10 +271,6 @@ export async function buildContext(userMessage, resolved, history, skills, inten
     if (skillOutput) {
         systemParts.push('## Skill Output\n' + skillOutput);
     }
-    const systemContent = systemParts.filter(Boolean).join('\n\n');
-    const messages = [
-        { role: 'system', content: systemContent },
-    ];
     // Use rolling context summarization if llmHandler provided and history is long
     // Then trim to token budget
     let recentHistory;
@@ -255,13 +284,15 @@ export async function buildContext(userMessage, resolved, history, skills, inten
         // Default: last 6 turns (12 messages) — same as before
         recentHistory = history.slice(-12);
     }
-    // Inject conversation summary if present
+    // Conversation summary is concatenated into the system message, NOT a separate array entry.
+    // Qwen3.5's jinja template requires exactly one system message at index 0.
     if (conversationSummary) {
-        messages.push({
-            role: 'system',
-            content: `## Previous Conversation\n${conversationSummary}`,
-        });
+        systemParts.push(`## Previous Conversation\n${conversationSummary}`);
     }
+    const systemContent = systemParts.filter(Boolean).join('\n\n');
+    const messages = [
+        { role: 'system', content: systemContent },
+    ];
     messages.push(...recentHistory);
     messages.push({ role: 'user', content: userMessage });
     // Context compaction at 70% of token budget (P5)
@@ -284,12 +315,12 @@ export async function buildContext(userMessage, resolved, history, skills, inten
                     },
                 ];
                 const compactedSummary = await llmHandler(summaryPrompt, { maxTokens: 150 });
-                const summaryMsg = { role: 'system', content: compactedSummary.trim() };
-                recentHistory = [...pinned, summaryMsg];
+                // Compaction summary is appended to the system message content, not a separate entry
+                const compactedContent = messages[0].content + '\n\n## Compacted History\n' + compactedSummary.trim();
+                messages[0] = { role: 'system', content: compactedContent };
+                recentHistory = [...pinned];
                 messages.length = 1;
-                if (conversationSummary) {
-                    messages.push({ role: 'system', content: `## Previous Conversation\n${conversationSummary}` });
-                }
+                messages[0] = { role: 'system', content: compactedContent };
                 messages.push(...recentHistory);
                 messages.push({ role: 'user', content: userMessage });
                 const afterTokens = estimateTokens(messages);

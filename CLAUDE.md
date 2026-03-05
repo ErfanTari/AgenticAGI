@@ -1142,6 +1142,68 @@ Phase 11 adds eight capabilities. 587 tests pass. Build clean.
 
 ---
 
+## Phase 11 Hardening Sprint
+
+12 known bugs fixed. All tests pass. Build clean.
+
+### Bug Fixes
+
+**Bug 1 — `savePlanEX` duplicates** (`core/memory/plan-ex.ts`)
+- Before calling `createPlanEX`, check DB for existing PLAN.EX by task_name.
+- If found, call `updatePlanEX` instead. No more duplicate entries on repeated saves.
+
+**Bug 2 — `loadActivePlanEX` race** (`core/memory/plan-ex.ts`)
+- When multiple active PLAN.EX entries exist, reads `checkpoint_ts` from each file body and sorts DESC.
+- Emits `error` transparency event as warning when count > 1.
+
+**Bug 3 — `compactEpisodicHistory` premature archive** (`core/memory/episodic.ts`)
+- WHEN.HX entry is written first, then confirmed in SQLite via `getEntryByCode`.
+- Source WHEN.EV entries are only archived AFTER confirmation. If write fails, sources remain active.
+
+**Bug 4 — `withRollback` swallows error** (`core/autonomous.ts`)
+- Already correctly throws after rollback. Tests added to confirm behavior.
+
+**Bug 5 — Autonomous loop missing `savePlanEX`** (`core/autonomous.ts`)
+- All exit paths (conf_score pause, milestone complete, failure, error, max iterations) now call `savePlanEX` before returning.
+- Added conf_score < 0.8 pause check at top of each iteration.
+
+**Bug 6 — Decay cycle pages out WHO/PLAN.CT** (`core/memory/lifecycle.ts`)
+- After PAGE step, runs `UPDATE index_entries SET active_page=1 WHERE nb='WHO' OR (nb='PLAN' AND type='CT')`.
+
+**Bug 7 — `verifyPlanAssertions` cycle limit** (`core/planner.ts`)
+- Added explicit `let rejectionCycles = 0; while (rejectionCycles < MAX_REJECTION_CYCLES)` loop guard.
+- Returns `passed=false` with `failedAssertions` after exactly 2 cycles.
+
+**Bug 8 — `assessComplexity` null reference** (`core/planner.ts`)
+- Existing guard `if (!isComplex && llmHandler && ...)` already prevents null dereference.
+- Verified behavior: `undefined` llmHandler returns heuristic-based level without throwing.
+
+**Bug 9 — `fetchOwnerPersona` missing + no cache** (`core/context.ts`)
+- Added `fetchOwnerPersona()` with try/catch returning null on error.
+- Module-level cache with 60-second TTL prevents repeated queries.
+- `_resetPersonaCache()` exported for test isolation.
+- Persona injected into system prompt via `buildContext`.
+
+**Bug 10 — `checkAMemLinker` unlimited LLM calls** (`core/heartbeat.ts`)
+- Created `checkAMemLinker()` function. Selects at most 5 entries per heartbeat run.
+- Selects oldest entries (by `updated ASC`) with no relationships.
+
+**Bug 11 — PINNED detection uses `includes`** (`core/context.ts`)
+- Already used `startsWith('[PINNED]')`. Verified and added tests to confirm correct behavior.
+
+**Bug 12 — Execution log dir not created** (`core/memory/execution-log.ts`)
+- Already had `fs.mkdirSync(PATHS.logs, { recursive: true })`. Verified and added tests.
+
+### New Test File
+- `tests/phase11/hardening.test.ts` — 23 new tests covering all 12 bugs
+
+### Test Results
+- 610/610 tests pass (23 new hardening tests)
+- Build: zero TypeScript errors
+- Tag: `phase-11-hardened`
+
+---
+
 *This document is the source of truth for this project.
 Update it when architecture decisions change.
 Do not let implementation drift from it silently.*
