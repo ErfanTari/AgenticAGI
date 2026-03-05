@@ -57,7 +57,24 @@ export async function runMeetingMode(
     const messages: Message[] = [
       {
         role: 'system',
-        content: `You are a meeting facilitator. Generate a concise meeting briefing based on the current project state. Include: 1) Status summary 2) Key questions to answer 3) What needs updating. Keep it under 300 words.`,
+        content: `You are a meeting facilitator. Generate a structured meeting briefing with EXACTLY these 5 sections:
+
+## 1. Status Summary
+Brief overview of current project state.
+
+## 2. Priorities
+Top 3 items ranked by urgency, with project names sorted by priority number.
+
+## 3. Open Risks or Blockers
+Any known blockers, risks, or overdue items.
+
+## 4. Key Questions
+2-3 questions that need answering today.
+
+## 5. Suggested Next Actions
+Concrete actions for each active project.
+
+End with a single clarifying question like "Review projects or proceed with [next action]?". Keep the entire briefing under 400 words.`,
       },
       {
         role: 'user',

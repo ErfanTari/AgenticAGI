@@ -1204,6 +1204,47 @@ Phase 11 adds eight capabilities. 587 tests pass. Build clean.
 
 ---
 
+## Phase 11 — LM Studio Pre-Validation Fixes
+
+Pre-behavioral-test code review identified 6 bugs that would cause LM Studio test failures.
+All fixed before running live tests against Qwen 3.5 35B.
+
+### Fix 1 — T6.1/T6.2/T6.3: WHEN.EV/RF episodic events never written (`core/agent.ts`)
+- `writeEpisodicEvent` and `writeReflection` from `core/memory/episodic.ts` were never called.
+- `writeEpisodicMemory` in executor.ts only writes HOW.PR, never WHEN.EV/RF.
+- Fixed: After any planned_workflow and synthesis_query execution (success AND failure), agent.ts now calls `writeEpisodicEvent` then chains `writeReflection` fire-and-forget.
+
+### Fix 2 — T3.1: `extractThought` only handled `<thought>` tags (`core/planner.ts`)
+- Qwen and other models emit `<think>...</think>` for reasoning, not `<thought>`.
+- Fixed: `extractThought` now matches both `<thought>` and `<think>` blocks.
+
+### Fix 3 — T4.3: `/log` entries triggered LLM extraction call (`core/agent.ts`)
+- All `memory_write` intents went through LLM extraction (up to 3 retries).
+- `/log` entries have fully deterministic structure — no LLM needed.
+- Fixed: `/log` messages are short-circuited to `inferWriteData` directly, returning `"Logged."` without any LLM call.
+
+### Fix 4 — T2.2: Meeting briefing was 3 sections not 5 (`core/meeting.ts`)
+- Old prompt asked for 3 sections. Test expects 5 + closing question.
+- Fixed: Prompt now specifies exactly 5 sections: Status Summary, Priorities, Open Risks, Key Questions, Suggested Next Actions. Ends with a clarifying question.
+
+### Fix 5 — T8.2: Active PLAN.EX not surfaced on startup (`chat.ts`)
+- chat.ts never checked for a resumable execution plan.
+- Fixed: On startup, `loadActivePlanEX()` is called. If active plan exists, a notice with task name and next milestone is printed before the REPL prompt.
+
+### Fix 6 — T7.2: PLAN.CT constraints not in execution context (`core/context.ts`)
+- `buildContext` never loaded PLAN.CT entries.
+- Fixed: `queryEntries({ nb: 'PLAN', type: 'CT' })` now appended to system prompt under `## Active Constraints`.
+
+### New Test File
+- `tests/phase11/lmstudio-fixes.test.ts` — 8 tests covering all 6 fixes
+
+### Test Results
+- 618/618 tests pass (8 new lmstudio-fixes tests)
+- Build: zero TypeScript errors
+- Ready for live LM Studio behavioral testing
+
+---
+
 *This document is the source of truth for this project.
 Update it when architecture decisions change.
 Do not let implementation drift from it silently.*

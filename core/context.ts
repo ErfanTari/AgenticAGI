@@ -336,6 +336,14 @@ export async function buildContext(
   systemParts.push(formatResolved(resolved));
   systemParts.push(formatSkills(skills));
 
+  // Inject active PLAN.CT constraints into every step's context
+  try {
+    const constraints = queryEntries({ nb: 'PLAN', type: 'CT' }).filter(e => e.status === 'active');
+    if (constraints.length > 0) {
+      systemParts.push('## Active Constraints\n' + constraints.map(c => `- [${c.code}] ${c.name}: ${c.summary}`).join('\n'));
+    }
+  } catch { /* non-fatal */ }
+
   // Inject skill output into context
   if (skillOutput) {
     systemParts.push('## Skill Output\n' + skillOutput);

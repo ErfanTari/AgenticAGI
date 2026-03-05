@@ -13,6 +13,7 @@ import { getDb } from './memory/index.js';
 import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
 import { isComplexTask, decomposeTask } from './planner.js';
 import { executePlan, verifyExecution, buildUserReport, writeEpisodicMemory } from './executor.js';
+import { writeEpisodicEvent, writeReflection } from './memory/episodic.js';
 import { getSkillDescriptions } from './skills/registry.js';
 import { transparency } from './transparency.js';
 
@@ -225,6 +226,20 @@ async function _processMessage(
       const report = buildUserReport(plan, execResult, verification);
       const cleanReport = report.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
       writeEpisodicMemory(plan, execResult, verification).catch(err => console.warn('[agent] writeEpisodicMemory failed:', err));
+      // Write WHEN.EV episodic event (fire-and-forget)
+      writeEpisodicEvent({
+        trigger: message,
+        task_name: plan.goal,
+        skill_sequence: [...execResult.completed.map(s => s.skill), ...execResult.failed.map(s => s.skill)],
+        outcome: execResult.success ? 'success' : (execResult.completed.length > 0 ? 'partial' : 'failure'),
+        failure_reason: execResult.abortReason,
+        linked_codes: [],
+        session_id: plan.createdAt,
+      }).then(evCode => {
+        const plannerHandler2 = options?.llmHandler ?? callLLM;
+        const ev = { code: evCode, trigger: message, task_name: plan.goal, skill_sequence: [...execResult.completed.map(s => s.skill), ...execResult.failed.map(s => s.skill)], outcome: execResult.success ? 'success' as const : (execResult.completed.length > 0 ? 'partial' as const : 'failure' as const), failure_reason: execResult.abortReason, linked_codes: [], session_id: plan.createdAt };
+        writeReflection(evCode, ev, plannerHandler2).catch(() => {});
+      }).catch(err => console.warn('[agent] writeEpisodicEvent failed:', err));
       return {
         reply: findingsPrefix + cleanReport,
         intent: 'synthesis_query',
@@ -269,6 +284,22 @@ async function _processMessage(
 
         // Write episodic HOW.PR — fire-and-forget
         writeEpisodicMemory(plan, execResult, verification).catch(err => console.warn('[agent] writeEpisodicMemory failed:', err));
+        // Write WHEN.EV episodic event for ALL outcomes (including failures) — fire-and-forget
+        const _skillSeq = [...execResult.completed.map(s => s.skill), ...execResult.failed.map(s => s.skill)];
+        const _outcome = execResult.success ? 'success' as const : (execResult.completed.length > 0 ? 'partial' as const : 'failure' as const);
+        writeEpisodicEvent({
+          trigger: message,
+          task_name: plan.goal,
+          skill_sequence: _skillSeq,
+          outcome: _outcome,
+          failure_reason: execResult.abortReason,
+          linked_codes: [],
+          session_id: plan.createdAt,
+        }).then(evCode => {
+          const _handler = options?.llmHandler ?? callLLM;
+          const _ev = { code: evCode, trigger: message, task_name: plan.goal, skill_sequence: _skillSeq, outcome: _outcome, failure_reason: execResult.abortReason, linked_codes: [], session_id: plan.createdAt };
+          writeReflection(evCode, _ev, _handler).catch(() => {});
+        }).catch(err => console.warn('[agent] writeEpisodicEvent failed:', err));
 
         return {
           reply: findingsPrefix + cleanReport,
@@ -370,6 +401,27 @@ async function _processMessage(
   // 4. Memory write — extract data and write to memory
   if (classification.intent === 'memory_write') {
     const handler = options?.llmHandler ?? callLLM;
+
+    // /log entries: skip LLM entirely — use rule-based inference directly
+    if (message.startsWith('/log ')) {
+      const logData = inferWriteData(message, classification);
+      if (!logData) {
+        return { reply: findingsPrefix + 'Logged.', intent: 'memory_write', resolved: null };
+      }
+      try {
+        upsertEntry({
+          nb: logData.nb,
+          type: logData.type,
+          name: logData.name,
+          status: logData.status,
+          summary: logData.summary,
+          body: logData.body,
+        });
+        return { reply: findingsPrefix + 'Logged.', intent: 'memory_write', resolved: null };
+      } catch {
+        return { reply: findingsPrefix + 'Logged.', intent: 'memory_write', resolved: null };
+      }
+    }
 
     // Try LLM extraction first, fall back to rule-based (with retry on invalid JSON)
     let writeData: {

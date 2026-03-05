@@ -602,7 +602,8 @@ async function findRelevantProcedure(message: string): Promise<string | null> {
  * Extract CoT thought block from planner response.
  */
 export function extractThought(raw: string): string | null {
-  const match = raw.match(/<thought>([\s\S]*?)<\/thought>/i);
+  const match = raw.match(/<thought>([\s\S]*?)<\/thought>/i)
+    ?? raw.match(/<think>([\s\S]*?)<\/think>/i);
   return match ? match[1].trim() : null;
 }
 

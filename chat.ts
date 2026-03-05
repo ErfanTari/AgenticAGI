@@ -31,6 +31,17 @@ const rl = readline.createInterface({
 
 console.log('Agent ready. Type a message and press Enter. Type "quit" to exit.\n');
 
+// Check for active PLAN.EX on startup — surface resumable execution plans
+try {
+  const { loadActivePlanEX } = await import('./core/memory/plan-ex.js');
+  const activePlan = loadActivePlanEX();
+  if (activePlan) {
+    const milestone = activePlan.milestones?.[activePlan.current_milestone];
+    const milestoneName = milestone?.name ?? activePlan.next_action ?? 'pending milestone';
+    console.log(`📋 Active execution plan found: "${activePlan.task_name}"\n   Next: ${milestoneName}\n   Continue? (just say "continue" or proceed with other work)\n`);
+  }
+} catch { /* startup check is advisory */ }
+
 function prompt() {
   rl.question('you > ', async (input) => {
     const trimmed = input.trim();
