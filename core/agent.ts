@@ -12,8 +12,9 @@ import { startHeartbeat, stopHeartbeat } from './heartbeat.js';
 import { getDb } from './memory/index.js';
 import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
 import { isComplexTask, decomposeTask } from './planner.js';
-import { executePlan, verifyExecution, buildUserReport, writeEpisodicMemory } from './executor.js';
+import { executePlan, verifyExecution, buildUserReport, writeEpisodicMemory, classifyFailure } from './executor.js';
 import { writeEpisodicEvent, writeReflection } from './memory/episodic.js';
+import { extractMemoryMetadata } from './memory/lifecycle.js';
 import { getSkillDescriptions } from './skills/registry.js';
 import { transparency } from './transparency.js';
 
@@ -51,6 +52,10 @@ Valid notebook + type combinations (use ONLY these):
   WHY: MT (meta), QU (question)
   NOW: TD (todo), RP (report), LOG (log entry)
   PLAN: PL (planning), EX (execution state), CT (constraint), MS (milestone), PJ (project brain)
+
+CONSTRAINT EXAMPLES — use PLAN.CT for system rules and constraints:
+- "add a constraint: never use Python 2" → {"nb":"PLAN","type":"CT","name":"Python Version Constraint","status":"active","summary":"Never use Python 2, always use Python 3","body":"Source: user. Enforce Python 3 only."}
+- "system rule: always use TypeScript" → {"nb":"PLAN","type":"CT","name":"TypeScript Constraint","status":"active","summary":"Always use TypeScript","body":"Source: user."}
 
 Never invent type codes outside this list.
 If uncertain, use the closest valid type.
@@ -525,6 +530,13 @@ async function _processMessage(
       const action = created ? 'Created' : 'Updated';
       const entry = getEntryByCode(code);
 
+      // Extract importance_score and atomic_facts — fire-and-forget (on create and update)
+      if (entry) {
+        const metaHandler = options?.llmHandler ?? callLLM;
+        extractMemoryMetadata(code, writeData.body, writeData.summary, metaHandler)
+          .catch(err => console.warn('[agent] extractMemoryMetadata failed:', err));
+      }
+
       // Add relationships if present (only on new entries to avoid duplicate links)
       if (created && writeData.relationships) {
         for (const rel of writeData.relationships) {
@@ -559,6 +571,18 @@ async function _processMessage(
 
     if (!skillResult.success) {
       const errorMsg = skillResult.error ?? '';
+      // Emit failure_classified for skill failures (consistent with executePlan)
+      transparency.emit({ type: 'failure_classified', data: { error: errorMsg, class: classifyFailure(errorMsg) } });
+      // Write WHEN.EV for skill failures — fire-and-forget (survivorship bias fix)
+      writeEpisodicEvent({
+        trigger: message,
+        task_name: `Skill: ${classification.skill} — ${message.slice(0, 60)}`,
+        skill_sequence: [classification.skill!],
+        outcome: 'failure',
+        failure_reason: errorMsg,
+        linked_codes: [],
+        session_id: new Date().toISOString(),
+      }).catch(() => {});
       // Surface security/access errors inline; generic message for everything else
       const reply = /access denied|not allowed|outside workspace|invalid path/i.test(errorMsg)
         ? findingsPrefix + `I couldn't complete that: ${errorMsg}`

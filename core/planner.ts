@@ -90,7 +90,7 @@ const COMPLEXITY_SIGNALS = {
   numberedList: /^\d+\.\s/m,
   // Synthesis + save tasks: read memory → generate content → write outputs
   synthesisReport: /\b(write|generate|create|produce)\b.{0,40}\b(report|summary|overview|status)\b/i,
-  saveToMemory: /\bsave\b.{0,30}\b(as\s+(a\s+)?NOW|entry\s+in\s+memory|in\s+memory|to\s+memory)\b/i,
+  saveToMemory: /\bsaves?\b.{0,30}\b(as\s+(a\s+)?NOW|entry\s+in\s+memory|in\s+memory|to\s+memory)\b/i,
   saveToFile: /\bsave\b.{0,50}\b(as|to)\b.{0,30}\.(md|txt|json|html|csv)\b/i,
   bulletList: /^-\s+\S/m,   // markdown bullet list (- item) signals multi-part instructions
   basedOnMemory: /\bbased\s+on\s+(everything\s+you\s+know|my\s+(memory|projects|data)|what\s+you\s+know)\b/i,
@@ -109,7 +109,7 @@ const SKILL_PATTERNS: Array<{ skill: string; patterns: RegExp[] }> = [
   { skill: 'file_reader', patterns: [/\bread\s+(the\s+)?file\b/i, /\bopen\s+(the\s+)?file\b/i] },
   { skill: 'file_writer', patterns: [/\bwrite\s+(a\s+|to\s+)?file\b/i, /\bcreate\s+(a\s+)?(file|tutorial|document)\b/i, /\bsave\s+to\s+file\b/i, /\bmake\s+a\s+(text\s+)?(tutorial|guide|document)\b/i, /\bsave\b.{0,50}\b\.(md|txt|json|html|csv)\b/i, /\bsave\s+(the\s+)?(report|summary|output)\s+as\b/i] },
   { skill: 'run_bash', patterns: [/\brun\b/i, /\bexecute\b/i, /\bbash\b/i, /\bshell\b/i, /\bcommand\b/i] },
-  { skill: 'memory_write', patterns: [/\bcreate\s+(a\s+)?(contact|project|todo|entry)\b/i, /\bremember\b/i, /\bsave\s+(a\s+)?note\b/i, /\bsave\b.{0,40}\b(entry\s+in\s+memory|in\s+memory|to\s+memory|as\s+(a\s+)?NOW\.\w+)\b/i] },
+  { skill: 'memory_write', patterns: [/\bcreate\s+(a\s+)?(contact|project|todo|entry)\b/i, /\bremember\b/i, /\bsave\s+(a\s+)?note\b/i, /\bsaves?\b.{0,40}\b(entry\s+in\s+memory|in\s+memory|to\s+memory|as\s+(a\s+)?NOW\.\w+)\b/i] },
 ];
 
 function detectMatchedSkills(message: string): string[] {
@@ -856,18 +856,28 @@ WEB BROWSING RULES (NEVER BREAK THESE):
           { role: 'user', content: retryFeedback },
         ];
 
+    // Capture raw LLM output (before think-tag stripping) for CoT extraction
+    let capturedThought: string | null = null;
+    const unsubRaw = transparency.on(ev => {
+      if (ev.type === 'llm_raw' && !capturedThought) {
+        const raw = (ev.data as { raw: string }).raw;
+        capturedThought = extractThought(raw);
+      }
+    });
+
     const response = await llmHandler(messages, {
       responseSchema: taskPlanJsonSchema,
       maxTokens: 4096,  // Increased to handle large file content in plans
     });
+    unsubRaw();
     lastResponse = response;
 
     if (process.env.DEBUG_PLANNER === 'true') {
       console.log(`[planner] Attempt ${attempt + 1} response (first 500 chars):`, response.slice(0, 500));
     }
 
-    // Extract CoT thought block and emit as transparency event
-    const thought = extractThought(response);
+    // Emit CoT thought from raw response (stripped version won't have it)
+    const thought = capturedThought ?? extractThought(response);
     if (thought) {
       transparency.emit({ type: 'planner_reasoning', data: { thought } });
     }

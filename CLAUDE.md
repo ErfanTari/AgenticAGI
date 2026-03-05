@@ -1245,6 +1245,58 @@ All fixed before running live tests against Qwen 3.5 35B.
 
 ---
 
+## Phase 11 — LM Studio Live Test Results
+
+Live behavioral testing against Qwen 3.5 35B (`qwen/qwen3.5-35b-a3b`) at `http://10.40.20.174:1234`.
+23/23 pass (100%). T8.2 skipped (requires prior autonomous run).
+
+### Additional Fixes Found During Live Testing
+
+**Fix 7 — T3.5: CODING_TASK_PATTERNS exclusion not wired into classifyIntent (`core/intent.ts`)**
+- `CODING_TASK_PATTERNS` were defined but not added to the WRITE_PATTERNS exclusion guard.
+- "write a web scraper" was routing to `memory_write` instead of planned_workflow.
+- Fixed: Added `&& !matchesAny(message, CODING_TASK_PATTERNS)` to the Priority 3 WRITE_PATTERNS check.
+
+**Fix 8 — T3.1: plan event not captured by transparency listener (`lmstudio-test-runner.ts`)**
+- Test code subscribed to `plan` event AFTER calling `msg()` then immediately unsubscribed.
+- Fixed: Combined into a single listener subscribed BEFORE the message is sent.
+
+**Fix 9 — T3.1: `<think>` blocks stripped before `extractThought` runs (`core/planner.ts`)**
+- `callLLM` in llm.ts strips `<think>` blocks before returning to `decomposeTask`.
+- `extractThought(response)` never saw the think block.
+- Fixed: In `decomposeTask`, subscribed to `llm_raw` transparency event to capture the raw response before stripping, then extract the thought from raw.
+
+**Fix 10 — T4.1: `extractMemoryMetadata` only called on CREATE not UPDATE (`core/agent.ts`)**
+- If the entry was already in the DB from a previous run, `created = false` and metadata extraction was skipped.
+- Fixed: Removed the `created &&` guard — `extractMemoryMetadata` now fires on every write (create and update).
+
+**Fix 11 — T4.1: LLM response for metadata starts with "Thinking Process:" (empty after strip) (`core/memory/lifecycle.ts`)**
+- Qwen's `stripThinkingTags` in llm.ts strips the `<think>` block but leaves "Thinking Process:" preamble.
+- The metadata JSON was inside the think block → extracted response was empty → `jsonMatch` null.
+- Fixed: Added `responseSchema` to the metadata extraction LLM call to force JSON output in the response body (not in the think block).
+
+**Fix 12 — T3.4: No safety prompt for destructive operations (`core/context.ts`)**
+- System prompt had no guidance about pausing before destructive operations.
+- Fixed: Added "Safety: ALWAYS ask for confirmation before destructive operations" to SYSTEM_PROMPT.
+
+### Final Test Results
+- All 23/23 live tests pass (100%)
+- T8.2 SKIP — requires prior autonomous execution session
+- 621/621 unit tests pass (3 new tests added)
+- Build: zero TypeScript errors
+- Tag: `phase-11-lmstudio-validated`
+
+### Files Modified in Live Test Sprint
+- `core/intent.ts` — Fix 7: wired CODING_TASK_PATTERNS into classifyIntent
+- `core/planner.ts` — Fix 9: capture llm_raw event for CoT extraction
+- `core/agent.ts` — Fix 10: removed `created &&` guard on extractMemoryMetadata
+- `core/memory/lifecycle.ts` — Fix 11: added responseSchema to metadata LLM call
+- `core/context.ts` — Fix 12: safety confirmation prompt added
+- `lmstudio-test-runner.ts` — Fix 8: corrected plan event listener ordering
+- `tests/phase11/lmstudio-fixes.test.ts` — 3 new tests (total 11)
+
+---
+
 *This document is the source of truth for this project.
 Update it when architecture decisions change.
 Do not let implementation drift from it silently.*

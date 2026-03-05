@@ -38,6 +38,9 @@ const WEB_SEARCH_PATTERNS = [
   /\bfind\s+online\s+resources?\b/i,
   /\bbrowse\s+(the\s+)?internet\b/i,
   /\bget\s+information\s+about\b/i,
+  /\bcurrent\s+price\s+of\b/i,
+  /\bprice\s+of\s+\w/i,
+  /\bwhat.s\s+the\s+(current\s+)?price\b/i,
 ];
 
 // --- Calculator patterns ---
@@ -46,7 +49,7 @@ const CALCULATOR_PATTERNS = [
   /\bcompute\b/i,
   /\bwhat\s+is\s+[\d(]/i,
   /\bhow\s+much\s+is\b/i,
-  /\d+\s*[\+\-\*\/]\s*\d/,
+  /\d+\s*[\+\-\*\/×÷]\s*\d/,  // also match Unicode × and ÷
   /\bpercent\s+of\b/i,
   /\btimes\b/i,
   /\bdivided\s+by\b/i,
@@ -73,7 +76,7 @@ const FILE_READER_PATTERNS = [
 const RUN_BASH_PATTERNS = [
   /\brun\s+(the\s+)?(command|cmd)\b/i,
   /\brun\s+(a\s+)?bash\b/i,
-  /\bexecute\s+(the\s+)?(command|script)\b/i,
+  /\bexecute\s+(\w+\s+)?(command|script)\b/i,
   /\b(bash|shell)\s+(command|script)\b/i,
   // Match "run [common_unix_command]"
   /\brun\s+(?:echo|ls|cat|pwd|grep|find|mkdir|cp|mv|rm|chmod|curl|wget|git|python3?|node|npm|npx|yarn|sh|touch)\b/i,
@@ -81,6 +84,13 @@ const RUN_BASH_PATTERNS = [
 
 // Messages with explicit multi-step language should not be short-circuited to a single skill
 const MULTI_STEP_LANGUAGE = /\b(then\s+|after\s+that\s+|first\s+.{3,}\s+then\s+|followed\s+by\s+|and\s+then\s+)\b/i;
+
+// Technical/coding tasks that use "write/create" but are NOT memory writes
+const CODING_TASK_PATTERNS = [
+  /\bwrite\s+a\s+(web\s+)?(scraper|crawler|parser|bot|script|program|function|class|module|api|server|cli)\b/i,
+  /\bcreate\s+a\s+(web\s+)?(scraper|crawler|parser|bot|script|program|function|class|module|api|server|cli)\b/i,
+  /\bbuild\s+a\s+(web\s+)?(scraper|crawler|parser|bot|script|program|function|class|module|api|server|cli)\b/i,
+];
 
 // --- File writer patterns ---
 const FILE_WRITER_PATTERNS = [
@@ -111,6 +121,9 @@ const MEETING_PATTERNS = [
   /^\/meeting\b/i,
   /\bstart\s+meeting\s+mode\b/i,
   /\bmeeting\s+briefing\b/i,
+  /^\s*standup\s*$/i,
+  /^\s*stand[\s-]?up\s*$/i,
+  /^\s*daily\s+standup\s*$/i,
 ];
 
 // --- Synthesis patterns — cross-notebook queries that span multiple notebooks ---
@@ -401,9 +414,12 @@ function extractMathExpression(message: string): string | null {
   const calcMatch = message.match(/(?:calculate|compute)\s+(.+)/i);
   if (calcMatch) return calcMatch[1].trim();
 
-  // Direct math expression with explicit operator: "2 + 2", "144 / 12"
-  const directMath = message.match(/(\d+(?:\.\d+)?\s*[\+\-\*\/\^%]\s*\d+(?:\.\d+)?(?:\s*[\+\-\*\/\^%]\s*\d+(?:\.\d+)?)*)/);
-  if (directMath) return directMath[1].trim();
+  // Direct math expression with explicit operator: "2 + 2", "144 / 12", "847 × 293"
+  const directMath = message.match(/(\d+(?:\.\d+)?\s*[\+\-\*\/×÷\^%]\s*\d+(?:\.\d+)?(?:\s*[\+\-\*\/×÷\^%]\s*\d+(?:\.\d+)?)*)/);
+  if (directMath) {
+    // Normalise Unicode operators to ASCII before returning
+    return directMath[1].trim().replace(/×/g, '*').replace(/÷/g, '/');
+  }
 
   return null;
 }
@@ -493,7 +509,7 @@ export function classifyIntent(message: string): Classification {
     intent = 'greeting';
   }
   // Priority 3: Write patterns — but NOT if this is a web/file action task or explicit file write
-  else if (matchesAny(message, WRITE_PATTERNS) && !matchesAny(message, WEB_FILE_ACTION_PATTERNS) && !matchesAny(message, FILE_WRITER_PATTERNS)) {
+  else if (matchesAny(message, WRITE_PATTERNS) && !matchesAny(message, WEB_FILE_ACTION_PATTERNS) && !matchesAny(message, FILE_WRITER_PATTERNS) && !matchesAny(message, CODING_TASK_PATTERNS)) {
     intent = 'memory_write';
     const detected = detectNotebook(message);
     nb = detected.nb;

@@ -22,6 +22,8 @@ Use skills for their domains. Never substitute your own reasoning:
 - memory_read: ANY user data or saved entries. Never guess.
 Use skills. No exceptions.
 
+Safety: ALWAYS ask for confirmation before destructive operations (delete files, wipe data, rebuild from scratch). Never silently execute irreversible actions.
+
 How to respond:
 - Use memory context when it contains relevant information
 - Be direct and helpful — do not refuse tasks you can do
@@ -340,7 +342,9 @@ export async function buildContext(
   try {
     const constraints = queryEntries({ nb: 'PLAN', type: 'CT' }).filter(e => e.status === 'active');
     if (constraints.length > 0) {
-      systemParts.push('## Active Constraints\n' + constraints.map(c => `- [${c.code}] ${c.name}: ${c.summary}`).join('\n'));
+      systemParts.push('## Active Constraints\n' +
+        constraints.map(c => `- [${c.code}] ${c.name}: ${c.summary}`).join('\n') +
+        '\n\nIMPORTANT: These are user-authored constraints. NEVER silently modify or remove them. If the user asks to change a constraint, warn them that this is a protected user rule and ask for explicit confirmation before proceeding.');
     }
   } catch { /* non-fatal */ }
 

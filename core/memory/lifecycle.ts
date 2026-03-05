@@ -117,7 +117,13 @@ export async function extractMemoryMetadata(
     const messages = [
       {
         role: 'system' as const,
-        content: 'Extract atomic facts from this memory entry. Return JSON: {"facts": ["fact1", "fact2"], "confidence": 0.0-1.0}',
+        content: `Extract metadata from this memory entry. Return JSON:
+{"facts": ["fact1"], "confidence": 0.0-1.0, "importance_score": 0.0-1.0}
+importance_score rules:
+- 0.9: critical/urgent/deadline/must-do
+- 0.7-0.8: important, high-priority, key information
+- 0.5: normal/default
+- 0.2-0.4: minor/trivial/low-priority`,
       },
       {
         role: 'user' as const,
@@ -125,20 +131,43 @@ export async function extractMemoryMetadata(
       },
     ];
 
-    const response = await llmHandler(messages, { maxTokens: 300 });
+    const metadataSchema = {
+      type: 'object',
+      properties: {
+        facts: { type: 'array', items: { type: 'string' } },
+        confidence: { type: 'number' },
+        importance_score: { type: 'number' },
+      },
+      required: ['facts', 'confidence', 'importance_score'],
+    };
+    const response = await llmHandler(messages, { maxTokens: 300, responseSchema: metadataSchema });
     const cleaned = response.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
 
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       const db = getDb();
-      db.prepare(
-        'UPDATE index_entries SET atomic_facts = ?, confidence = ? WHERE code = ?'
-      ).run(
-        JSON.stringify(parsed.facts ?? []),
-        parsed.confidence ?? 1.0,
-        code
-      );
+      const importanceScore = typeof parsed.importance_score === 'number'
+        ? Math.max(0, Math.min(1, parsed.importance_score))
+        : null;
+      if (importanceScore !== null) {
+        db.prepare(
+          'UPDATE index_entries SET atomic_facts = ?, confidence = ?, importance_score = ? WHERE code = ?'
+        ).run(
+          JSON.stringify(parsed.facts ?? []),
+          parsed.confidence ?? 1.0,
+          importanceScore,
+          code,
+        );
+      } else {
+        db.prepare(
+          'UPDATE index_entries SET atomic_facts = ?, confidence = ? WHERE code = ?'
+        ).run(
+          JSON.stringify(parsed.facts ?? []),
+          parsed.confidence ?? 1.0,
+          code,
+        );
+      }
     }
   } catch (err) {
     console.warn('[lifecycle] extractMemoryMetadata failed:', err);
