@@ -21,6 +21,77 @@ import { createEntry } from '../../memory/write.js';
 import type { Message } from '../../types.js';
 import type { MCPSkill, SkillResult } from '../types.js';
 
+const REPAIR_ARTIFACTS_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['code', 'tests'],
+  properties: {
+    code: { type: 'string' },
+    tests: { type: 'string' },
+  },
+};
+
+// ─── npm Install Helpers ─────────────────────────────────────────────────────
+
+const NODE_BUILTINS = new Set([
+  'assert', 'buffer', 'child_process', 'cluster', 'console', 'constants', 'crypto',
+  'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2', 'https', 'module',
+  'net', 'os', 'path', 'perf_hooks', 'process', 'punycode', 'querystring', 'readline',
+  'repl', 'stream', 'string_decoder', 'sys', 'timers', 'tls', 'trace_events', 'tty',
+  'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib',
+  'node:assert', 'node:buffer', 'node:child_process', 'node:cluster', 'node:console',
+  'node:constants', 'node:crypto', 'node:dgram', 'node:dns', 'node:domain', 'node:events',
+  'node:fs', 'node:http', 'node:http2', 'node:https', 'node:module', 'node:net',
+  'node:os', 'node:path', 'node:perf_hooks', 'node:process', 'node:punycode',
+  'node:querystring', 'node:readline', 'node:repl', 'node:stream', 'node:string_decoder',
+  'node:sys', 'node:timers', 'node:tls', 'node:trace_events', 'node:tty', 'node:url',
+  'node:util', 'node:v8', 'node:vm', 'node:wasi', 'node:worker_threads', 'node:zlib',
+]);
+
+function extractNpmPackages(code: string): string[] {
+  const imports: string[] = [];
+  const esmPattern = /^import\s+.*?\s+from\s+['"]([^./][^'"]*)['"]/gm;
+  const cjsPattern = /require\(['"]([^./][^'"]*)['"]\)/g;
+  for (const match of code.matchAll(esmPattern)) imports.push(match[1]);
+  for (const match of code.matchAll(cjsPattern)) imports.push(match[1]);
+  return [...new Set(imports.map(p => p.split('/')[0]).filter(p => !NODE_BUILTINS.has(p)))];
+}
+
+async function installNpmPackages(
+  packages: string[],
+  projectDir: string,
+): Promise<{ success: boolean; output: string }> {
+  return new Promise(resolve => {
+    const child = spawn('npm', ['install', ...packages, '--save'], {
+      cwd: projectDir,
+      shell: false,
+    });
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout?.on('data', d => { stdout += d.toString(); });
+    child.stderr?.on('data', d => { stderr += d.toString(); });
+
+    child.on('close', code => {
+      const combined = (stdout + (stderr ? '\n' + stderr : '')).trim();
+      resolve({ success: code === 0, output: combined });
+    });
+
+    child.on('error', err => {
+      resolve({ success: false, output: err.message });
+    });
+  });
+}
+
+function extractMissingPackageFromError(output: string): string | null {
+  // Match "Cannot find package 'X'" or "MODULE_NOT_FOUND" with module name
+  const cannotFind = output.match(/Cannot find package '([^']+)'/);
+  if (cannotFind) return cannotFind[1];
+  const moduleNotFound = output.match(/Cannot find module '([^./][^']+)'/);
+  if (moduleNotFound) return moduleNotFound[1].split('/')[0];
+  return null;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /**
@@ -90,8 +161,12 @@ function cleanCode(raw: string): string {
   return s.trim();
 }
 
+function getWorkspaceRoot(): string {
+  return path.resolve(process.cwd(), 'workspace');
+}
+
 function workspacePath(filename: string): string {
-  const WORKSPACE_ROOT = path.resolve(process.cwd(), 'workspace');
+  const WORKSPACE_ROOT = getWorkspaceRoot();
   fs.mkdirSync(WORKSPACE_ROOT, { recursive: true });
   // Ensure ESM is enabled so `import` statements work in node
   const pkgJson = path.join(WORKSPACE_ROOT, 'package.json');
@@ -103,6 +178,12 @@ function workspacePath(filename: string): string {
   return resolved;
 }
 
+function readWorkspaceFile(filename: string): string | null {
+  const filePath = workspacePath(filename);
+  if (!fs.existsSync(filePath)) return null;
+  return fs.readFileSync(filePath, 'utf-8');
+}
+
 function writeWorkspaceFile(filename: string, content: string): void {
   const filePath = workspacePath(filename);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -112,10 +193,11 @@ function writeWorkspaceFile(filename: string, content: string): void {
 async function runNodeFile(
   filename: string,
   timeoutMs = 30000,
+  projectDir?: string,
 ): Promise<{ success: boolean; output: string }> {
-  const WORKSPACE_ROOT = path.resolve(process.cwd(), 'workspace');
+  const cwd = projectDir ?? getWorkspaceRoot();
   return new Promise(resolve => {
-    const child = spawn('node', [filename], { cwd: WORKSPACE_ROOT, shell: false });
+    const child = spawn('node', [filename], { cwd, shell: false });
     let stdout = '';
     let stderr = '';
     let timedOut = false;
@@ -132,6 +214,43 @@ async function runNodeFile(
       clearTimeout(timer);
       if (timedOut) {
         resolve({ success: false, output: `Command timed out after ${timeoutMs}ms` });
+        return;
+      }
+      const combined = (stdout + (stderr ? '\n' + stderr : '')).trim();
+      resolve({ success: code === 0, output: combined });
+    });
+
+    child.on('error', err => {
+      clearTimeout(timer);
+      resolve({ success: false, output: err.message });
+    });
+  });
+}
+
+async function runNodeCheck(
+  filename: string,
+  timeoutMs = 10000,
+  projectDir?: string,
+): Promise<{ success: boolean; output: string }> {
+  const cwd = projectDir ?? getWorkspaceRoot();
+  return new Promise(resolve => {
+    const child = spawn('node', ['--check', filename], { cwd, shell: false });
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    child.stdout?.on('data', d => { stdout += d.toString(); });
+    child.stderr?.on('data', d => { stderr += d.toString(); });
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, timeoutMs);
+
+    child.on('close', code => {
+      clearTimeout(timer);
+      if (timedOut) {
+        resolve({ success: false, output: `Syntax check timed out after ${timeoutMs}ms` });
         return;
       }
       const combined = (stdout + (stderr ? '\n' + stderr : '')).trim();
@@ -212,30 +331,74 @@ async function generateTests(testPrompt: string, filename: string): Promise<stri
   ].join('\n');
 }
 
-async function fixCode(
+async function repairArtifacts(
   code: string,
-  testOutput: string,
+  tests: string,
+  failureOutput: string,
   implementationPrompt: string,
-): Promise<string> {
+  testPrompt: string,
+  filename: string,
+  testFilename: string,
+): Promise<{ code: string; tests: string }> {
   const messages: Message[] = [
     {
       role: 'system',
-      content: 'You are a code debugging assistant. Fix the provided JavaScript ESM code so the failing tests pass. Output ONLY the corrected code, no commentary, no fences.',
+      content: [
+        'You are a JavaScript debugging assistant.',
+        'You will receive an implementation file and a test file.',
+        'Repair whatever is broken so the tests can run and pass.',
+        'Preserve correct content when possible.',
+        'Return ONLY a JSON object with full file contents:',
+        '{"code":"...","tests":"..."}',
+        'The implementation must stay valid JavaScript ESM.',
+        'The tests must stay valid JavaScript ESM, import from the implementation file, and use node:assert.',
+      ].join(' '),
     },
     {
       role: 'user',
-      content: `Original task:\n${implementationPrompt}\n\nCurrent code:\n${code}\n\nTest failure output:\n${testOutput}\n\nReturn the corrected code only.`,
+      content: `Original implementation task:
+${implementationPrompt}
+
+Original test task:
+${testPrompt}
+
+Implementation filename:
+${filename}
+
+Test filename:
+${testFilename}
+
+Current implementation:
+${code}
+
+Current tests:
+${tests}
+
+Failure output:
+${failureOutput}
+
+Return the full corrected contents for both files.`,
     },
   ];
-  const raw = await callLLM(messages, { maxTokens: 2000 });
-  return cleanCode(raw);
+  const raw = await callLLM(messages, {
+    responseSchema: REPAIR_ARTIFACTS_SCHEMA,
+    maxTokens: 4000,
+  });
+
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  const parsed = JSON.parse(jsonMatch?.[0] ?? raw) as { code: string; tests: string };
+
+  return {
+    code: cleanCode(parsed.code),
+    tests: cleanCode(parsed.tests),
+  };
 }
 
 // ─── Skill ──────────────────────────────────────────────────────────────────
 
 export const implementAndTestSkill: MCPSkill = {
   name: 'implement_and_test',
-  description: 'Write code, run tests, fix failures, retry until passing or max attempts. Use for any coding task: write → run → verify → fix loop. Returns final working code + test output. Automatically writes HOW.PR entry on success.',
+  description: 'Write or reuse code, run tests, repair implementation or tests, retry until passing or max attempts. Use for coding task loops: write/check -> run -> verify -> fix. Returns final working code + test output. Automatically writes HOW.PR entry on success.',
 
   inputSchema: {
     type: 'object',
@@ -278,9 +441,26 @@ export const implementAndTestSkill: MCPSkill = {
       };
     }
 
-    // Generate initial code + tests
-    let code = await generateCode(implementationPrompt);
-    const tests = await generateTests(testPrompt, filename);
+    // Working directory: always the directory containing the implementation file.
+    const implementationFilePath = workspacePath(filename);
+    const projectDir = path.dirname(implementationFilePath);
+
+    // Reuse existing artifacts when present so "check/fix" operates on real files, not fresh rewrites.
+    let code = readWorkspaceFile(filename) ?? await generateCode(implementationPrompt);
+    let tests = readWorkspaceFile(testFilename) ?? await generateTests(testPrompt, filename);
+
+    // Scan implementation for npm packages and install before first run
+    const requiredPackages = extractNpmPackages(code);
+    if (requiredPackages.length > 0) {
+      const installResult = await installNpmPackages(requiredPackages, projectDir);
+      if (!installResult.success) {
+        return {
+          success: false,
+          output: installResult.output,
+          error: `npm install failed for packages [${requiredPackages.join(', ')}]:\n${installResult.output}`,
+        };
+      }
+    }
 
     let lastTestOutput = '';
 
@@ -293,9 +473,97 @@ export const implementAndTestSkill: MCPSkill = {
         return { success: false, output: '', error: `File write failed: ${String(err)}` };
       }
 
+      const implementationSyntax = await runNodeCheck(filename, 10000, projectDir);
+      if (!implementationSyntax.success) {
+        lastTestOutput = implementationSyntax.output;
+        if (attempt < maxAttempts) {
+          const repaired = await repairArtifacts(
+            code,
+            tests,
+            implementationSyntax.output,
+            implementationPrompt,
+            testPrompt,
+            filename,
+            testFilename,
+          );
+          code = repaired.code;
+          tests = repaired.tests;
+          continue;
+        }
+        break;
+      }
+
+      const testSyntax = await runNodeCheck(testFilename, 10000, projectDir);
+      if (!testSyntax.success) {
+        lastTestOutput = testSyntax.output;
+        if (attempt < maxAttempts) {
+          const repaired = await repairArtifacts(
+            code,
+            tests,
+            testSyntax.output,
+            implementationPrompt,
+            testPrompt,
+            filename,
+            testFilename,
+          );
+          code = repaired.code;
+          tests = repaired.tests;
+          continue;
+        }
+        break;
+      }
+
       // Run tests
-      const result = await runNodeFile(testFilename);
+      const result = await runNodeFile(testFilename, 30000, projectDir);
       lastTestOutput = result.output;
+
+      // Handle MODULE_NOT_FOUND: try to install missing package then retry
+      if (!result.success) {
+        const missingPkg = extractMissingPackageFromError(result.output);
+        if (missingPkg && attempt < maxAttempts) {
+          const retryInstall = await installNpmPackages([missingPkg], projectDir);
+          if (retryInstall.success) {
+            // Retry this attempt without incrementing counter
+            const retryResult = await runNodeFile(testFilename, 30000, projectDir);
+            lastTestOutput = retryResult.output;
+            if (retryResult.success) {
+              try {
+                const entry = createEntry({
+                  nb: 'HOW',
+                  type: 'PR',
+                  name: `Implementation: ${filename}`,
+                  summary: `Working ${filename} implementation, tests passed on attempt ${attempt}`,
+                  body: `## Working Solution\n\nTests passed on attempt ${attempt}.\n\n### Code\n\`\`\`javascript\n${code}\n\`\`\`\n\n### Test Output\n\`\`\`\n${retryResult.output}\n\`\`\``,
+                  status: 'active',
+                });
+                return {
+                  success: true,
+                  output: `Tests passed on attempt ${attempt}.\n${retryResult.output}\n\nDocumented: ${entry.code} — ${entry.name}`,
+                };
+              } catch {
+                return {
+                  success: true,
+                  output: `Tests passed on attempt ${attempt}.\n${retryResult.output}`,
+                };
+              }
+            }
+          } else {
+            // npm install failed — instruct LLM to rewrite using only built-ins
+            const repaired = await repairArtifacts(
+              code,
+              tests,
+              `${result.output}\n\nThe package '${missingPkg}' could not be installed. Rewrite using only Node.js built-in modules (node:fs, node:http, node:assert, etc.). No npm packages.`,
+              implementationPrompt,
+              testPrompt,
+              filename,
+              testFilename,
+            );
+            code = repaired.code;
+            tests = repaired.tests;
+            continue;
+          }
+        }
+      }
 
       if (process.env.DEBUG_PLANNER === 'true' || process.env.DEBUG_DEEP === 'true') {
         console.log(`[implement_and_test] Attempt ${attempt}/${maxAttempts}: ${result.success ? '✅ PASS' : '❌ FAIL'}`);
@@ -328,7 +596,17 @@ export const implementAndTestSkill: MCPSkill = {
 
       // Tests failed — fix code for next attempt
       if (attempt < maxAttempts) {
-        code = await fixCode(code, result.output, implementationPrompt);
+        const repaired = await repairArtifacts(
+          code,
+          tests,
+          result.output,
+          implementationPrompt,
+          testPrompt,
+          filename,
+          testFilename,
+        );
+        code = repaired.code;
+        tests = repaired.tests;
       }
     }
 
