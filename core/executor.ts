@@ -1,12 +1,15 @@
 import { createHash } from 'node:crypto';
 import type { LLMHandler, Message } from './types.js';
-import type { TaskPlan, VerificationResult } from './schemas.js';
+import type { TaskMilestone, TaskPlan, TaskStep, VerificationResult } from './schemas.js';
 import { VerificationResultSchema, verificationJsonSchema } from './schemas.js';
 import { runWithRetry } from './react.js';
 import { resolveTemplates } from './planner.js';
 import { transparency } from './transparency.js';
 import { upsertEntry } from './memory/write.js';
 import { logExecution } from './memory/execution-log.js';
+import { createPlanEX, loadActivePlanEX, savePlanEX, type PlanEXEntry } from './memory/plan-ex.js';
+import { addRelationship, getRelationshipsFrom } from './memory/relationships.js';
+import { writeEpisodicEvent } from './memory/episodic.js';
 
 // Flatten nested objects to primitives (fixes [object Object] issue)
 function flattenInput(input: Record<string, unknown>): Record<string, unknown> {
@@ -63,252 +66,605 @@ export interface ExecutionResult {
   completed: CompletedStep[];
   failed: FailedStep[];
   abortReason?: string;
+  milestoneResults?: MilestoneExecutionResult[];
+  completedMilestones?: string[];
+  currentMilestoneId?: string;
+  planExCode?: string;
+  linkedCodes?: string[];
+}
+
+export interface MilestoneExecutionResult {
+  milestoneId: string;
+  title: string;
+  success: boolean;
+  completedStepIds: string[];
+  failedStepIds: string[];
+  eventCode?: string;
 }
 
 // --- Executor Loop (Priority 4) ---
 
 const TOTAL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const STEP_DELAY_MS = 100;
+const CODE_REGEX = /\b([A-Z]+\.[A-Z]+-\d{6,})\b/g;
 
-export async function executePlan(
+interface ExecutionState {
+  results: Map<string, string>;
+  completed: CompletedStep[];
+  failed: FailedStep[];
+  startTime: number;
+}
+
+function getPlanMilestones(plan: TaskPlan): TaskMilestone[] {
+  if (plan.milestones && plan.milestones.length > 0) return plan.milestones;
+  return [{
+    id: 'milestone_1',
+    goalIds: (plan.goals ?? []).map(goal => goal.id),
+    title: 'Complete task',
+    description: plan.goal,
+    completionCriteria: plan.steps.at(-1)?.description ?? plan.goal,
+    steps: plan.steps,
+  }];
+}
+
+function collectCodesFromText(text: string): string[] {
+  return [...text.matchAll(CODE_REGEX)].map(match => match[1]);
+}
+
+function collectLinkedCodes(completed: CompletedStep[]): string[] {
+  return [...new Set(completed.flatMap(step => collectCodesFromText(step.output)))];
+}
+
+function buildInitialPlanEX(plan: TaskPlan, milestones: TaskMilestone[]): Omit<PlanEXEntry, 'code'> {
+  return {
+    task_name: plan.goal,
+    project_code: '',
+    goal: plan.goal,
+    goal_ids: (plan.goals ?? []).map(goal => goal.id),
+    unit_ids: (plan.goals ?? []).flatMap(goal => goal.sourceUnitIds ?? []),
+    milestones: milestones.map(milestone => ({ id: milestone.id, name: milestone.title, done: false })),
+    current_milestone: 0,
+    next_milestone_id: milestones[0]?.id,
+    completed_milestone_ids: [],
+    todos: [],
+    constraints: {},
+    last_action: '',
+    next_action: milestones[0]?.title ?? 'Start execution',
+    conf_score: 1,
+    session_id: plan.createdAt,
+    checkpoint_ts: new Date().toISOString(),
+    started: new Date().toISOString(),
+    attempt_counts: {},
+    last_failures: {},
+    recent_turns: [],
+    loaded_memory_utility: {},
+    file_checksums: {},
+    revisions: [],
+    linked_codes: [],
+  };
+}
+
+function updatePlanExForMilestone(
+  planEx: PlanEXEntry,
+  milestone: TaskMilestone,
+  milestoneIndex: number,
+  milestones: TaskMilestone[],
+  linkedCodes: string[],
+): PlanEXEntry {
+  const completedIds = [...new Set([...(planEx.completed_milestone_ids ?? []), milestone.id])];
+  const nextMilestone = milestones[milestoneIndex + 1];
+  const updatedMilestones = planEx.milestones.map(existing =>
+    existing.id === milestone.id ? { ...existing, done: true } : existing,
+  );
+
+  return {
+    ...planEx,
+    milestones: updatedMilestones,
+    current_milestone: milestoneIndex + 1,
+    next_milestone_id: nextMilestone?.id,
+    completed_milestone_ids: completedIds,
+    last_action: milestone.title,
+    next_action: nextMilestone?.title ?? 'Complete plan',
+    checkpoint_ts: new Date().toISOString(),
+    linked_codes: [...new Set([...(planEx.linked_codes ?? []), ...linkedCodes])],
+  };
+}
+
+function inferRelationshipWrites(
+  codes: string[],
+  milestone: TaskMilestone,
+): string[] {
+  const writes: string[] = [];
+  if (codes.length < 2) return writes;
+
+  const fromCode = codes[0];
+  for (const toCode of codes.slice(1)) {
+    try {
+      const existing = getRelationshipsFrom(fromCode, 'refers');
+      if (existing.some(rel => rel.to_code === toCode)) continue;
+      addRelationship({
+        from_code: fromCode,
+        relation: 'refers',
+        to_code: toCode,
+        note: `Inferred during ${milestone.id}: ${milestone.title}`,
+      });
+      writes.push(`relationship:${fromCode}->${toCode}`);
+    } catch {
+      // Skip unresolved or duplicate-like relationship writes.
+    }
+  }
+
+  return writes;
+}
+
+export async function writeMilestoneMemoryCycle(
   plan: TaskPlan,
+  milestone: TaskMilestone,
+  milestoneIndex: number,
+  milestones: TaskMilestone[],
+  completedSteps: CompletedStep[],
+  planEx: PlanEXEntry,
+): Promise<{ planEx: PlanEXEntry; writes: string[]; eventCode?: string }> {
+  const writes: string[] = [];
+  const linkedCodes = collectLinkedCodes(completedSteps);
+
+  let eventCode: string | undefined;
+  try {
+    eventCode = await writeEpisodicEvent({
+      trigger: plan.goal,
+      task_name: `${plan.goal} — ${milestone.title}`,
+      skill_sequence: completedSteps.map(step => step.skill),
+      outcome: 'success',
+      linked_codes: linkedCodes,
+      session_id: plan.createdAt,
+    });
+    writes.push(`WHEN.EV:${eventCode}`);
+  } catch {
+    // Event write is best-effort inside the cycle.
+  }
+
+  if (completedSteps.length >= 2) {
+    try {
+      const procedureName = `Milestone Pattern: ${milestone.title}`.slice(0, 80);
+      const procedureBody = [
+        `## Goal`,
+        plan.goal,
+        '',
+        `## Milestone`,
+        milestone.title,
+        '',
+        `## Completion Criteria`,
+        milestone.completionCriteria,
+        '',
+        `## Steps`,
+        ...completedSteps.map(step => `- ${step.skill}: ${(step.display ?? step.output).slice(0, 120)}`),
+      ].join('\n');
+
+      const { code } = upsertEntry({
+        nb: 'HOW',
+        type: 'PR',
+        name: procedureName,
+        status: 'active',
+        summary: `Reusable pattern from ${milestone.title}`,
+        body: procedureBody,
+      });
+      writes.push(`HOW.PR:${code}`);
+    } catch {
+      // Procedure write is optional.
+    }
+  }
+
+  const updatedPlanEx = updatePlanExForMilestone(planEx, milestone, milestoneIndex, milestones, linkedCodes);
+  try {
+    savePlanEX(updatedPlanEx);
+    if (updatedPlanEx.code) {
+      writes.push(`PLAN.EX:${updatedPlanEx.code}`);
+    }
+  } catch {
+    // PLAN.EX persistence is best-effort during executor tests and degraded environments.
+  }
+
+  writes.push(...inferRelationshipWrites(linkedCodes, milestone));
+  transparency.emit({ type: 'milestone_memory_cycle', data: { milestoneId: milestone.id, writes } });
+
+  return { planEx: updatedPlanEx, writes, eventCode };
+}
+
+const TRIVIAL_MILESTONE_KEYWORDS = /^(mkdir|package\.json|init|setup\s+directory|create\s+directory|npm\s+init)/i;
+
+async function reviseRemainingMilestones(
+  milestones: TaskMilestone[],
+  completedMilestones: string[],
+  currentIndex: number,
   llmHandler: LLMHandler,
-): Promise<ExecutionResult> {
-  const results = new Map<string, string>();
-  const completed: CompletedStep[] = [];
-  const failed: FailedStep[] = [];
-  const startTime = Date.now();
+): Promise<TaskMilestone[]> {
+  const remaining = milestones.slice(currentIndex + 1);
 
-  for (const step of plan.steps) {
-    // Timeout check
-    if (Date.now() - startTime > TOTAL_TIMEOUT_MS) {
-      return {
-        success: false,
-        completed,
-        failed,
-        abortReason: 'Total execution timeout (5 minutes)',
-      };
+  // No remaining milestones or no completed milestones → nothing to revise
+  if (remaining.length === 0 || completedMilestones.length === 0) {
+    return milestones;
+  }
+
+  // Skip revision for trivial steps
+  const completedMilestone = milestones[currentIndex];
+  if (TRIVIAL_MILESTONE_KEYWORDS.test(completedMilestone?.title ?? '')) {
+    return milestones;
+  }
+
+  try {
+    const completedSummary = milestones
+      .filter(m => completedMilestones.includes(m.id))
+      .map(m => `- ${m.id}: ${m.title} — ${m.completionCriteria}`)
+      .join('\n');
+
+    const remainingSummary = remaining
+      .map(m => `- ${m.id}: ${m.title} — ${m.description}`)
+      .join('\n');
+
+    const prompt: Message[] = [
+      {
+        role: 'system',
+        content: [
+          'You are a plan revision assistant.',
+          'Given completed milestones and remaining milestones, determine if the remaining milestones are still valid.',
+          'Return ONLY a JSON object:',
+          '{"revised": false} if no changes needed,',
+          'OR {"revised": true, "milestones": [{"id": "...", "title": "...", "description": "...", "completionCriteria": "..."}], "reason": "why"}',
+          'Only return revised:true if a significant change is needed. When in doubt, return revised:false.',
+        ].join(' '),
+      },
+      {
+        role: 'user',
+        content: `Completed milestones:\n${completedSummary}\n\nRemaining milestones to validate:\n${remainingSummary}\n\nAre the remaining milestones still valid given what was completed?`,
+      },
+    ];
+
+    const response = await llmHandler(prompt, { maxTokens: 512 });
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return milestones;
+
+    const parsed = JSON.parse(jsonMatch[0]) as {
+      revised: boolean;
+      milestones?: Array<{ id: string; title: string; description: string; completionCriteria: string }>;
+      reason?: string;
+    };
+
+    if (!parsed.revised) return milestones;
+    if (!Array.isArray(parsed.milestones) || parsed.milestones.length === 0) return milestones;
+
+    // Only revise milestones NOT YET STARTED — completed milestones are immutable
+    const completedSet = new Set(completedMilestones);
+    const originalRemaining = milestones.filter(m => !completedSet.has(m.id));
+
+    const newRemaining: TaskMilestone[] = parsed.milestones.map(r => ({
+      id: r.id,
+      goalIds: [],
+      title: r.title,
+      description: r.description,
+      completionCriteria: r.completionCriteria,
+      steps: originalRemaining.find(orig => orig.id === r.id)?.steps ?? [],
+    }));
+
+    const revisedCount = newRemaining.length - originalRemaining.length;
+    transparency.emit({
+      type: 'milestone_revised',
+      data: {
+        milestoneId: completedMilestone.id,
+        revisedCount,
+        reason: parsed.reason ?? 'LLM revision',
+      },
+    });
+
+    // Combine completed milestones (immutable) + new remaining
+    const completedMilestonesData = milestones.filter(m => completedSet.has(m.id));
+    return [...completedMilestonesData, ...newRemaining];
+
+  } catch (err) {
+    console.warn('[executor] reviseRemainingMilestones failed:', err instanceof Error ? err.message : String(err));
+    return milestones; // Never abort on revision failure
+  }
+}
+
+async function executeSingleStep(
+  plan: TaskPlan,
+  step: TaskStep,
+  state: ExecutionState,
+  llmHandler: LLMHandler,
+): Promise<string | null> {
+  if (Date.now() - state.startTime > TOTAL_TIMEOUT_MS) {
+    return 'Total execution timeout (5 minutes)';
+  }
+
+  const unmetDeps = step.dependsOn.filter(dep => !state.results.has(dep + '_result') && !state.results.has(dep));
+  if (unmetDeps.length > 0) {
+    const firstUnmet = unmetDeps[0];
+    const depFailedRequired = state.failed.some(f => f.stepId === firstUnmet && !f.optional);
+    const depFailedOptional = state.failed.some(f => f.stepId === firstUnmet && f.optional);
+    const depPending = !depFailedRequired && !depFailedOptional;
+
+    if (depFailedRequired) {
+      return `Dependency '${firstUnmet}' failed`;
     }
 
-    // BUG-H1 fix: enforce declared dependencies before executing each step.
-    // If a dependency has not yet completed (not in results), check why:
-    // - Failed non-optional dep: abort plan (was already aborting — kept)
-    // - Failed optional dep: mark current step as BLOCKED and skip
-    // - Pending dep (plan ordering error): log warning and skip
-    const unmetDeps = step.dependsOn.filter(dep => !results.has(dep + '_result') && !results.has(dep));
-    if (unmetDeps.length > 0) {
-      const firstUnmet = unmetDeps[0];
-      const depFailedRequired = failed.some(f => f.stepId === firstUnmet && !f.optional);
-      const depFailedOptional = failed.some(f => f.stepId === firstUnmet && f.optional);
-      const depPending = !depFailedRequired && !depFailedOptional;
+    if (depPending) {
+      console.warn(`[executor] Step '${step.id}' has unmet pending dependency '${firstUnmet}' — plan ordering error, skipping`);
+    }
 
-      if (depFailedRequired) {
-        return {
-          success: false,
-          completed,
-          failed,
-          abortReason: `Dependency '${firstUnmet}' failed`,
-        };
+    state.failed.push({
+      stepId: step.id,
+      skill: step.skill,
+      error: `Blocked: dependency '${firstUnmet}' ${depPending ? 'not yet completed (ordering error)' : 'failed'}`,
+      optional: step.optional ?? false,
+    });
+
+    return step.optional ? null : `Required step '${step.id}' blocked by dependency '${firstUnmet}'`;
+  }
+
+  const confScore = (step as Record<string, unknown>).confidence_score as number ?? 0.8;
+  const riskLevel = (step as Record<string, unknown>).risk_level as string ?? 'LOW';
+  if (confScore < 0.75 && riskLevel === 'HIGH') {
+    return 'HIGH_RISK_LOW_CONFIDENCE';
+  }
+
+  let resolvedInput = resolveTemplates(step.input, state.results);
+  resolvedInput = flattenInput(resolvedInput);
+
+  const unresolvedTokens: string[] = [];
+  for (const value of Object.values(resolvedInput)) {
+    if (typeof value !== 'string') continue;
+    const matches = value.match(/\{\{\w+\}\}/g);
+    if (matches) unresolvedTokens.push(...matches);
+  }
+
+  if (unresolvedTokens.length > 0) {
+    const unique = [...new Set(unresolvedTokens)];
+    const optionalStoreResultAsKeys = new Set(state.failed.filter(f => f.optional).map(f => f.stepId));
+    const optionalResultKeys = new Set<string>();
+    for (const ps of plan.steps) {
+      if (ps.optional && state.failed.some(f => f.stepId === ps.id) && ps.storeResultAs) {
+        optionalResultKeys.add(ps.storeResultAs);
+        optionalResultKeys.add(`${ps.storeResultAs}_result`);
       }
-
-      // Dep failed (optional) or dep is still pending — skip this step
-      if (depPending) {
-        console.warn(`[executor] Step '${step.id}' has unmet pending dependency '${firstUnmet}' — plan ordering error, skipping`);
-      }
-
-      failed.push({
-        stepId: step.id,
-        skill: step.skill,
-        error: `Blocked: dependency '${firstUnmet}' ${depPending ? 'not yet completed (ordering error)' : 'failed'}`,
-        optional: step.optional ?? false,
-      });
-
-      if (!step.optional) {
-        return {
-          success: false,
-          completed,
-          failed,
-          abortReason: `Required step '${step.id}' blocked by dependency '${firstUnmet}'`,
-        };
-      }
-      continue;
     }
 
-    // High-risk / low-confidence abort
-    const confScore = (step as Record<string, unknown>).confidence_score as number ?? 0.8;
-    const riskLevel = (step as Record<string, unknown>).risk_level as string ?? 'LOW';
-    if (confScore < 0.75 && riskLevel === 'HIGH') {
-      return {
-        success: false,
-        completed,
-        failed,
-        abortReason: 'HIGH_RISK_LOW_CONFIDENCE',
-      };
-    }
-
-    // Resolve templates in input
-    let resolvedInput = resolveTemplates(step.input, results);
-
-    // Flatten nested objects (fixes [object Object] serialization)
-    resolvedInput = flattenInput(resolvedInput);
-
-    // Guardrail: unresolved templates should fail fast instead of silently writing placeholders.
-    const unresolvedTokens: string[] = [];
-    for (const value of Object.values(resolvedInput)) {
-      if (typeof value !== 'string') continue;
-      const matches = value.match(/\{\{\w+\}\}/g);
-      if (matches) unresolvedTokens.push(...matches);
-    }
-    if (unresolvedTokens.length > 0) {
-      const unique = [...new Set(unresolvedTokens)];
-
-      // Check if the unresolved tokens correspond to optional failed dependencies.
-      // Match by storeResultAs key OR by stepId (with or without _result suffix).
-      const optionalStoreResultAsKeys = new Set(
-        failed.filter(f => f.optional).map(f => f.stepId),
+    const unmetOptionalDeps = unique.every(token => {
+      const key = token.replace(/^\{\{/, '').replace(/\}\}$/, '');
+      const depId = key.replace(/_result$/, '');
+      return (
+        optionalStoreResultAsKeys.has(depId) ||
+        optionalResultKeys.has(key) ||
+        optionalResultKeys.has(depId) ||
+        state.failed.some(f => f.stepId === depId && f.optional)
       );
-      // Also collect storeResultAs values from optional failed steps by scanning plan steps
-      const optionalResultKeys = new Set<string>();
-      for (const ps of plan.steps) {
-        if (ps.optional && failed.some(f => f.stepId === ps.id) && ps.storeResultAs) {
-          optionalResultKeys.add(ps.storeResultAs);
-          optionalResultKeys.add(`${ps.storeResultAs}_result`);
+    });
+
+    if (unmetOptionalDeps) {
+      for (const key of Object.keys(resolvedInput)) {
+        if (typeof resolvedInput[key] === 'string') {
+          resolvedInput[key] = (resolvedInput[key] as string).replace(/\{\{\w+\}\}/g, '');
         }
       }
-
-      const unmetOptionalDeps = unique.every(token => {
-        const key = token.replace(/^\{\{/, '').replace(/\}\}$/, '');
-        const depId = key.replace(/_result$/, '');
-        return (
-          optionalStoreResultAsKeys.has(depId) ||
-          optionalResultKeys.has(key) ||
-          optionalResultKeys.has(depId) ||
-          failed.some(f => f.stepId === depId && f.optional)
-        );
-      });
-
-      if (unmetOptionalDeps) {
-        // All unresolved templates come from optional failed steps.
-        // Replace them with empty string so downstream content doesn't contain placeholder text.
-        for (const key of Object.keys(resolvedInput)) {
-          if (typeof resolvedInput[key] === 'string') {
-            resolvedInput[key] = (resolvedInput[key] as string).replace(/\{\{\w+\}\}/g, '');
-          }
-        }
-        // Fall through — step runs with empty string for missing optional results
-      } else {
-
-      failed.push({
+    } else {
+      state.failed.push({
         stepId: step.id,
         skill: step.skill,
         error: `Unresolved template values: ${unique.join(', ')}`,
         optional: step.optional ?? false,
       });
-
-      if (!step.optional) {
-        return {
-          success: false,
-          completed,
-          failed,
-          abortReason: `Required step '${step.id}' has unresolved templates`,
-        };
-      }
-      continue;
-      } // end else (unmetOptionalDeps)
-    }
-
-    // DEBUG_DEEP: log each step's resolved input before execution
-    if (process.env.DEBUG_DEEP === 'true') {
-      const inputPreview = JSON.stringify(resolvedInput).slice(0, 400);
-      console.log(`[executor:DEEP] step=${step.id} skill=${step.skill} input=${inputPreview}`);
-    }
-
-    // Emit step_start
-    transparency.emit({ type: 'step_start', data: { step } });
-
-    // Execute via runWithRetry
-    const stepStart = performance.now();
-    const skillResult = await runWithRetry(step.skill, resolvedInput, llmHandler);
-    const stepMs = Math.round(performance.now() - stepStart);
-
-    // Emit step_result
-    transparency.emit({ type: 'step_result', data: { step, result: skillResult, ms: stepMs } });
-
-    // Log execution record — fire-and-forget
-    try {
-      const artifactHash = skillResult.success
-        ? createHash('sha256').update(skillResult.output ?? '').digest('hex').slice(0, 16)
-        : '';
-      logExecution({
-        ts: new Date().toISOString(),
-        session_id: plan.createdAt,
-        step_id: step.id,
-        skill: step.skill,
-        action: step.description,
-        success: skillResult.success,
-        pre_hash: '',
-        post_hash: artifactHash,
-        artifacts: skillResult.success ? [skillResult.output?.slice(0, 100) ?? ''] : [],
-        constraints: [],
-        ms: stepMs,
-      });
-    } catch { /* non-fatal */ }
-
-    // Emit failure classification if failed
-    if (!skillResult.success && skillResult.error) {
-      const failureClass = classifyFailure(skillResult.error);
-      transparency.emit({ type: 'failure_classified', data: { error: skillResult.error, class: failureClass } });
-    }
-
-    if (skillResult.success) {
-      completed.push({
-        stepId: step.id,
-        skill: step.skill,
-        output: skillResult.output,
-        display: skillResult.display,
-        retries: skillResult.retries ?? 0,
-      });
-      // Store result for dependent steps
-      if (step.storeResultAs) {
-        results.set(step.storeResultAs, skillResult.output);
-        if (step.storeResultAs.endsWith('_result')) {
-          results.set(step.storeResultAs.replace(/_result$/, ''), skillResult.output);
-        } else {
-          results.set(`${step.storeResultAs}_result`, skillResult.output);
-        }
-      }
-      // Also store by step ID for dependency resolution
-      results.set(step.id + '_result', skillResult.output);
-      results.set(step.id, skillResult.output);
-    } else {
-      failed.push({
-        stepId: step.id,
-        skill: step.skill,
-        error: skillResult.error ?? 'Unknown error',
-        optional: step.optional ?? false,
-      });
-
-      // Optional step failure → continue; required → stop
-      if (!step.optional) {
-        return {
-          success: false,
-          completed,
-          failed,
-          abortReason: `Required step '${step.id}' failed: ${skillResult.error}`,
-        };
-      }
-    }
-
-    // Brief delay between steps
-    if (STEP_DELAY_MS > 0) {
-      await new Promise(resolve => setTimeout(resolve, STEP_DELAY_MS));
+      return step.optional ? null : `Required step '${step.id}' has unresolved templates`;
     }
   }
 
+  if (process.env.DEBUG_DEEP === 'true') {
+    const inputPreview = JSON.stringify(resolvedInput).slice(0, 400);
+    console.log(`[executor:DEEP] step=${step.id} skill=${step.skill} input=${inputPreview}`);
+  }
+
+  transparency.emit({ type: 'step_start', data: { step } });
+
+  const stepStart = performance.now();
+  const skillResult = await runWithRetry(step.skill, resolvedInput, llmHandler);
+  const stepMs = Math.round(performance.now() - stepStart);
+  transparency.emit({ type: 'step_result', data: { step, result: skillResult, ms: stepMs } });
+
+  try {
+    const artifactHash = skillResult.success
+      ? createHash('sha256').update(skillResult.output ?? '').digest('hex').slice(0, 16)
+      : '';
+    logExecution({
+      ts: new Date().toISOString(),
+      session_id: plan.createdAt,
+      step_id: step.id,
+      skill: step.skill,
+      action: step.description,
+      success: skillResult.success,
+      pre_hash: '',
+      post_hash: artifactHash,
+      artifacts: skillResult.success ? [skillResult.output?.slice(0, 100) ?? ''] : [],
+      constraints: [],
+      ms: stepMs,
+    });
+  } catch {
+    // Non-fatal logging path.
+  }
+
+  if (!skillResult.success && skillResult.error) {
+    const failureClass = classifyFailure(skillResult.error);
+    transparency.emit({ type: 'failure_classified', data: { error: skillResult.error, class: failureClass } });
+  }
+
+  if (skillResult.success) {
+    state.completed.push({
+      stepId: step.id,
+      skill: step.skill,
+      output: skillResult.output,
+      display: skillResult.display,
+      retries: skillResult.retries ?? 0,
+    });
+    if (step.storeResultAs) {
+      state.results.set(step.storeResultAs, skillResult.output);
+      if (step.storeResultAs.endsWith('_result')) {
+        state.results.set(step.storeResultAs.replace(/_result$/, ''), skillResult.output);
+      } else {
+        state.results.set(`${step.storeResultAs}_result`, skillResult.output);
+      }
+    }
+    state.results.set(step.id + '_result', skillResult.output);
+    state.results.set(step.id, skillResult.output);
+  } else {
+    state.failed.push({
+      stepId: step.id,
+      skill: step.skill,
+      error: skillResult.error ?? 'Unknown error',
+      optional: step.optional ?? false,
+    });
+    if (!step.optional) {
+      return `Required step '${step.id}' failed: ${skillResult.error}`;
+    }
+  }
+
+  if (STEP_DELAY_MS > 0) {
+    await new Promise(resolve => setTimeout(resolve, STEP_DELAY_MS));
+  }
+
+  return null;
+}
+
+export async function executePlan(
+  plan: TaskPlan,
+  llmHandler: LLMHandler,
+): Promise<ExecutionResult> {
+  let milestones = getPlanMilestones(plan);
+  const state: ExecutionState = {
+    results: new Map<string, string>(),
+    completed: [],
+    failed: [],
+    startTime: Date.now(),
+  };
+  const milestoneResults: MilestoneExecutionResult[] = [];
+  const completedMilestones: string[] = [];
+
+  const initialPlanEx = buildInitialPlanEX(plan, milestones);
+  let planExCode: string | undefined;
+  let planEx: PlanEXEntry = { ...initialPlanEx, code: '' };
+  try {
+    planExCode = createPlanEX(initialPlanEx);
+    planEx = loadActivePlanEX() ?? { ...initialPlanEx, code: planExCode };
+  } catch {
+    planEx = { ...initialPlanEx, code: '' };
+  }
+
+  for (let milestoneIndex = 0; milestoneIndex < milestones.length; milestoneIndex++) {
+    const milestone = milestones[milestoneIndex];
+    transparency.emit({
+      type: 'milestone_start',
+      data: { id: milestone.id, title: milestone.title, index: milestoneIndex + 1, total: milestones.length },
+    });
+
+    const completedStart = state.completed.length;
+    const failedStart = state.failed.length;
+
+    for (const step of milestone.steps) {
+      const abortReason = await executeSingleStep(plan, step, state, llmHandler);
+      if (abortReason) {
+        const milestoneResult: MilestoneExecutionResult = {
+          milestoneId: milestone.id,
+          title: milestone.title,
+          success: false,
+          completedStepIds: state.completed.slice(completedStart).map(item => item.stepId),
+          failedStepIds: state.failed.slice(failedStart).map(item => item.stepId),
+        };
+        milestoneResults.push(milestoneResult);
+        transparency.emit({
+          type: 'milestone_result',
+          data: { id: milestone.id, title: milestone.title, success: false, index: milestoneIndex + 1, total: milestones.length },
+        });
+        try {
+          savePlanEX({
+            ...planEx,
+            status: 'failed',
+            abort_reason: abortReason,
+            current_milestone: milestoneIndex,
+            next_milestone_id: milestone.id,
+            next_action: milestone.title,
+            checkpoint_ts: new Date().toISOString(),
+            last_failures: {
+              ...planEx.last_failures,
+              [milestone.id]: abortReason,
+            },
+          });
+        } catch {
+          // PLAN.EX persistence is best-effort.
+        }
+        return {
+          success: false,
+          completed: state.completed,
+          failed: state.failed,
+          abortReason,
+          milestoneResults,
+          completedMilestones,
+          currentMilestoneId: milestone.id,
+          planExCode: planEx.code,
+          linkedCodes: collectLinkedCodes(state.completed),
+        };
+      }
+    }
+
+    completedMilestones.push(milestone.id);
+    const completedInMilestone = state.completed.slice(completedStart);
+    const cycle = await writeMilestoneMemoryCycle(
+      plan,
+      milestone,
+      milestoneIndex,
+      milestones,
+      completedInMilestone,
+      planEx,
+    );
+    if (cycle.planEx.code) {
+      planEx = cycle.planEx;
+    }
+
+    milestoneResults.push({
+      milestoneId: milestone.id,
+      title: milestone.title,
+      success: true,
+      completedStepIds: completedInMilestone.map(item => item.stepId),
+      failedStepIds: state.failed.slice(failedStart).map(item => item.stepId),
+      eventCode: cycle.eventCode,
+    });
+    transparency.emit({
+      type: 'milestone_result',
+      data: { id: milestone.id, title: milestone.title, success: true, index: milestoneIndex + 1, total: milestones.length },
+    });
+
+    milestones = await reviseRemainingMilestones(milestones, completedMilestones, milestoneIndex, llmHandler);
+  }
+
+  try {
+    savePlanEX({
+      ...planEx,
+      status: 'complete',
+      abort_reason: undefined,
+      current_milestone: milestones.length,
+      next_milestone_id: null,
+      completed_milestone_ids: completedMilestones,
+      next_action: 'Complete plan',
+      checkpoint_ts: new Date().toISOString(),
+      linked_codes: collectLinkedCodes(state.completed),
+    });
+  } catch {
+    // PLAN.EX persistence is best-effort.
+  }
+
   return {
-    success: failed.length === 0,
-    completed,
-    failed,
+    success: state.failed.length === 0,
+    completed: state.completed,
+    failed: state.failed,
+    milestoneResults,
+    completedMilestones,
+    currentMilestoneId: milestones.at(-1)?.id,
+    planExCode: planEx.code,
+    linkedCodes: collectLinkedCodes(state.completed),
   };
 }
 

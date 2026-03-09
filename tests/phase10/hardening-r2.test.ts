@@ -96,22 +96,25 @@ describe('BUG-C1: rollbackEntry restores exact original code', () => {
   });
 });
 
-// ─── BUG-C2: createEntry SQLite first, file second ─────────────────────────
+// ─── BUG-C2 / FIX F: createEntry write order ─────────────────────────────────
+// FIX F reversed the write order: file FIRST, SQLite second.
+// If file write fails, SQLite is never touched (clean failure).
+// If SQLite fails after file write, the file is cleaned up.
 
-describe('BUG-C2: createEntry writes SQLite before file', () => {
+describe('BUG-C2: createEntry write order', () => {
   beforeEach(isolateDb);
   afterEach(() => { restoreDb(); vi.restoreAllMocks(); });
 
-  it('BUG-C2A: write.ts source confirms SQLite transaction before file write', () => {
+  it('BUG-C2A: write.ts source confirms FIX F file-first write order', () => {
     const src = fs.readFileSync(
       path.join(process.cwd(), 'core/memory/write.ts'),
       'utf-8',
     );
-    // "SQLite transaction FIRST" comment should exist
-    expect(src).toContain('SQLite transaction FIRST');
+    // FIX F: file FIRST, then SQLite
+    expect(src).toContain('FIX F');
   });
 
-  it('BUG-C2B: createEntry creates SQLite row (file may or may not exist)', () => {
+  it('BUG-C2B: createEntry creates SQLite row and file on success', () => {
     const entry = createEntry({
       nb: 'WHO', type: 'CT', name: 'Test Contact BUG-C2',
       status: 'active', summary: 'test', body: 'body',
@@ -120,40 +123,29 @@ describe('BUG-C2: createEntry writes SQLite before file', () => {
     const d = getDb();
     const row = d.prepare('SELECT code FROM index_entries WHERE code = ?').get(entry.code);
     expect(row).not.toBeNull();
+    // File should also exist
+    expect(fs.existsSync(entry.path)).toBe(true);
   });
 
-  it('BUG-C2C: file write failure after SQLite commit logs error but does not throw', () => {
-    // Override fs.writeFileSync to simulate failure on second call (first is dir creation)
+  it('BUG-C2C: file write failure throws (SQLite never touched)', () => {
+    // FIX F: file is written FIRST. If file write fails, the error propagates.
     let callCount = 0;
     const originalWriteFileSync = fs.writeFileSync.bind(fs);
     vi.spyOn(fs, 'writeFileSync').mockImplementation((...args: Parameters<typeof fs.writeFileSync>) => {
       callCount++;
-      if (callCount === 1 && String(args[0]).endsWith(".md.tmp")) {
+      if (callCount === 1 && String(args[0]).endsWith('.md.tmp')) {
         throw new Error('Simulated file write failure');
       }
       return originalWriteFileSync(...args);
     });
 
-    const warnSpy = vi.spyOn(console, 'warn');
-
-    // Should NOT throw even if file write fails
-    let entry: IndexEntry | undefined;
+    // FIX F: file write failure DOES throw (old behavior was to swallow it)
     expect(() => {
-      entry = createEntry({
+      createEntry({
         nb: 'WHO', type: 'CT', name: 'File Fail Test',
         status: 'active', summary: 'test', body: 'body',
       });
-    }).not.toThrow();
-
-    // SQLite row should still exist
-    if (entry) {
-      const d = getDb();
-      const row = d.prepare('SELECT code FROM index_entries WHERE code = ?').get(entry.code);
-      expect(row).not.toBeNull();
-    }
-    // Warning should have been logged
-    const warnCalls = warnSpy.mock.calls.filter(args => String(args[0]).includes('[memory-write]'));
-    expect(warnCalls.length).toBeGreaterThan(0);
+    }).toThrow('Simulated file write failure');
   });
 });
 

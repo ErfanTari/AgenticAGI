@@ -223,6 +223,8 @@ describe('buildContext', () => {
     const messages = await buildContext('hello', null, [], []);
     expect(messages[0].role).toBe('system');
     expect(messages[0].content).toContain('personal AI agent');
+    expect(messages[0].content).toContain('You are zaraban');
+    expect(messages[0].content).not.toContain('do not have a fixed name yet');
   });
 
   // BUG 4: No extra SQL on every request
@@ -428,6 +430,37 @@ describe('processMessage', () => {
   it('web_search routes through skill and LLM', async () => {
     const res = await processMessage('search the web for SQLite tips', [], { llmHandler: mockLLM });
     expect(res.intent).toBe('skill');
+  });
+
+  it('web_search does not accept "let me search" narration as a completed result', async () => {
+    const deferringLLM = async (messages: Message[]) => {
+      const system = messages[0]?.content ?? '';
+      if (system.includes('Skill Output')) {
+        return `I'll use the web_search skill with a query about latest news.
+
+Let me search for the latest news for you.`;
+      }
+      return 'unused';
+    };
+
+    const res = await processMessage('search the web for latest news', [], { llmHandler: deferringLLM });
+    expect(res.intent).toBe('skill');
+    expect(res.reply).not.toMatch(/let me search/i);
+    expect(res.reply).toMatch(/latest news/i);
+  });
+
+  it('strips <think> tag reasoning blocks from conversational replies', async () => {
+    // FIX H: only <think>...</think> blocks are stripped, not sentence-starter preambles.
+    const reflectiveLLM = async () => `<think>
+The user is greeting me and asking what I can do.
+I should respond clearly and directly.
+</think>
+
+I can help with planning, memory, file work, and web search.`;
+
+    const res = await processMessage('what can you do?', [], { llmHandler: reflectiveLLM });
+    expect(res.intent).toBe('general');
+    expect(res.reply).toBe('I can help with planning, memory, file work, and web search.');
   });
 
   // BUG 6: LLM errors don't crash
