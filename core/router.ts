@@ -1,0 +1,439 @@
+import { buildContext } from './context.js';
+import { executePlan, verifyExecution, buildUserReport } from './executor.js';
+import { stripThinkingTags } from './llm.js';
+import { decomposeTask } from './planner.js';
+import { fetchByCode, hybridSearch, queryEntries, updateEntry, upsertEntry } from './memory/mod.js';
+import { writeReflection } from './memory/episodic.js';
+import { getSkillDescriptions } from './skills/registry.js';
+import { runSkill } from './skills/runner.js';
+import type {
+  DecomposedUnit,
+  LLMHandler,
+  Message,
+  ResolvedMemory,
+  RouteKind,
+  UnitMemoryResult,
+} from './types.js';
+import type { ExecutionResult } from './executor.js';
+import type { TaskGoal, TaskPlan, VerificationResult } from './schemas.js';
+
+// ─── Factual Assertion Patterns (FIX D) ─────────────────────────────────────
+
+const FACTUAL_PATTERNS: Array<{
+  pattern: RegExp;
+  nb: string;
+  type: string;
+  extract: (match: RegExpMatchArray) => { name: string; summary: string } | null;
+}> = [
+  {
+    // "Sara is the lead developer" / "James is the PM"
+    pattern: /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+is\s+the\s+(\w+)/,
+    nb: 'WHO',
+    type: 'CT',
+    extract: (match) => ({
+      name: match[1].trim(),
+      summary: `${match[1].trim()} is the ${match[2].trim()}`,
+    }),
+  },
+  {
+    // "Sara works on the backend" / "James worked on auth"
+    pattern: /\b([A-Z][a-z]+)\s+(?:works|worked)\s+on\s+(.+?)(?:\.|,|$)/,
+    nb: 'WHO',
+    type: 'CT',
+    extract: (match) => ({
+      name: match[1].trim(),
+      summary: `${match[1].trim()} works on ${match[2].trim()}`,
+    }),
+  },
+  {
+    // "started a new project called Zaraban" / "created project called Foo"
+    pattern: /(?:started|created|launched|began)\s+(?:a\s+)?(?:new\s+)?project\s+(?:called\s+)?([A-Z][^\s.,]+)/i,
+    nb: 'WHAT',
+    type: 'PJ',
+    extract: (match) => ({
+      name: match[1].trim(),
+      summary: `Project: ${match[1].trim()}`,
+    }),
+  },
+  {
+    // "new project called ProjectName"
+    pattern: /new project called\s+([A-Za-z][^\s.,]+)/i,
+    nb: 'WHAT',
+    type: 'PJ',
+    extract: (match) => ({
+      name: match[1].trim(),
+      summary: `Project: ${match[1].trim()}`,
+    }),
+  },
+  {
+    // "due on March 15" / "deadline 2026-03-15" / "deadline on January 5"
+    pattern: /(?:due|deadline)\s+(?:on\s+)?([A-Za-z]+\s+\d+|\d{4}-\d{2}-\d{2})/i,
+    nb: 'WHEN',
+    type: 'DL',
+    extract: (match) => ({
+      name: `Deadline: ${match[1].trim()}`,
+      summary: `Deadline on ${match[1].trim()}`,
+    }),
+  },
+];
+
+function persistFactualAssertions(unitTexts: string[]): void {
+  for (const text of unitTexts) {
+    for (const { pattern, nb, type, extract } of FACTUAL_PATTERNS) {
+      const match = text.match(pattern);
+      if (!match) continue;
+      const extracted = extract(match);
+      if (!extracted) continue;
+
+      // Fire-and-forget — do not await
+      Promise.resolve().then(() => {
+        try {
+          upsertEntry({
+            nb,
+            type,
+            name: extracted.name,
+            status: 'active',
+            summary: extracted.summary,
+            body: text,
+          });
+        } catch {
+          // best-effort
+        }
+      }).catch(() => {});
+      break; // one pattern per unit is sufficient
+    }
+  }
+}
+
+const GREETING_ONLY = /^\s*(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy|greetings)\s*[!.?]*\s*$/i;
+
+interface ReplyPart {
+  order: number;
+  route: RouteKind;
+  reply: string;
+}
+
+export interface RouteExecutionResult {
+  reply: string;
+  parts: ReplyPart[];
+  primaryRoute: RouteKind;
+  resolved: ResolvedMemory | null;
+  plan?: TaskPlan;
+  execution?: ExecutionResult;
+  verification?: VerificationResult;
+}
+
+type ConversationalRouteResult = { parts: ReplyPart[]; resolved: ResolvedMemory | null };
+type QueryRouteResult = { parts: ReplyPart[]; resolved: ResolvedMemory | null };
+type AgenticRouteResult = { parts: ReplyPart[]; plan: TaskPlan; execution?: ExecutionResult; verification?: VerificationResult };
+
+function hasResolvedPayload(
+  task: ConversationalRouteResult | QueryRouteResult | AgenticRouteResult | null,
+): task is ConversationalRouteResult | QueryRouteResult {
+  return task !== null && 'resolved' in task;
+}
+
+function hasPlanPayload(
+  task: ConversationalRouteResult | QueryRouteResult | AgenticRouteResult | null,
+): task is AgenticRouteResult {
+  return task !== null && 'plan' in task;
+}
+
+function aggregateResolved(results: UnitMemoryResult[]): ResolvedMemory | null {
+  const entries = results.flatMap(result => result.entries);
+  if (entries.length === 0) return null;
+
+  const uniqueEntries = entries.filter((entry, index, all) =>
+    all.findIndex(candidate => candidate.code === entry.code) === index,
+  );
+  const contents = results.flatMap(result => result.contents);
+  return {
+    step: 0,
+    entries: uniqueEntries,
+    contents,
+    relationships: [],
+  };
+}
+
+function buildGoals(units: DecomposedUnit[]): TaskGoal[] {
+  return units.map((unit, index) => ({
+    id: `goal_${index + 1}`,
+    sourceUnitIds: [unit.id],
+    description: unit.content,
+  }));
+}
+
+function buildDecompositionSummary(units: DecomposedUnit[]): string {
+  return units.map(unit => `- ${unit.id} [${unit.route}] ${unit.content}`).join('\n');
+}
+
+function buildMemoryContext(units: DecomposedUnit[], results: UnitMemoryResult[]): string {
+  return units.map(unit => {
+    const result = results.find(candidate => candidate.unitId === unit.id);
+    if (!result) return `## ${unit.id}\nNo memory context.`;
+    if (result.entries.length === 0) {
+      return `## ${unit.id}\nStrategy: ${result.strategy}\nConfidence: ${result.confidence}\nNo memory matches.`;
+    }
+    const lines = result.entries.map(entry => `- [${entry.code}] ${entry.name}: ${entry.summary}`);
+    return `## ${unit.id}\nStrategy: ${result.strategy}\nConfidence: ${result.confidence}\n${lines.join('\n')}`;
+  }).join('\n\n');
+}
+
+function buildResolvedContext(label: string, resolved: ResolvedMemory | null): string {
+  if (!resolved || resolved.entries.length === 0) return '';
+
+  const lines = resolved.entries.map(entry => `- [${entry.code}] ${entry.name}: ${entry.summary}`);
+  return `${label}:\n${lines.join('\n')}`;
+}
+
+function formatQueryReply(unit: DecomposedUnit, result: UnitMemoryResult): string {
+  if (result.entries.length === 0) {
+    return `No matching entries found for "${unit.content}".`;
+  }
+
+  const lines = result.entries.map(entry => `- [${entry.code}] ${entry.name} (${entry.status}): ${entry.summary}`);
+  return `${unit.content}\n${lines.join('\n')}`;
+}
+
+function extractMathExpression(message: string): string | null {
+  const percentOf = message.match(/(\d+(?:\.\d+)?)\s+percent\s+of\s+(\d+(?:\.\d+)?)/i);
+  if (percentOf) return `${percentOf[1]} / 100 * ${percentOf[2]}`;
+
+  const pctMatch = message.match(/(\d+(?:\.\d+)?)\s*%\s*of\s*(\d+(?:\.\d+)?)/i);
+  if (pctMatch) return `${pctMatch[1]} / 100 * ${pctMatch[2]}`;
+
+  const wordMath = message.match(
+    /(?:(?:what|how\s+much)\s+is\s+)?(\d+(?:\.\d+)?)\s+(plus|minus|times|divided\s+by|multiplied\s+by)\s+(\d+(?:\.\d+)?)/i,
+  );
+  if (wordMath) {
+    const ops: Record<string, string> = {
+      plus: '+',
+      minus: '-',
+      times: '*',
+      'divided by': '/',
+      'multiplied by': '*',
+    };
+    return `${wordMath[1]} ${ops[wordMath[2].toLowerCase()] ?? wordMath[2]} ${wordMath[3]}`;
+  }
+
+  const directMath = message.match(/(\d+(?:\.\d+)?\s*[\+\-\*\/×÷\^%]\s*\d+(?:\.\d+)?(?:\s*[\+\-\*\/×÷\^%]\s*\d+(?:\.\d+)?)*)/);
+  return directMath?.[1]?.trim().replace(/×/g, '*').replace(/÷/g, '/') ?? null;
+}
+
+async function handleConversationalUnits(
+  units: DecomposedUnit[],
+  results: UnitMemoryResult[],
+  history: Message[],
+  llmHandler: LLMHandler,
+): Promise<ConversationalRouteResult> {
+  if (units.length === 1 && GREETING_ONLY.test(units[0].content)) {
+    return {
+      parts: [{ order: units[0].order, route: 'conversational', reply: 'Hello! How can I help you today?' }],
+      resolved: null,
+    };
+  }
+
+  const arithmeticNotes: string[] = [];
+  for (const unit of units) {
+    const expression = extractMathExpression(unit.content);
+    if (!expression) continue;
+    const result = await runSkill('calculator', { expression });
+    if (result.success) {
+      arithmeticNotes.push(`- ${unit.content} => ${result.output}`);
+    }
+  }
+
+  const resolved = aggregateResolved(results);
+  const compoundPrompt = [
+    'Respond to these conversational units together:',
+    ...units.map(unit => `- ${unit.content}`),
+    arithmeticNotes.length > 0 ? `Arithmetic results:\n${arithmeticNotes.join('\n')}` : '',
+  ].filter(Boolean).join('\n');
+
+  const messages = await buildContext(
+    compoundPrompt,
+    resolved,
+    history,
+    [],
+    'general',
+    arithmeticNotes.length > 0 ? arithmeticNotes.join('\n') : undefined,
+    llmHandler,
+  );
+  const reply = stripThinkingTags(await llmHandler(messages)).trim();
+
+  // FIX D: fire-and-forget factual assertion persistence (no-await, doesn't affect reply)
+  persistFactualAssertions(units.map(unit => unit.content));
+
+  return {
+    parts: [{ order: Math.min(...units.map(unit => unit.order)), route: 'conversational', reply }],
+    resolved,
+  };
+}
+
+async function handleQueryUnits(
+  units: DecomposedUnit[],
+  results: UnitMemoryResult[],
+): Promise<QueryRouteResult> {
+  const parts: ReplyPart[] = [];
+  const resolvedResults: UnitMemoryResult[] = [];
+
+  for (const unit of units) {
+    const current = results.find(result => result.unitId === unit.id);
+    if (!current) continue;
+
+    if (current.entries.length > 0) {
+      parts.push({ order: unit.order, route: 'query', reply: formatQueryReply(unit, current) });
+      resolvedResults.push(current);
+      continue;
+    }
+
+    const broadened = await hybridSearch(unit.content, { limit: 4 });
+    const broadResult: UnitMemoryResult = {
+      unitId: unit.id,
+      strategy: current.strategy,
+      confidence: current.confidence,
+      entries: broadened.map(item => item.entry),
+      contents: broadened.flatMap(item => {
+        const fetched = fetchByCode(item.entry.code);
+        return fetched ? [fetched.content] : [];
+      }),
+    };
+    parts.push({ order: unit.order, route: 'query', reply: formatQueryReply(unit, broadResult) });
+    resolvedResults.push(broadResult);
+  }
+
+  return { parts, resolved: aggregateResolved(resolvedResults) };
+}
+
+async function writeCompletionMemory(
+  plan: TaskPlan,
+  execution: ExecutionResult,
+  verification: VerificationResult,
+  llmHandler: LLMHandler,
+): Promise<void> {
+  const milestoneEventCode = execution.milestoneResults?.at(-1)?.eventCode;
+  if (milestoneEventCode) {
+    const outcome = verification.verified ? 'success' : (execution.completed.length > 0 ? 'partial' : 'failure');
+    writeReflection(milestoneEventCode, {
+      code: milestoneEventCode,
+      trigger: plan.goal,
+      task_name: plan.goal,
+      skill_sequence: execution.completed.map(step => step.skill),
+      outcome,
+      failure_reason: execution.abortReason,
+      linked_codes: execution.linkedCodes ?? [],
+      session_id: plan.createdAt,
+    }, llmHandler).catch(() => {});
+  }
+
+  const matchingBrains = queryEntries({ nb: 'PLAN', type: 'PJ', name: plan.goal });
+  if (matchingBrains.length > 0) {
+    try {
+      updateEntry(matchingBrains[0].code, {
+        summary: `${verification.verified ? 'Completed' : 'Updated'} on ${new Date().toISOString().slice(0, 10)} — ${plan.goal.slice(0, 80)}`,
+      });
+    } catch {
+      // Project brain update is best-effort.
+    }
+  }
+}
+
+async function handleAgenticUnits(
+  units: DecomposedUnit[],
+  results: UnitMemoryResult[],
+  llmHandler: LLMHandler,
+  priorContext: ResolvedMemory | null = null,
+): Promise<AgenticRouteResult> {
+  const goals = buildGoals(units);
+  const goalMessage = units.map(unit => unit.content).join('\n');
+  const memoryContext = [
+    buildMemoryContext(units, results),
+    buildResolvedContext('PRIOR QUERY CONTEXT', priorContext),
+  ].filter(Boolean).join('\n\n');
+  const plan = await decomposeTask(goalMessage, {
+    skills: getSkillDescriptions(),
+    goals,
+    memoryContext,
+    decompositionSummary: buildDecompositionSummary(units),
+  }, llmHandler);
+
+  if (plan.needsConfirmation) {
+    const milestoneLines = (plan.milestones ?? []).map(milestone => `- ${milestone.title}: ${milestone.description}`);
+    const reply = [
+      'Confirmation required before executing this plan.',
+      ...milestoneLines,
+    ].join('\n');
+    return {
+      parts: [{ order: Math.min(...units.map(unit => unit.order)), route: 'agentic', reply }],
+      plan,
+    };
+  }
+
+  const execution = await executePlan(plan, llmHandler);
+  const verification = await verifyExecution(plan, execution, llmHandler);
+  writeCompletionMemory(plan, execution, verification, llmHandler).catch(() => {});
+  const reply = stripThinkingTags(buildUserReport(plan, execution, verification)).trim();
+
+  return {
+    parts: [{ order: Math.min(...units.map(unit => unit.order)), route: 'agentic', reply }],
+    plan,
+    execution,
+    verification,
+  };
+}
+
+export async function routeDecomposedUnits(
+  units: DecomposedUnit[],
+  results: UnitMemoryResult[],
+  history: Message[],
+  llmHandler: LLMHandler,
+): Promise<RouteExecutionResult> {
+  const conversationalUnits = units.filter(unit => unit.route === 'conversational');
+  const queryUnits = units.filter(unit => unit.route === 'query');
+  const agenticUnits = units.filter(unit => unit.route === 'agentic');
+
+  const conversationalTask = conversationalUnits.length > 0
+    ? handleConversationalUnits(
+      conversationalUnits,
+      results.filter(result => conversationalUnits.some(unit => unit.id === result.unitId)),
+      history,
+      llmHandler,
+    )
+    : Promise.resolve(null);
+
+  const queryTask = queryUnits.length > 0
+    ? handleQueryUnits(
+      queryUnits,
+      results.filter(result => queryUnits.some(unit => unit.id === result.unitId)),
+    )
+    : Promise.resolve(null);
+
+  const queryResult = await queryTask;
+
+  const agenticTask = agenticUnits.length > 0
+    ? handleAgenticUnits(
+      agenticUnits,
+      results.filter(result => agenticUnits.some(unit => unit.id === result.unitId)),
+      llmHandler,
+      queryResult?.resolved ?? null,
+    )
+    : Promise.resolve(null);
+
+  const [conversationalResult, agenticResult] = await Promise.all([conversationalTask, agenticTask]);
+  const resolvedTasks = [conversationalResult, queryResult, agenticResult].filter(
+    (task): task is ConversationalRouteResult | QueryRouteResult | AgenticRouteResult => task !== null,
+  );
+  const parts = resolvedTasks.flatMap(task => task.parts).sort((a, b) => a.order - b.order);
+  const resolved = resolvedTasks.filter(hasResolvedPayload).map(task => task.resolved).find(value => value !== undefined) ?? null;
+  const agenticExecution = resolvedTasks.find(hasPlanPayload);
+
+  return {
+    reply: parts.map(part => part.reply).join('\n\n').trim(),
+    parts,
+    primaryRoute: agenticUnits.length > 0 ? 'agentic' : (queryUnits.length > 0 && conversationalUnits.length === 0 ? 'query' : 'conversational'),
+    resolved,
+    plan: agenticExecution?.plan,
+    execution: agenticExecution?.execution,
+    verification: agenticExecution?.verification,
+  };
+}

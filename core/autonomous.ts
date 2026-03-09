@@ -71,14 +71,26 @@ export async function runAutonomousLoop(
 
       if (currentIdx >= milestones.length) {
         const { savePlanEX } = await import('./memory/plan-ex.js');
-        savePlanEX({ ...planEx, checkpoint_ts: new Date().toISOString() });
+        savePlanEX({
+          ...planEx,
+          status: 'complete',
+          next_milestone_id: null,
+          checkpoint_ts: new Date().toISOString(),
+        });
         return { completed: true, milestoneDone: 'All milestones completed' };
       }
 
       // conf_score check: pause if below threshold
       if ((planEx.conf_score ?? 1) < 0.8) {
         const { savePlanEX } = await import('./memory/plan-ex.js');
-        savePlanEX({ ...planEx, checkpoint_ts: new Date().toISOString() });
+        const nextMilestone = milestones[currentIdx];
+        savePlanEX({
+          ...planEx,
+          status: 'paused',
+          abort_reason: `conf_score ${planEx.conf_score} below threshold 0.8`,
+          next_milestone_id: nextMilestone?.id ?? null,
+          checkpoint_ts: new Date().toISOString(),
+        });
         return { completed: false, pauseReason: `conf_score ${planEx.conf_score} below threshold 0.8` };
       }
 
@@ -112,14 +124,26 @@ export async function runAutonomousLoop(
             current_milestone: currentIdx + 1,
             last_action: milestone.name,
             checkpoint_ts: new Date().toISOString(),
+            status: currentIdx + 1 >= milestones.length ? 'complete' : 'in_progress',
           });
           planEx = { ...planEx, milestones: updatedMilestones, current_milestone: currentIdx + 1, last_action: milestone.name };
-          savePlanEX({ ...planEx, checkpoint_ts: new Date().toISOString() });
+          savePlanEX({
+            ...planEx,
+            status: currentIdx + 1 >= milestones.length ? 'complete' : 'in_progress',
+            next_milestone_id: milestones[currentIdx + 1]?.id ?? null,
+            checkpoint_ts: new Date().toISOString(),
+          });
 
           return { completed: false, milestoneDone: milestone.name };
         } else {
           const { savePlanEX } = await import('./memory/plan-ex.js');
-          savePlanEX({ ...planEx, checkpoint_ts: new Date().toISOString(), last_action: milestone.name });
+          savePlanEX({
+            ...planEx,
+            status: 'failed',
+            abort_reason: execResult.abortReason ?? `Milestone failed: ${milestone.name}`,
+            checkpoint_ts: new Date().toISOString(),
+            last_action: milestone.name,
+          });
           return {
             completed: false,
             pauseReason: execResult.abortReason ?? `Milestone failed: ${milestone.name}`,
@@ -127,7 +151,12 @@ export async function runAutonomousLoop(
         }
       } catch (err) {
         const { savePlanEX } = await import('./memory/plan-ex.js');
-        savePlanEX({ ...planEx, checkpoint_ts: new Date().toISOString() });
+        savePlanEX({
+          ...planEx,
+          status: 'failed',
+          abort_reason: `Exception: ${String(err)}`,
+          checkpoint_ts: new Date().toISOString(),
+        });
         return {
           completed: false,
           pauseReason: `Error executing milestone "${milestone.name}": ${String(err)}`,
@@ -136,10 +165,30 @@ export async function runAutonomousLoop(
     }
 
     const { savePlanEX } = await import('./memory/plan-ex.js');
-    savePlanEX({ ...planEx, checkpoint_ts: new Date().toISOString() });
+    const nextMilestone = (planEx.milestones ?? [])[planEx.current_milestone ?? 0];
+    savePlanEX({
+      ...planEx,
+      status: 'paused',
+      abort_reason: 'Maximum iterations reached',
+      next_milestone_id: nextMilestone?.id ?? null,
+      checkpoint_ts: new Date().toISOString(),
+    });
     return { completed: false, pauseReason: 'Maximum iterations reached' };
 
   } catch (err) {
+    // Best-effort: try to mark as failed if we have a planEx reference
+    try {
+      const { loadActivePlanEX, savePlanEX } = await import('./memory/plan-ex.js');
+      const planEx = loadActivePlanEX();
+      if (planEx) {
+        savePlanEX({
+          ...planEx,
+          status: 'failed',
+          abort_reason: `Exception: ${String(err)}`,
+          checkpoint_ts: new Date().toISOString(),
+        });
+      }
+    } catch { /* ignore secondary failure */ }
     return { completed: false, pauseReason: `Autonomous loop error: ${String(err)}` };
   }
 }

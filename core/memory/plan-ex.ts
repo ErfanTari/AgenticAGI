@@ -4,10 +4,12 @@
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { createEntry } from './write.js';
-import { queryEntries, getDb } from './index.js';
+import { getDb } from './index.js';
 import { fetchByCode } from './fetch.js';
 import { transparency } from '../transparency.js';
 import type { IndexEntry } from './types.js';
+
+export type PlanEXStatus = 'active' | 'in_progress' | 'paused' | 'complete' | 'failed';
 
 export interface Milestone {
   id: string;
@@ -23,11 +25,17 @@ export interface Todo {
 
 export interface PlanEXEntry {
   code: string;
+  status?: PlanEXStatus;
+  abort_reason?: string;
   task_name: string;
   project_code: string;
   goal: string;
+  goal_ids?: string[];
+  unit_ids?: string[];
   milestones: Milestone[];
   current_milestone: number;
+  next_milestone_id?: string | null;
+  completed_milestone_ids?: string[];
   todos: Todo[];
   constraints: Record<string, boolean>;
   last_action: string;
@@ -41,16 +49,19 @@ export interface PlanEXEntry {
   recent_turns: string[];
   loaded_memory_utility: Record<string, number>;
   file_checksums: Record<string, string>;
+  revisions?: Array<{ ts: string; reason: string; milestone_ids: string[] }>;
+  linked_codes?: string[];
 }
 
 export function createPlanEX(input: Omit<PlanEXEntry, 'code'>): string {
   const body = JSON.stringify(input, null, 2);
+  const status = input.status ?? 'active';
 
   const entry = createEntry({
     nb: 'PLAN',
     type: 'EX',
     name: input.task_name,
-    status: 'active',
+    status,
     summary: `Execution state for: ${input.goal.slice(0, 80)}`,
     body,
   });
@@ -78,17 +89,20 @@ export function updatePlanEX(code: string, updates: Partial<PlanEXEntry>): void 
     }
   }
 
-  const merged: Partial<PlanEXEntry> = { ...currentData, ...updates };
+  const status = updates.status ?? currentData.status ?? (existing.status as PlanEXStatus) ?? 'active';
+  const merged: Partial<PlanEXEntry> = { ...currentData, ...updates, status };
   const body = JSON.stringify(merged, null, 2);
   const now = new Date().toISOString().slice(0, 10);
 
-  db.prepare('UPDATE index_entries SET updated = ? WHERE code = ?').run(now, code);
+  db.prepare('UPDATE index_entries SET updated = ?, status = ? WHERE code = ?').run(now, status, code);
 
   if (existing.path && fs.existsSync(existing.path)) {
     const md = fs.readFileSync(existing.path, 'utf-8');
     const headerEnd = md.indexOf('\n---\n');
     if (headerEnd >= 0) {
-      const header = md.slice(0, headerEnd + 5);
+      const header = md.slice(0, headerEnd + 5)
+        .replace(/^status: .+$/m, `status: ${status}`)
+        .replace(/^updated: .+$/m, `updated: ${now}`);
       const newMd = header + '\n# ' + existing.name + '\n\n' + body + '\n';
       try {
         fs.writeFileSync(existing.path, newMd, 'utf-8');
@@ -100,7 +114,10 @@ export function updatePlanEX(code: string, updates: Partial<PlanEXEntry>): void 
 }
 
 export function loadActivePlanEX(): PlanEXEntry | null {
-  const entries = queryEntries({ nb: 'PLAN', type: 'EX', status: 'active' });
+  const db = getDb();
+  const entries = db.prepare(
+    "SELECT * FROM index_entries WHERE nb = 'PLAN' AND type = 'EX' AND status IN ('active', 'in_progress', 'paused')",
+  ).all() as IndexEntry[];
   if (entries.length === 0) return null;
 
   if (entries.length > 1) {

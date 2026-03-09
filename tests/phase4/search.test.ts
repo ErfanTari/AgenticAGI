@@ -380,12 +380,13 @@ describe('processMessage with hybrid search', () => {
 
   it('agent falls back to hybrid search for vague queries', async () => {
     const res = await processMessage('find the ceramic color work', [], { llmHandler: mockLLM });
-    // "find the ceramic color work" classifies as 'general' (no notebook signal),
-    // but hybrid search still kicks in and finds the entry
+    // "find the ceramic color work" decomposes to route:query via QUERY_PATTERNS.
+    // FIX E: decomposed units always go through routeDecomposedUnits → handleQueryUnits.
+    // handleQueryUnits returns the entry via BM25/vector search without LLM call.
     expect(res.resolved).not.toBeNull();
-    expect(res.resolved!.step).toBe(5);
     expect(res.resolved!.entries[0].code).toBe(ceramicCode);
-    expect(res.reply).toContain('Found it via hybrid search');
+    // reply is the formatted query result, not the LLM response
+    expect(res.reply).toBeTruthy();
   });
 
   it('agent still calls LLM when search has no results', async () => {

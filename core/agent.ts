@@ -1,38 +1,122 @@
-import type { Message, LLMHandler, AgentResponse, Classification } from './types.js';
-import { classifyIntent } from './intent.js';
-import { classifyIntentLLM } from './intent-llm.js';
+import type { AgentResponse, Classification, DecompositionResult, DecomposedUnit, LLMHandler, Message } from './types.js';
 import { resolveQuery } from './resolver.js';
 import { buildContext } from './context.js';
-import { callLLM } from './llm.js';
+import { callLLM, stripThinkingTags } from './llm.js';
 import { getSkillsForIntent } from './skills/registry.js';
+import { decomposeMessage, isLikelyCompoundMessage } from './decomposition.js';
+import { routeDecomposedUnits } from './router.js';
+import { searchMemoryForUnits } from './memory/unit-search.js';
 import { runWithRetry } from './react.js';
-import { createEntry, upsertEntry, hybridSearch, getEntryByCode } from './memory/mod.js';
-import { addRelationship } from './memory/relationships.js';
-import { fetchByCode } from './memory/mod.js';
+import {
+  addRelationship,
+  fetchByCode,
+  getEntryByCode,
+  hybridSearch,
+  upsertEntry,
+} from './memory/mod.js';
 import { startHeartbeat, stopHeartbeat } from './heartbeat.js';
 import { getDb } from './memory/index.js';
-import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
-import { isComplexTask, decomposeTask } from './planner.js';
-import { executePlan, verifyExecution, buildUserReport, writeEpisodicMemory, classifyFailure } from './executor.js';
-import { writeEpisodicEvent, writeReflection } from './memory/episodic.js';
+import { classifyFailure } from './executor.js';
+import { writeEpisodicEvent } from './memory/episodic.js';
 import { extractMemoryMetadata } from './memory/lifecycle.js';
-import { getSkillDescriptions } from './skills/registry.js';
+import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
 import { transparency } from './transparency.js';
 
-// FIX 1: Processing flag — heartbeat checks this to skip when agent is busy
-export let isProcessingMessage = false;
-
-// FIX 1: Agent lifecycle
-export function startAgent(): void {
-  startHeartbeat();
-  // Keep agent card skills in sync
-  import('./agent-card.js').then(m => m.updateAgentCard()).catch(() => {});
-}
-
-export function stopAgent(): void {
-  stopHeartbeat();
-}
-
+const GREETING_ONLY = /^\s*(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy|greetings)\s*[!.?]*\s*$/i;
+const DIRECT_MEETING_PREFIX = /^\/meeting\b/i;
+const DIRECT_CODE_FETCH_PREFIX = /^\s*(show|show me|tell me about|open|fetch|get|display)\b/i;
+const CODE_REGEX = /\b([A-Z]+\.[A-Z]+-\d{6,})\b/g;
+const STATUS_REGEX = /\b(active|archived|open|closed|upcoming)\b/i;
+const WRITE_TRIGGER_PATTERNS = [
+  /\b(create|add|new|write|save|store|remember)\b/i,
+  /\bremind\s+me\b/i,
+  /\bschedule\b/i,
+];
+const MEMORY_ENTITY_PATTERNS = [
+  /\bcontacts?\b/i,
+  /\borganizations?\b|\bcompan(?:y|ies)\b/i,
+  /\bprojects?\b/i,
+  /\bknowledge\b/i,
+  /\bcalendar\b|\bevents?\b|\bmeeting\b/i,
+  /\bdeadlines?\b/i,
+  /\bprocedures?\b|\bsteps?\s+to\b/i,
+  /\bplans?\b|\bplanning\b/i,
+  /\btodos?\b|\btasks?\b/i,
+  /\breports?\b/i,
+  /\bvision\b|\bmission\b|\bnorth\s+star\b/i,
+];
+const NON_MEMORY_ACTION_PATTERNS = [
+  /\b(go\s+(to|through)|visit|browse|navigate)\b.*\b(website|site|page)\b/i,
+  /\bdownload\b/i,
+  /\bsave\s+(it|th(is|e)\s+\w+)\s+(in|to|into)\s+(a\s+)?(folder|directory|workspace|disk|path)\b/i,
+  /\bsave\b.*\b(folder|directory|workspace)\b/i,
+  /\b(?:write|create|build|make|develop|implement)\b.*\b(?:workspace|folder|directory)\b/i,
+  /\b(?:write|create|build|make|develop|implement)\b.*\b(?:html|css|javascript|typescript|js|ts|python|py)\b/i,
+  /\b(?:write|create|build|make|develop|implement)\b.*\bgame\b/i,
+];
+const WEB_SEARCH_PATTERNS = [
+  /\bsearch\s+(the\s+)?web\b/i,
+  /\blook\s+up\b/i,
+  /\bfind\s+online\b/i,
+  /\bsearch\s+.*(for|online|internet)\b/i,
+  /\bsearch\s+online\b/i,
+  /\bweb\s+search\b/i,
+  /\bgoogle\b/i,
+  /\blatest\s+news\b/i,
+  /\bcurrent\s+info\b/i,
+  /\bfind\s+online\s+resources?\b/i,
+  /\bbrowse\s+(the\s+)?internet\b/i,
+  /\bget\s+information\s+about\b/i,
+];
+const FILE_READER_PATTERNS = [
+  /\bread\s+(the\s+)?file\b/i,
+  /\bopen\s+(the\s+)?file\b/i,
+  /\bload\s+(the\s+)?(file|contents?\s+of)\b/i,
+  /\bshow\s+(me\s+)?the\s+file\b/i,
+  /\bshow\s+(me\s+)?(the\s+)?(contents?\s+of\s+)?\/[\w.\-/]+/i,
+  /\bread\s+\/[\w.\-/]+/i,
+  /\bcat\s+\/[\w.\-/]+/i,
+];
+const FILE_WRITER_PATTERNS = [
+  /\bwrite\s+(a\s+|to\s+)?file\b/i,
+  /\bwrite\s+\w+\.\w+\b/i,
+  /\bcreate\s+(a\s+)?file\b/i,
+  /\bcreate\s+(a\s+)?\w+\.(txt|md|json|sh|html|css|js|ts|py|yaml|yml|csv|log)\b/i,
+  /\bsave\s+(it\s+)?(to|as|into)\s+(a\s+)?file\b/i,
+  /\bsave\s+to\s+file\b/i,
+  /\bmake\s+(a\s+)?(text\s+)?(file|document)\b/i,
+];
+const RUN_BASH_PATTERNS = [
+  /\brun\s+(the\s+)?(command|cmd)\b/i,
+  /\brun\s+(a\s+)?bash\b/i,
+  /\bexecute\s+(\w+\s+)?(command|script)\b/i,
+  /\b(bash|shell)\s+(command|script)\b/i,
+  /\brun\s+(?:echo|ls|cat|pwd|grep|find|mkdir|cp|mv|rm|chmod|curl|wget|git|python3?|node|npm|npx|yarn|sh|touch)\b/i,
+];
+const MULTI_STEP_LANGUAGE = /\b(then\s+|after\s+that\s+|first\s+.{3,}\s+then\s+|followed\s+by\s+|and\s+then\s+)\b/i;
+const CALCULATOR_PATTERNS = [
+  /\bcalculat/i,
+  /\bcompute\b/i,
+  /\bwhat\s+is\s+[\d(]/i,
+  /\bhow\s+much\s+is\b/i,
+  /\d+\s*[\+\-\*\/×÷]\s*\d/,
+  /\bpercent\s+of\b/i,
+  /\btimes\b/i,
+  /\bdivided\s+by\b/i,
+  /\bmultiplied\s+by\b/i,
+  /\bplus\b/i,
+  /\bminus\b/i,
+  /\bsquare\s+root\s+of\b/i,
+  /\bsqrt\b/i,
+  /\b\d+\s*%\s*of\s*\d+/i,
+];
+const RELATION_PATTERNS: Array<{ pattern: RegExp; relation: string }> = [
+  { pattern: /\bowns?\b/i, relation: 'owns' },
+  { pattern: /\bworks?\s+for\b/i, relation: 'works_for' },
+  { pattern: /\bsuppl(?:y|ies)\b/i, relation: 'supplies' },
+  { pattern: /\bblocks?\b/i, relation: 'blocks' },
+  { pattern: /\brefers?\s+to\b/i, relation: 'refers' },
+];
 const WRITE_SYSTEM_PROMPT = `You are a memory writing assistant. Extract structured data from the user's request and return ONLY valid JSON.
 Return a JSON object with these fields:
 {
@@ -42,7 +126,8 @@ Return a JSON object with these fields:
   "status": "active|open|upcoming",
   "summary": "one-line summary",
   "body": "markdown body content",
-  "relationships": [{"relation": "works_for|owns|supplies|blocks|refers", "to_code": "CODE"}]
+  "relationships": [{"relation": "works_for|owns|supplies|blocks|refers", "to_code": "CODE"}],
+  "due_date": "YYYY-MM-DD"
 }
 
 Valid notebook + type combinations (use ONLY these):
@@ -54,19 +139,362 @@ Valid notebook + type combinations (use ONLY these):
   NOW: TD (todo), RP (report), LOG (log entry)
   PLAN: PL (planning), EX (execution state), CT (constraint), MS (milestone), PJ (project brain)
 
-CONSTRAINT EXAMPLES — use PLAN.CT for system rules and constraints:
-- "add a constraint: never use Python 2" → {"nb":"PLAN","type":"CT","name":"Python Version Constraint","status":"active","summary":"Never use Python 2, always use Python 3","body":"Source: user. Enforce Python 3 only."}
-- "system rule: always use TypeScript" → {"nb":"PLAN","type":"CT","name":"TypeScript Constraint","status":"active","summary":"Always use TypeScript","body":"Source: user."}
-
 Never invent type codes outside this list.
 If uncertain, use the closest valid type.
 Only include "relationships" if the user mentions a connection to an existing entry by code.
 Respond with ONLY the JSON object, no extra text.`;
 
+// FIX 1: Processing flag — heartbeat checks this to skip when agent is busy
+export let isProcessingMessage = false;
+
+// FIX 1: Agent lifecycle
+export function startAgent(): void {
+  startHeartbeat();
+  import('./agent-card.js').then(m => m.updateAgentCard()).catch(() => {});
+}
+
+export function stopAgent(): void {
+  stopHeartbeat();
+}
+
+function matchesAny(message: string, patterns: RegExp[]): boolean {
+  return patterns.some(pattern => pattern.test(message));
+}
+
+function extractCodes(message: string): string[] {
+  return [...message.matchAll(CODE_REGEX)].map(match => match[1]);
+}
+
+function extractRelation(message: string): string | undefined {
+  return RELATION_PATTERNS.find(({ pattern }) => pattern.test(message))?.relation;
+}
+
+function extractStatus(message: string): string | undefined {
+  const match = message.match(STATUS_REGEX);
+  return match ? match[1].toLowerCase() : undefined;
+}
+
+function extractDueDate(message: string): string | undefined {
+  const isoMatch = message.match(/\bdue\s+(\d{4}-\d{2}-\d{2})\b/i);
+  if (isoMatch) return isoMatch[1];
+
+  if (/\bdue\s+(?:by\s+)?tomorrow\b/i.test(message)) {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    return date.toISOString().slice(0, 10);
+  }
+
+  if (/\bdue\s+(?:by\s+)?next\s+week\b/i.test(message)) {
+    const date = new Date();
+    date.setDate(date.getDate() + 7);
+    return date.toISOString().slice(0, 10);
+  }
+
+  return undefined;
+}
+
+function extractName(message: string): string | undefined {
+  const quoted = message.match(/"([^"]+)"|'([^']+)'/);
+  if (quoted) return quoted[1] ?? quoted[2];
+
+  const namedMatch = message.match(
+    /(?:of|about|called|named|for)\s+(?:project|contact|person|organization|todo|procedure|deadline|event|report|plan)?\s*([A-Z][A-Za-z0-9_-]+(?:\s+[A-Z][A-Za-z0-9_-]+)*)/,
+  );
+  if (namedMatch) return namedMatch[1].replace(/[?.!,;:]+$/, '');
+
+  const whoIsMatch = message.match(/\bwho\s+is\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)/);
+  if (whoIsMatch) return whoIsMatch[1].replace(/[?.!,;:]+$/, '');
+
+  const findMatch = message.match(/\bfind\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)/);
+  if (findMatch) return findMatch[1].replace(/[?.!,;:]+$/, '');
+
+  return undefined;
+}
+
+function detectNotebook(message: string): { nb?: string; type?: string } {
+  if (/\bwho\s+is\b|\bcontacts?\b|\bperson\b|\bpeople\b|\bworks?\s+for\b|\borganizations?\b|\bcompan(?:y|ies)\b/i.test(message)) {
+    if (/\borganizations?\b|\bcompan(?:y|ies)\b/i.test(message)) return { nb: 'WHO', type: 'ORG' };
+    return { nb: 'WHO', type: 'CT' };
+  }
+  if (/\bwhen\s+is\b|\bmeeting\b|\bcalendar\b|\bdeadlines?\b|\bevents?\b|\bnext\s+meeting\b/i.test(message)) {
+    if (/\bdeadlines?\b/i.test(message)) return { nb: 'WHEN', type: 'DL' };
+    return { nb: 'WHEN', type: 'CA' };
+  }
+  if (/\bprocedures?\b|\bsteps?\s+to\b|\bhow\s+to\b|\bHOW\b/i.test(message)) return { nb: 'HOW', type: 'PR' };
+  if (/\breflections?\b|\bquestions?\b|\bwhy\s+did\b|\bopen\s+questions?\b|\bnorth\s+star\b|\bvision\b|\bmission\b/i.test(message)) {
+    if (/\b(north\s+star|vision|mission)\b/i.test(message)) return { nb: 'WHY', type: 'MT' };
+    return { nb: 'WHY', type: 'QU' };
+  }
+  if (/\btodos?\b|\btasks?\b|\breports?\b|\boverdue\b/i.test(message)) {
+    if (/\breports?\b/i.test(message)) return { nb: 'NOW', type: 'RP' };
+    return { nb: 'NOW', type: 'TD' };
+  }
+  if (/\bplanning\b|\bplans?\b/i.test(message)) return { nb: 'PLAN', type: 'PL' };
+  if (/\bprojects?\b|\bstatus\s+of\b|\bwhat\s+is\s+the\s+status\b|\bwhat\s+is\s+(?:project|entry|knowledge)\b|\bknowledge\b/i.test(message)) {
+    if (/\bknowledge\b/i.test(message)) return { nb: 'WHAT', type: 'KN' };
+    return { nb: 'WHAT', type: 'PJ' };
+  }
+  return {};
+}
+
+function extractMathExpression(message: string): string | null {
+  const percentOf = message.match(/(\d+(?:\.\d+)?)\s+percent\s+of\s+(\d+(?:\.\d+)?)/i);
+  if (percentOf) return `${percentOf[1]} / 100 * ${percentOf[2]}`;
+
+  const pctMatch = message.match(/(\d+(?:\.\d+)?)\s*%\s*of\s*(\d+(?:\.\d+)?)/i);
+  if (pctMatch) return `${pctMatch[1]} / 100 * ${pctMatch[2]}`;
+
+  const wordMath = message.match(
+    /(?:(?:what|how\s+much)\s+is\s+)?(\d+(?:\.\d+)?)\s+(plus|minus|times|divided\s+by|multiplied\s+by)\s+(\d+(?:\.\d+)?)/i,
+  );
+  if (wordMath) {
+    const ops: Record<string, string> = {
+      plus: '+',
+      minus: '-',
+      times: '*',
+      'divided by': '/',
+      'multiplied by': '*',
+    };
+    return `${wordMath[1]} ${ops[wordMath[2].toLowerCase()] ?? wordMath[2]} ${wordMath[3]}`;
+  }
+
+  const sqrtMatch = message.match(/square\s+root\s+of\s+(\d+(?:\.\d+)?)/i);
+  if (sqrtMatch) return `sqrt(${sqrtMatch[1]})`;
+
+  const calcMatch = message.match(/(?:calculate|compute)\s+(.+)/i);
+  if (calcMatch) return calcMatch[1].trim();
+
+  const directMath = message.match(/(\d+(?:\.\d+)?\s*[\+\-\*\/×÷\^%]\s*\d+(?:\.\d+)?(?:\s*[\+\-\*\/×÷\^%]\s*\d+(?:\.\d+)?)*)/);
+  return directMath?.[1]?.trim().replace(/×/g, '*').replace(/÷/g, '/') ?? null;
+}
+
+function extractFilePath(message: string): string | null {
+  const absPath = message.match(/(\/[\w.\-/]+)/);
+  if (absPath) return absPath[1];
+
+  const relPath = message.match(/["']?([\w.\-/]+\.\w+)["']?/);
+  if (relPath) return relPath[1];
+
+  return null;
+}
+
+function extractFileWriterInput(message: string): { path: string; content: string } | null {
+  if (!matchesAny(message, FILE_WRITER_PATTERNS)) return null;
+
+  const namedMatch = message.match(/\b(?:called|named)\s+([\w.\-/]+\.\w+)\b/i);
+  const directMatch = message.match(/\b([\w.\-/]+\.(?:txt|md|json|sh|html|css|js|ts|py|yaml|yml|csv|log))\b/i);
+  const path = namedMatch?.[1] ?? directMatch?.[1];
+  if (!path) return null;
+
+  const explicitContent = message.match(/(?:with\s+(?:content|text)\s+)(.+)$/i);
+  const trailingContent = message.match(/\b(?:called|named)\s+[\w.\-/]+\.\w+\s+with\s+(.+)$/i)
+    ?? message.match(/\b[\w.\-/]+\.\w+\s+with\s+(.+)$/i);
+  const content = explicitContent?.[1]?.trim() ?? trailingContent?.[1]?.trim() ?? '';
+
+  return { path, content };
+}
+
+function extractSearchQuery(message: string): string {
+  let query = message.replace(/^(can\s+you|could\s+you|would\s+you|please|can\s+i|could\s+i)\s+/i, '');
+  query = query
+    .replace(/\bsearch\s+(the\s+)?(internet|web|online)\s+for\s+/i, '')
+    .replace(/\bsearch\s+(the\s+)?web\s+(for\s+)?/i, '')
+    .replace(/\bsearch\s+(for|online)\s+/i, '')
+    .replace(/\blook\s+up\s+/i, '')
+    .replace(/\bfind\s+online\s+(resources?\s+(for|on|about)\s+)?/i, '')
+    .replace(/\bgoogle\s+/i, '')
+    .replace(/\bweb\s+search\s+(for\s+)?/i, '')
+    .replace(/\bbrowse\s+(the\s+)?internet\s+for\s+/i, '')
+    .replace(/\bget\s+information\s+about\s+/i, '')
+    .trim();
+
+  if (!query && /\blatest\s+news/i.test(message)) {
+    const newsMatch = message.match(/(?:latest\s+news\s+(?:on|about)?\s*)?([^?!.]+?)(?:\?|!|\.|$)/i);
+    query = newsMatch ? newsMatch[1].trim() : message.trim();
+  }
+
+  return query || message.trim();
+}
+
+function buildSkillCompatibilityClassification(message: string): Classification | null {
+  const reportingTail = /\b(?:and\s+)?(?:tell|show|report)\s+me(?:\s+what\s+happened|\s+the\s+result|\s+the\s+output)?\b/i.test(message);
+  if (MULTI_STEP_LANGUAGE.test(message) && !reportingTail) return null;
+
+  const explicitMathLanguage = /\b(calculat|compute|percent\s+of|times|divided\s+by|multiplied\s+by|plus|minus|square\s+root|sqrt|what\s+is\s+[\d(]|how\s+much\s+is)\b/i.test(message);
+  const hasIsoDate = /\b\d{4}-\d{2}-\d{2}\b/.test(message);
+
+  if (matchesAny(message, RUN_BASH_PATTERNS)) {
+    const commandMatch =
+      message.match(/(?:command|cmd|bash|execute(?:\s+the\s+command)?)\s+(.+)/i) ??
+      message.match(/\brun\s+(.+?)(?:\s+and\s+(?:tell|show|report)\s+me\b|$)/i);
+    const command = commandMatch
+      ? commandMatch[1].replace(/\bin\s+the\s+workspace\b.*/i, '').trim()
+      : message.trim();
+    return { intent: 'skill', codes: [], skill: 'run_bash', skillInput: { command } };
+  }
+
+  if (matchesAny(message, WEB_SEARCH_PATTERNS)) {
+    return {
+      intent: 'skill',
+      codes: [],
+      skill: 'web_search',
+      skillInput: { query: extractSearchQuery(message) },
+    };
+  }
+
+  const fileWriterInput = extractFileWriterInput(message);
+  if (fileWriterInput) {
+    return {
+      intent: 'skill',
+      codes: [],
+      skill: 'file_writer',
+      skillInput: fileWriterInput,
+    };
+  }
+
+  if (matchesAny(message, FILE_READER_PATTERNS)) {
+    const path = extractFilePath(message);
+    if (path) {
+      return {
+        intent: 'skill',
+        codes: [],
+        skill: 'file_reader',
+        skillInput: { path },
+      };
+    }
+  }
+
+  if (matchesAny(message, CALCULATOR_PATTERNS)) {
+    if (hasIsoDate && !explicitMathLanguage) return null;
+    const expression = extractMathExpression(message);
+    if (expression) {
+      return {
+        intent: 'skill',
+        codes: [],
+        skill: 'calculator',
+        skillInput: { expression },
+      };
+    }
+  }
+
+  return null;
+}
+
+function shouldTreatAsMemoryWrite(message: string): boolean {
+  return matchesAny(message, WRITE_TRIGGER_PATTERNS)
+    && matchesAny(message, MEMORY_ENTITY_PATTERNS)
+    && !matchesAny(message, FILE_WRITER_PATTERNS)
+    && !matchesAny(message, NON_MEMORY_ACTION_PATTERNS);
+}
+
+function buildMemoryWriteCompatibilityClassification(message: string): Classification | null {
+  if (!shouldTreatAsMemoryWrite(message)) return null;
+
+  const { nb, type } = detectNotebook(message);
+  return {
+    intent: 'memory_write',
+    codes: extractCodes(message),
+    nb,
+    type,
+    status: extractStatus(message),
+    name: extractName(message),
+    relation: extractRelation(message),
+    due_date: extractDueDate(message),
+  };
+}
+
+function buildQueryCompatibilityClassification(message: string): Classification | null {
+  const codes = extractCodes(message);
+  const relation = extractRelation(message);
+  const status = extractStatus(message);
+  const name = extractName(message);
+  const notebook = detectNotebook(message);
+
+  if (codes.length > 0 && relation) {
+    return {
+      intent: 'relationship_query',
+      codes,
+      relation,
+      status,
+      name,
+      ...notebook,
+    };
+  }
+
+  if (codes.length > 0 && DIRECT_CODE_FETCH_PREFIX.test(message)) {
+    return { intent: 'code_fetch', codes };
+  }
+
+  if (notebook.nb || status || name) {
+    return {
+      intent: relation ? 'relationship_query' : 'memory_query',
+      codes,
+      relation,
+      status,
+      name,
+      ...notebook,
+    };
+  }
+
+  return null;
+}
+
+function buildSingleUnitCompatibilityClassification(
+  message: string,
+  unit: DecomposedUnit,
+): Classification | null {
+  const skill = buildSkillCompatibilityClassification(message);
+  if (skill) return skill;
+
+  const memoryWrite = buildMemoryWriteCompatibilityClassification(message);
+  if (memoryWrite) return memoryWrite;
+
+  const query = buildQueryCompatibilityClassification(message);
+  if (query && unit.route !== 'agentic') return query;
+
+  return null;
+}
+
+function isDirectCodeFetchMessage(message: string, codes: string[]): boolean {
+  if (codes.length === 0) return false;
+  if (extractRelation(message)) return false;
+  return DIRECT_CODE_FETCH_PREFIX.test(message) || message.trim() === codes[0];
+}
+
+function mapRouteIntent(
+  message: string,
+  decomposition: DecompositionResult,
+  routeIntent: 'conversational' | 'agentic' | 'query',
+): AgentResponse['intent'] {
+  if (decomposition.units.length === 1 && GREETING_ONLY.test(decomposition.units[0].content)) {
+    return 'greeting';
+  }
+  if (routeIntent === 'agentic') return 'planned_workflow';
+  if (routeIntent === 'query') return 'memory_query';
+  if (GREETING_ONLY.test(message)) return 'greeting';
+  return 'general';
+}
+
+function mapErrorIntent(
+  message: string,
+  decomposition: DecompositionResult | null,
+): AgentResponse['intent'] {
+  if (/^\/log\s+/i.test(message.trim())) return 'memory_write';
+  if (DIRECT_MEETING_PREFIX.test(message.trim())) return 'meeting';
+  if (isDirectCodeFetchMessage(message, extractCodes(message))) return 'code_fetch';
+  if (decomposition?.units.some(unit => unit.route === 'agentic')) return 'planned_workflow';
+  if (decomposition?.units.some(unit => unit.route === 'query')) return 'memory_query';
+  return GREETING_ONLY.test(message) ? 'greeting' : 'general';
+}
+
 function inferWriteData(message: string, classification: Classification): {
-  nb: string; type: string; name: string; status: string; summary: string; body: string;
+  nb: string;
+  type: string;
+  name: string;
+  status: string;
+  summary: string;
+  body: string;
 } | null {
-  // Handle /log prefix — extract log content and use ISO date as name
   if (message.startsWith('/log ')) {
     const logContent = message.slice(5).trim();
     const isoDate = new Date().toISOString().slice(0, 16).replace('T', ' ');
@@ -80,10 +508,8 @@ function inferWriteData(message: string, classification: Classification): {
     };
   }
 
-  // Determine notebook + type from classification or message content
   let nb = classification.nb;
   let type = classification.type;
-
   if (!nb || !type) {
     if (/\bcontact\b/i.test(message) || /\bperson\b/i.test(message)) { nb = 'WHO'; type = 'CT'; }
     else if (/\borganization\b|\bcompany\b/i.test(message)) { nb = 'WHO'; type = 'ORG'; }
@@ -95,13 +521,11 @@ function inferWriteData(message: string, classification: Classification): {
     else if (/\bprocedure\b|\bhow to\b/i.test(message)) { nb = 'HOW'; type = 'PR'; }
     else if (/\bplan\b/i.test(message)) { nb = 'PLAN'; type = 'PL'; }
     else if (/\bschedule\b/i.test(message)) { nb = 'WHEN'; type = 'CA'; }
-    else { nb = 'WHAT'; type = 'KN'; } // fallback
+    else { nb = 'WHAT'; type = 'KN'; }
   }
 
-  // Extract name from classification or message
   let name = classification.name;
   if (!name) {
-    // Try "named/called/for X" patterns
     const namedMatch = message.match(
       /(?:named|called|for|contact)\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)/
     );
@@ -109,7 +533,6 @@ function inferWriteData(message: string, classification: Classification): {
   }
   if (!name) return null;
 
-  // Extract role/context for summary
   let summary = name;
   const roleMatch = message.match(/(?:assistant|manager|developer|engineer|designer|lead|director|specialist|consultant|intern)\s+(?:at|for|of)\s+\w+/i);
   if (roleMatch) summary = roleMatch[0];
@@ -122,15 +545,45 @@ function inferWriteData(message: string, classification: Classification): {
     ? message.match(/\b(upcoming|open|closed|archived)\b/i)![1].toLowerCase()
     : (nb === 'NOW' ? 'open' : 'active');
 
-  // Build body from remaining context
-  const body = message;
+  return { nb, type, name, status, summary, body: message };
+}
 
-  return { nb, type, name, status, summary, body };
+function cleanReply(reply: string): string {
+  return stripThinkingTags(reply).trim();
+}
+
+const DIRECT_SKILL_OUTPUT = new Set([
+  'web_search',
+  'calculator',
+  'file_reader',
+  'memory_read',
+  'web_fetch',
+  'url_extract',
+]);
+
+function looksLikeDeferredAction(reply: string): boolean {
+  const trimmed = reply.trim();
+  if (!trimmed) return true;
+
+  return [
+    /^(?:i(?:'ll| will)\s+(?:use|search|look up|read|run|check|fix)\b)/i,
+    /^let me\b/i,
+    /^i need to\b/i,
+    /^i should\b/i,
+    /^actually wait\b/i,
+    /^looking at (?:my|the) instructions\b/i,
+    /^given (?:the|my) instruction\b/i,
+  ].some(pattern => pattern.test(trimmed));
 }
 
 function parseLLMWriteResponse(response: string): {
-  nb?: string; type?: string; name?: string; status?: string;
-  summary?: string; body?: string;
+  nb?: string;
+  type?: string;
+  name?: string;
+  status?: string;
+  summary?: string;
+  body?: string;
+  due_date?: string;
   relationships?: Array<{ relation: string; to_code: string }>;
 } | null {
   try {
@@ -142,26 +595,7 @@ function parseLLMWriteResponse(response: string): {
   }
 }
 
-export async function processMessage(
-  message: string,
-  history: Message[],
-  options?: { llmHandler?: LLMHandler },
-): Promise<AgentResponse> {
-  isProcessingMessage = true;
-  try {
-    return await _processMessage(message, history, options);
-  } finally {
-    isProcessingMessage = false;
-  }
-}
-
-async function _processMessage(
-  message: string,
-  history: Message[],
-  options?: { llmHandler?: LLMHandler },
-): Promise<AgentResponse> {
-  // FIX 3: Drain heartbeat_queue — surface findings to user
-  let findingsPrefix = '';
+async function buildFindingsPrefix(): Promise<string> {
   try {
     const d = getDb();
     const unseen = d.prepare(
@@ -169,285 +603,206 @@ async function _processMessage(
     ).all() as Array<{ id: number; code: string; message: string; seen: number; created: string }>;
 
     if (unseen.length > 0) {
-      findingsPrefix = '\u{1F4CB} While you were away:\n' + unseen.map(r => r.message).join('\n') + '\n\n';
+      const prefix = '\u{1F4CB} While you were away:\n' + unseen.map(r => r.message).join('\n') + '\n\n';
       d.prepare('UPDATE heartbeat_queue SET seen = 1').run();
+      return prefix;
     }
   } catch {
-    // Queue not available yet — ignore
+    // Queue not available yet.
+  }
+  return '';
+}
+
+async function handleLogFastPath(
+  message: string,
+  findingsPrefix: string,
+): Promise<AgentResponse> {
+  const logData = inferWriteData(message, { intent: 'memory_write', codes: [], nb: 'NOW', type: 'LOG' });
+  if (!logData) {
+    return { reply: findingsPrefix + 'Logged.', intent: 'memory_write', resolved: null };
   }
 
-  // 1. Classify intent
-  // FIX 5: Hybrid classification — regex fast-path, LLM fallback for ambiguous 'general'
-  let classification = classifyIntent(message);
-  if (classification.intent === 'general') {
-    const handler = options?.llmHandler ?? callLLM;
+  try {
+    upsertEntry({
+      nb: logData.nb,
+      type: logData.type,
+      name: logData.name,
+      status: logData.status,
+      summary: logData.summary,
+      body: logData.body,
+    });
+  } catch {
+    // /log should remain fire-and-forget for the user.
+  }
+
+  return { reply: findingsPrefix + 'Logged.', intent: 'memory_write', resolved: null };
+}
+
+async function handleMeetingFastPath(
+  history: Message[],
+  llmHandler: LLMHandler,
+  findingsPrefix: string,
+): Promise<AgentResponse> {
+  try {
+    const { runMeetingMode } = await import('./meeting.js');
+    const briefing = await runMeetingMode(history, llmHandler);
+    return {
+      reply: findingsPrefix + briefing.prompt,
+      intent: 'meeting',
+      resolved: null,
+    };
+  } catch (err) {
+    return {
+      reply: findingsPrefix + 'Could not start meeting mode. Please try again.',
+      intent: 'meeting',
+      resolved: null,
+      error: String(err),
+    };
+  }
+}
+
+async function handleLegacyResolvedFlow(
+  message: string,
+  history: Message[],
+  classification: Classification,
+  llmHandler: LLMHandler,
+  findingsPrefix: string,
+): Promise<AgentResponse> {
+  let resolved = resolveQuery(classification);
+
+  if (resolved === null && classification.intent !== 'code_fetch') {
     try {
-      const llmIntent = await classifyIntentLLM(message, handler);
-      if (llmIntent !== 'general') {
-        classification = { ...classification, intent: llmIntent, classifier: 'llm' };
-      } else {
-        classification = { ...classification, classifier: 'llm' };
+      const searchResults = await hybridSearch(message, { nb: classification.nb });
+      if (searchResults.length > 0) {
+        const entries = searchResults.map(r => r.entry);
+        const contents = entries
+          .map(entry => fetchByCode(entry.code)?.content)
+          .filter((content): content is string => Boolean(content));
+        resolved = { step: 5, entries, contents, relationships: [] };
       }
     } catch {
-      classification = { ...classification, classifier: 'regex' };
-    }
-  } else {
-    classification = { ...classification, classifier: 'regex' };
-  }
-  transparency.emit({ type: 'intent', data: classification });
-
-  // 2. Greeting — no memory, no LLM
-  if (classification.intent === 'greeting') {
-    return { reply: findingsPrefix + 'Hello! How can I help you today?', intent: 'greeting', resolved: null };
-  }
-
-  // 2b-episodic: Episodic query intent
-  if (classification.intent === 'episodic_query') {
-    // Route to memory_query on WHEN notebook
-    const resolved = resolveQuery({ ...classification, intent: 'memory_query', nb: 'WHEN' });
-    const handler = options?.llmHandler ?? callLLM;
-    const messages = await buildContext(message, resolved, history, [], 'episodic_query', undefined, handler);
-    try {
-      const reply = await handler(messages);
-      const cleanReply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-      return { reply: findingsPrefix + cleanReply, intent: 'episodic_query', resolved };
-    } catch {
-      return { reply: findingsPrefix + 'Could not retrieve episodic history.', intent: 'episodic_query', resolved: null };
+      // Hybrid search is best-effort.
     }
   }
 
-  // 2b-meeting: Meeting mode intent
-  if (classification.intent === 'meeting') {
-    const handler = options?.llmHandler ?? callLLM;
-    try {
-      const { runMeetingMode } = await import('./meeting.js');
-      const briefing = await runMeetingMode(history, handler);
+  if (resolved === null) {
+    if (classification.intent === 'code_fetch') {
+      return { reply: findingsPrefix + 'Entry not found.', intent: classification.intent, resolved: null };
+    }
+    if ((classification.intent === 'memory_query' || classification.intent === 'relationship_query') && classification.nb) {
       return {
-        reply: findingsPrefix + briefing.prompt,
-        intent: 'meeting',
+        reply: findingsPrefix + `No entries found in ${classification.nb} notebook.`,
+        intent: classification.intent,
         resolved: null,
       };
-    } catch (err) {
-      return {
-        reply: findingsPrefix + 'Could not start meeting mode. Please try again.',
-        intent: 'meeting',
-        resolved: null,
-        error: String(err),
-      };
+    }
+    if (classification.intent === 'memory_query' || classification.intent === 'relationship_query') {
+      return { reply: findingsPrefix + 'No matching entries found.', intent: classification.intent, resolved: null };
     }
   }
 
-  // 2b. Synthesis query — always complex, bypass isComplexTask(), go straight to planner
-  if (classification.intent === 'synthesis_query') {
-    const plannerHandler = options?.llmHandler ?? callLLM;
-    try {
-      const skillDescs = getSkillDescriptions();
-      const plan = await decomposeTask(message, { skills: skillDescs }, plannerHandler);
-      const execResult = await executePlan(plan, plannerHandler);
-      const verification = await verifyExecution(plan, execResult, plannerHandler);
-      const report = buildUserReport(plan, execResult, verification);
-      const cleanReport = report.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-      writeEpisodicMemory(plan, execResult, verification).catch(err => console.warn('[agent] writeEpisodicMemory failed:', err));
-      // Write WHEN.EV episodic event (fire-and-forget)
+  const skills = getSkillsForIntent(classification.intent);
+  const messages = await buildContext(message, resolved, history, skills, classification.intent, undefined, llmHandler);
+  try {
+    const reply = await llmHandler(messages);
+    return { reply: findingsPrefix + cleanReply(reply), intent: classification.intent, resolved };
+  } catch (error) {
+    return {
+      reply: findingsPrefix + 'I could not reach the language model. Please check that it is running.',
+      intent: classification.intent,
+      resolved,
+      error: String(error),
+    };
+  }
+}
+
+async function handleCompatibilityExecution(
+  message: string,
+  history: Message[],
+  classification: Classification,
+  findingsPrefix: string,
+  llmHandler: LLMHandler,
+): Promise<AgentResponse | null> {
+  if (classification.intent === 'skill' && classification.skill && classification.skillInput) {
+    const skillResult = await runWithRetry(classification.skill, classification.skillInput, llmHandler);
+
+    if (!skillResult.success) {
+      const errorMsg = skillResult.error ?? '';
+      transparency.emit({ type: 'failure_classified', data: { error: errorMsg, class: classifyFailure(errorMsg) } });
       writeEpisodicEvent({
         trigger: message,
-        task_name: plan.goal,
-        skill_sequence: [...execResult.completed.map(s => s.skill), ...execResult.failed.map(s => s.skill)],
-        outcome: execResult.success ? 'success' : (execResult.completed.length > 0 ? 'partial' : 'failure'),
-        failure_reason: execResult.abortReason,
+        task_name: `Skill: ${classification.skill} — ${message.slice(0, 60)}`,
+        skill_sequence: [classification.skill],
+        outcome: 'failure',
+        failure_reason: errorMsg,
         linked_codes: [],
-        session_id: plan.createdAt,
-      }).then(evCode => {
-        const plannerHandler2 = options?.llmHandler ?? callLLM;
-        const ev = { code: evCode, trigger: message, task_name: plan.goal, skill_sequence: [...execResult.completed.map(s => s.skill), ...execResult.failed.map(s => s.skill)], outcome: execResult.success ? 'success' as const : (execResult.completed.length > 0 ? 'partial' as const : 'failure' as const), failure_reason: execResult.abortReason, linked_codes: [], session_id: plan.createdAt };
-        writeReflection(evCode, ev, plannerHandler2).catch(() => {});
-      }).catch(err => console.warn('[agent] writeEpisodicEvent failed:', err));
+        session_id: new Date().toISOString(),
+      }).catch(() => {});
+      const reply = /access denied|not allowed|outside workspace|invalid path/i.test(errorMsg)
+        ? `I couldn't complete that: ${errorMsg}`
+        : `I couldn't complete that. Please try again or rephrase your request.`;
       return {
-        reply: findingsPrefix + cleanReport,
-        intent: 'synthesis_query',
+        reply: findingsPrefix + reply,
+        intent: 'skill',
         resolved: null,
-      };
-    } catch (err) {
-      return {
-        reply: findingsPrefix + 'I could not generate the synthesis report. No changes were made. Please retry.',
-        intent: 'synthesis_query',
-        resolved: null,
-        error: String(err),
+        error: errorMsg,
+        retries: skillResult.retries,
       };
     }
-  }
 
-  // 2c. Complex task detection → planner/executor pipeline
-  // Skip if intent classifier already identified a direct, single-step skill call.
-  // Multi-step messages return null from detectSkill() so they fall through here correctly.
-  if (classification.intent !== 'skill') try {
-    const plannerHandler = options?.llmHandler ?? callLLM;
-    const complexity = await isComplexTask(message, classification, plannerHandler);
-
-    if (process.env.DEBUG_PLANNER === 'true') {
-      console.log('[planner] Complexity check:', {
-        isComplex: complexity.isComplex,
-        reason: complexity.reason,
-        estimatedSteps: complexity.estimatedSteps,
-        requiresSkills: complexity.requiresSkills,
-      });
+    if (DIRECT_SKILL_OUTPUT.has(classification.skill)) {
+      return {
+        reply: findingsPrefix + skillResult.output,
+        intent: 'skill',
+        resolved: null,
+        retries: skillResult.retries,
+      };
     }
 
-    if (complexity.isComplex) {
-      try {
-        const skillDescs = getSkillDescriptions();
-        const plan = await decomposeTask(message, { skills: skillDescs }, plannerHandler);
-        const execResult = await executePlan(plan, plannerHandler);
-        const verification = await verifyExecution(plan, execResult, plannerHandler);
-        const report = buildUserReport(plan, execResult, verification);
-
-        // Strip <think> tags from Kimi/reasoning models
-        const cleanReport = report.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-
-        // Write episodic HOW.PR — fire-and-forget
-        writeEpisodicMemory(plan, execResult, verification).catch(err => console.warn('[agent] writeEpisodicMemory failed:', err));
-        // Write WHEN.EV episodic event for ALL outcomes (including failures) — fire-and-forget
-        const _skillSeq = [...execResult.completed.map(s => s.skill), ...execResult.failed.map(s => s.skill)];
-        const _outcome = execResult.success ? 'success' as const : (execResult.completed.length > 0 ? 'partial' as const : 'failure' as const);
-        writeEpisodicEvent({
-          trigger: message,
-          task_name: plan.goal,
-          skill_sequence: _skillSeq,
-          outcome: _outcome,
-          failure_reason: execResult.abortReason,
-          linked_codes: [],
-          session_id: plan.createdAt,
-        }).then(evCode => {
-          const _handler = options?.llmHandler ?? callLLM;
-          const _ev = { code: evCode, trigger: message, task_name: plan.goal, skill_sequence: _skillSeq, outcome: _outcome, failure_reason: execResult.abortReason, linked_codes: [], session_id: plan.createdAt };
-          writeReflection(evCode, _ev, _handler).catch(() => {});
-        }).catch(err => console.warn('[agent] writeEpisodicEvent failed:', err));
-
-        return {
-          reply: findingsPrefix + cleanReport,
-          intent: 'planned_workflow',
-          resolved: null,
-        };
-      } catch (err) {
-        if (process.env.DEBUG_PLANNER === 'true') {
-          console.log('[planner] Planning failed:', err);
-        }
-        // Architecture guard: do not fall through into unrelated write/query paths.
-        // A failed complex plan must fail safely without side effects.
-        return {
-          reply: findingsPrefix + 'I could not produce a valid execution plan for this multi-step task. No changes were made. Please retry or simplify one requirement at a time.',
-          intent: 'planned_workflow',
-          resolved: null,
-          error: String(err),
-        };
-      }
-    }
-  } catch (err) {
-    if (process.env.DEBUG_PLANNER === 'true') {
-      console.log('[planner] Complexity detection failed:', err);
-    }
-    // Complexity detection failed — fall through to normal flow
-  }
-
-  // 3. Relationship write — natural language ownership
-  if (classification.intent === 'relationship_write') {
     try {
-      const { getDb } = await import('./memory/index.js');
-      const db = getDb();
-
-      // Extract subject (usually "I/me" → current user)
-      let fromCode: string | undefined;
-      const userEntry = db.prepare('SELECT code FROM index_entries WHERE nb = ? AND type = ? AND name LIKE ? ORDER BY updated DESC LIMIT 1')
-        .get('WHO', 'CT', '%Erfan%') as { code: string } | undefined;
-      if (userEntry) fromCode = userEntry.code;
-
-      // Extract object from message (project name, org name, etc.)
-      const objectName = classification.name;
-      let toCode: string | undefined;
-
-      if (objectName && fromCode && classification.relation) {
-        // Look up object by name
-        const objectEntry = db.prepare('SELECT code FROM index_entries WHERE name LIKE ? LIMIT 1')
-          .get(`%${objectName}%`) as { code: string } | undefined;
-
-        if (objectEntry) {
-          toCode = objectEntry.code;
-        } else {
-          // Create the object entry first
-          const nb = classification.nb || 'WHAT';
-          const type = classification.type || 'PJ';
-          try {
-            const created = createEntry({
-              nb,
-              type,
-              name: objectName,
-              status: 'active',
-              summary: objectName,
-              body: `Referenced in relationship: ${message}`,
-            });
-            toCode = created.code;
-          } catch {
-            // Creation failed
-          }
-        }
-
-        if (toCode) {
-          addRelationship({
-            from_code: fromCode,
-            relation: classification.relation as 'owns' | 'works_for' | 'supplies' | 'blocks' | 'refers',
-            to_code: toCode,
-          });
-          return {
-            reply: findingsPrefix + `Relationship created: ${fromCode} ${classification.relation} ${toCode}`,
-            intent: 'relationship_write',
-            resolved: null,
-          };
-        }
+      const skillContext = await buildContext(
+        message,
+        null,
+        history,
+        [],
+        'skill',
+        skillResult.output,
+        llmHandler,
+      );
+      const reply = await llmHandler(skillContext);
+      const cleanedReply = cleanReply(reply);
+      if (!cleanedReply || looksLikeDeferredAction(cleanedReply)) {
+        return {
+          reply: findingsPrefix + skillResult.output,
+          intent: 'skill',
+          resolved: null,
+          retries: skillResult.retries,
+        };
       }
-
       return {
-        reply: findingsPrefix + 'Could not create relationship. Please specify both subject and object clearly.',
-        intent: 'relationship_write',
+        reply: findingsPrefix + cleanedReply,
+        intent: 'skill',
         resolved: null,
+        retries: skillResult.retries,
       };
-    } catch (err) {
+    } catch {
       return {
-        reply: findingsPrefix + `Failed to create relationship: ${String(err)}`,
-        intent: 'relationship_write',
+        reply: findingsPrefix + skillResult.output,
+        intent: 'skill',
         resolved: null,
-        error: String(err),
+        retries: skillResult.retries,
       };
     }
   }
 
-  // 4. Memory write — extract data and write to memory
   if (classification.intent === 'memory_write') {
-    const handler = options?.llmHandler ?? callLLM;
-
-    // /log entries: skip LLM entirely — use rule-based inference directly
-    if (message.startsWith('/log ')) {
-      const logData = inferWriteData(message, classification);
-      if (!logData) {
-        return { reply: findingsPrefix + 'Logged.', intent: 'memory_write', resolved: null };
-      }
-      try {
-        upsertEntry({
-          nb: logData.nb,
-          type: logData.type,
-          name: logData.name,
-          status: logData.status,
-          summary: logData.summary,
-          body: logData.body,
-        });
-        return { reply: findingsPrefix + 'Logged.', intent: 'memory_write', resolved: null };
-      } catch {
-        return { reply: findingsPrefix + 'Logged.', intent: 'memory_write', resolved: null };
-      }
-    }
-
-    // Try LLM extraction first, fall back to rule-based (with retry on invalid JSON)
     let writeData: {
-      nb: string; type: string; name: string; status: string; summary: string; body: string;
+      nb: string;
+      type: string;
+      name: string;
+      status: string;
+      summary: string;
+      body: string;
       relationships?: Array<{ relation: string; to_code: string }>;
       due_date?: string;
     } | null = null;
@@ -465,12 +820,11 @@ async function _processMessage(
               { role: 'system', content: WRITE_SYSTEM_PROMPT },
               { role: 'user', content: message },
               { role: 'assistant', content: lastLLMResponse! },
-              { role: 'user', content: `Your response was invalid JSON or missing required fields (nb, type, name). Please return ONLY a valid JSON object with all required fields.` },
+              { role: 'user', content: 'Your response was invalid JSON or missing required fields (nb, type, name). Please return ONLY a valid JSON object with all required fields.' },
             ];
-        const llmResponse = await handler(writeMessages, { responseSchema: writeEntryJsonSchema });
+        const llmResponse = await llmHandler(writeMessages, { responseSchema: writeEntryJsonSchema });
         lastLLMResponse = llmResponse;
 
-        // Try Zod validation first (structured output path)
         const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           try {
@@ -485,17 +839,15 @@ async function _processMessage(
                 summary: zodResult.data.summary,
                 body: zodResult.data.body,
                 relationships: zodResult.data.relationships,
-                // BUG-M6 fix: propagate due_date from Zod-parsed LLM response
                 due_date: zodResult.data.due_date,
               };
-              break; // Schema-validated success
+              break;
             }
           } catch {
-            // JSON parse failed — fall through to regex extraction
+            // Fall through to regex extraction.
           }
         }
 
-        // Fallback: rule-based regex extraction (existing parseLLMWriteResponse)
         const parsed = parseLLMWriteResponse(llmResponse);
         if (parsed?.nb && parsed?.type && parsed?.name) {
           writeData = {
@@ -506,17 +858,15 @@ async function _processMessage(
             summary: parsed.summary ?? parsed.name,
             body: parsed.body ?? message,
             relationships: parsed.relationships,
+            due_date: parsed.due_date,
           };
-          break; // Regex-extracted success
+          break;
         }
-        // Missing fields — retry if attempts remain
       } catch {
-        // LLM unavailable — fall through to rule-based
         break;
       }
     }
 
-    // Fall back to rule-based inference
     if (!writeData) {
       const inferred = inferWriteData(message, classification);
       if (!inferred) {
@@ -530,10 +880,7 @@ async function _processMessage(
     }
 
     try {
-      // due_date from LLM response, classification, or undefined
-      const due_date = (writeData as Record<string, unknown>).due_date as string | undefined
-        ?? classification.due_date;
-
+      const due_date = writeData.due_date ?? classification.due_date;
       const { code, created } = upsertEntry({
         nb: writeData.nb,
         type: writeData.type,
@@ -544,29 +891,24 @@ async function _processMessage(
         due_date,
       });
 
-      const action = created ? 'Created' : 'Updated';
       const entry = getEntryByCode(code);
-
-      // Extract importance_score and atomic_facts — fire-and-forget (on create and update)
       if (entry) {
-        const metaHandler = options?.llmHandler ?? callLLM;
-        extractMemoryMetadata(code, writeData.body, writeData.summary, metaHandler)
+        extractMemoryMetadata(code, writeData.body, writeData.summary, llmHandler)
           .catch(err => console.warn('[agent] extractMemoryMetadata failed:', err));
       }
 
-      // Add relationships if present (only on new entries to avoid duplicate links)
       if (created && writeData.relationships) {
         for (const rel of writeData.relationships) {
           try {
             addRelationship({ from_code: code, relation: rel.relation, to_code: rel.to_code });
           } catch {
-            // relationship target may not exist — skip silently
+            // Ignore unresolved relationship targets.
           }
         }
       }
 
       return {
-        reply: findingsPrefix + `${action} ${code} — ${writeData.name} (${writeData.nb}.${writeData.type})`,
+        reply: findingsPrefix + `${created ? 'Created' : 'Updated'} ${code} — ${writeData.name} (${writeData.nb}.${writeData.type})`,
         intent: 'memory_write',
         resolved: entry ? { step: 0, entries: [entry], contents: [], relationships: [] } : null,
         created: entry ?? undefined,
@@ -581,110 +923,116 @@ async function _processMessage(
     }
   }
 
-  // 4. Skill execution — routed via registry + runner (with ReAct retry)
-  if (classification.intent === 'skill' && classification.skill) {
-    const handler = options?.llmHandler ?? callLLM;
-    const skillResult = await runWithRetry(classification.skill, classification.skillInput ?? {}, handler);
+  return null;
+}
 
-    if (!skillResult.success) {
-      const errorMsg = skillResult.error ?? '';
-      // Emit failure_classified for skill failures (consistent with executePlan)
-      transparency.emit({ type: 'failure_classified', data: { error: errorMsg, class: classifyFailure(errorMsg) } });
-      // Write WHEN.EV for skill failures — fire-and-forget (survivorship bias fix)
-      writeEpisodicEvent({
-        trigger: message,
-        task_name: `Skill: ${classification.skill} — ${message.slice(0, 60)}`,
-        skill_sequence: [classification.skill!],
-        outcome: 'failure',
-        failure_reason: errorMsg,
-        linked_codes: [],
-        session_id: new Date().toISOString(),
-      }).catch(() => {});
-      // Surface security/access errors inline; generic message for everything else
-      const reply = /access denied|not allowed|outside workspace|invalid path/i.test(errorMsg)
-        ? findingsPrefix + `I couldn't complete that: ${errorMsg}`
-        : findingsPrefix + `I couldn't complete that. Please try again or rephrase your request.`;
+export async function processMessage(
+  message: string,
+  history: Message[],
+  options?: { llmHandler?: LLMHandler },
+): Promise<AgentResponse> {
+  isProcessingMessage = true;
+  let decomposition: DecompositionResult | null = null;
+  try {
+    const findingsPrefix = await buildFindingsPrefix();
+    const handler = options?.llmHandler ?? callLLM;
+
+    if (/^\/log\s+/i.test(message.trim())) {
+      return await handleLogFastPath(message, findingsPrefix);
+    }
+
+    if (DIRECT_MEETING_PREFIX.test(message.trim())) {
+      return await handleMeetingFastPath(history, handler, findingsPrefix);
+    }
+
+    const codes = extractCodes(message);
+    if (isDirectCodeFetchMessage(message, codes)) {
+      return await handleLegacyResolvedFlow(
+        message,
+        history,
+        { intent: 'code_fetch', codes },
+        handler,
+        findingsPrefix,
+      );
+    }
+
+    decomposition = await decomposeMessage(message, handler);
+
+    if (decomposition.units.length === 1 && GREETING_ONLY.test(decomposition.units[0].content)) {
+      const routed = await routeDecomposedUnits(decomposition.units, [], history, handler);
       return {
-        reply,
-        intent: 'skill',
+        reply: findingsPrefix + routed.reply,
+        intent: 'greeting',
         resolved: null,
-        error: skillResult.error,
-        retries: skillResult.retries,
       };
     }
 
-    // Pass skill output through context builder and LLM
-    const skillContext = await buildContext(
-      message, null, history, [],
-      'skill',
-      skillResult.output,
-      options?.llmHandler ?? callLLM,
-    );
+    const allowSingleUnitCompatibility = decomposition.units.length === 1 && !isLikelyCompoundMessage(message);
+    let compatibilityClassification: Classification | null = null;
 
-    try {
-      const reply = await handler(skillContext);
-      return { reply: findingsPrefix + reply, intent: 'skill', resolved: null, retries: skillResult.retries };
-    } catch (error) {
-      // If LLM fails, return raw skill output
-      return { reply: findingsPrefix + skillResult.output, intent: 'skill', resolved: null, retries: skillResult.retries };
-    }
-  }
+    if (allowSingleUnitCompatibility) {
+      compatibilityClassification = buildSingleUnitCompatibilityClassification(
+        message,
+        decomposition.units[0],
+      );
 
-  // 5. Resolve memory (5-step query flow)
-  let resolved = resolveQuery(classification);
-
-  // 5b. Step 5: Hybrid search fallback for vague queries
-  // At this point, only code_fetch, memory_query, relationship_query, general remain
-  if (resolved === null && classification.intent !== 'code_fetch') {
-    try {
-      const searchResults = await hybridSearch(message, { nb: classification.nb });
-      if (searchResults.length > 0) {
-        const entries = searchResults.map(r => r.entry);
-        const contents: string[] = [];
-        for (const entry of entries) {
-          const fetched = fetchByCode(entry.code);
-          if (fetched) contents.push(fetched.content);
-        }
-        resolved = { step: 5, entries, contents, relationships: [] };
+      if (
+        compatibilityClassification
+        && (compatibilityClassification.intent === 'skill' || compatibilityClassification.intent === 'memory_write')
+      ) {
+        const compatibilityResult = await handleCompatibilityExecution(
+          message,
+          history,
+          compatibilityClassification,
+          findingsPrefix,
+          handler,
+        );
+        if (compatibilityResult) return compatibilityResult;
       }
-    } catch {
-      // Search failed — fall through to not-found guard
     }
-  }
 
-  // 6. Deterministic not-found guard
-  if (resolved === null) {
-    if (classification.intent === 'code_fetch') {
-      return { reply: findingsPrefix + 'Entry not found.', intent: classification.intent, resolved: null };
+    const unitResults = await searchMemoryForUnits(decomposition.units);
+
+    // FIX E: Decomposed units are the source of truth for routing.
+    // Legacy path allowed for: skill, memory_write (handled above), relationship_query, code_fetch, memory_query.
+    // Removed: general-intent fallback for decomposed query units (those go through routeDecomposedUnits now).
+    if (allowSingleUnitCompatibility) {
+      if (
+        compatibilityClassification
+        && decomposition.units[0].route !== 'agentic'
+        && (
+          compatibilityClassification.intent === 'memory_query'
+          || compatibilityClassification.intent === 'relationship_query'
+          || compatibilityClassification.intent === 'code_fetch'
+        )
+      ) {
+        const result = await handleLegacyResolvedFlow(
+          message,
+          history,
+          compatibilityClassification,
+          handler,
+          findingsPrefix,
+        );
+        return result;
+      }
+      // NOTE: Removed the !compatibilityClassification && route === 'query' → general fallback (FIX E)
+      // Decomposed query units without a specific classification now go through routeDecomposedUnits.
     }
-    if ((classification.intent === 'memory_query' || classification.intent === 'relationship_query') && classification.nb) {
-      return { reply: findingsPrefix + `No entries found in ${classification.nb} notebook.`, intent: classification.intent, resolved: null };
-    }
-    if (classification.intent === 'memory_query' || classification.intent === 'relationship_query') {
-      return { reply: findingsPrefix + 'No matching entries found.', intent: classification.intent, resolved: null };
-    }
-    // 'general' intent — allowed to pass to LLM without resolved memory
-  }
 
-  // 7. Load relevant skills
-  const skills = getSkillsForIntent(classification.intent);
-
-  // 8. Build lean context with rolling summarization
-  const handler = options?.llmHandler ?? callLLM;
-  const messages = await buildContext(message, resolved, history, skills, classification.intent, undefined, handler);
-
-  // 9. Call LLM with error handling (BUG 6)
-  try {
-    const reply = await handler(messages);
-    // Strip <think> tags from reasoning models (Kimi, DeepSeek R1, etc.)
-    const cleanReply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-    return { reply: findingsPrefix + cleanReply, intent: classification.intent, resolved };
+    const routed = await routeDecomposedUnits(decomposition.units, unitResults, history, handler);
+    return {
+      reply: findingsPrefix + routed.reply,
+      intent: mapRouteIntent(message, decomposition, routed.primaryRoute),
+      resolved: routed.resolved,
+    };
   } catch (error) {
     return {
-      reply: findingsPrefix + 'I could not reach the language model. Please check that it is running.',
-      intent: classification.intent,
-      resolved,
+      reply: 'I could not reach the language model. Please check that it is running.',
+      intent: mapErrorIntent(message, decomposition),
+      resolved: null,
       error: String(error),
     };
+  } finally {
+    isProcessingMessage = false;
   }
 }
