@@ -21,7 +21,11 @@ export function atomicWriteFile(filePath: string, content: string): void {
     fs.writeFileSync(tmpPath, content, 'utf8');
     fs.renameSync(tmpPath, filePath);
   } catch (err) {
-    try { fs.unlinkSync(tmpPath); } catch { /* ignore cleanup error */ }
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch (cleanupErr) {
+      console.warn(`[memory] Failed to clean up temp file ${tmpPath}:`, cleanupErr);
+    }
     throw err;
   }
 }

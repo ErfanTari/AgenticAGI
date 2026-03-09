@@ -17,19 +17,6 @@ const c = (color: keyof typeof C, text: string) => `${C[color]}${text}${C.reset}
 
 function render(event: TransparencyEvent): string {
   switch (event.type) {
-    case 'intent': {
-      const classifierTag = event.data.classifier ? ` ${c('dim', `[${event.data.classifier}]`)}` : '';
-      return (
-        c('cyan', '\n┌─ INTENT') +
-        `\n│  intent:   ${c('bold', event.data.intent)}${classifierTag}` +
-        `\n│  notebook: ${event.data.nb ?? '—'}` +
-        `\n│  type:     ${event.data.type ?? '—'}` +
-        `\n│  skill:    ${event.data.skill ?? '—'}` +
-        `\n│  codes:    ${event.data.codes?.join(', ') || '—'}` +
-        c('cyan', '\n└─────────────────')
-      );
-    }
-
     case 'complexity': {
       const icon = event.data.isComplex ? c('red', '● COMPLEX') : c('green', '● SIMPLE');
       return (
@@ -43,6 +30,14 @@ function render(event: TransparencyEvent): string {
     }
 
     case 'plan': {
+      const milestones = (event.data.milestones ?? [])
+        .map((milestone: any, i: number) => {
+          const milestoneSteps = milestone.steps
+            .map((s: any) => `\n│    • [${c('magenta', s.skill)}] ${s.description}`)
+            .join('');
+          return `\n│  M${i + 1}. ${milestone.title} ${c('dim', `— ${milestone.completionCriteria}`)}${milestoneSteps}`;
+        })
+        .join('');
       const steps = event.data.steps
         .map((s: any, i: number) => {
           let line = `\n│  ${i + 1}. [${c('magenta', s.skill)}] ${s.description}`;
@@ -61,8 +56,35 @@ function render(event: TransparencyEvent): string {
       return (
         c('magenta', `\n┌─ PLAN (${event.data.steps.length} steps)`) +
         `\n│  goal: ${event.data.goal}` +
+        `\n│  complexity: ${event.data.complexity ?? 'LOW'}` +
+        `\n│  confirm: ${event.data.needsConfirmation ? 'yes' : 'no'}` +
+        (milestones ? `\n│  milestones:${milestones}` : '') +
         steps +
         c('magenta', '\n└─────────────────')
+      );
+    }
+
+    case 'decomposition': {
+      const units = event.data.units
+        .map(unit => `\n│  ${unit.order + 1}. [${unit.route}] ${unit.content}`)
+        .join('');
+      return (
+        c('cyan', '\n┌─ DECOMPOSITION') +
+        units +
+        c('cyan', '\n└─────────────────')
+      );
+    }
+
+    case 'unit_memory_search': {
+      const entryCodes = event.data.result.entries.map(entry => entry.code).join(', ') || '—';
+      return (
+        c('cyan', '\n┌─ UNIT MEMORY') +
+        `\n│  unit:       ${event.data.unit.id} [${event.data.unit.route}]` +
+        `\n│  content:    ${event.data.unit.content}` +
+        `\n│  strategy:   ${event.data.result.strategy}` +
+        `\n│  confidence: ${event.data.result.confidence}` +
+        `\n│  entries:    ${entryCodes}` +
+        c('cyan', '\n└─────────────────')
       );
     }
 
@@ -142,6 +164,42 @@ function render(event: TransparencyEvent): string {
         `\n│  checks:   ${event.data.checks.join(', ')}` +
         `\n│  findings: ${event.data.findings}` +
         c('yellow', '\n└─────────────────')
+      );
+
+    case 'milestone_start':
+      return (
+        c('blue', '\n┌─ MILESTONE START') +
+        `\n│  ${event.data.index}/${event.data.total}: ${event.data.title}` +
+        `\n│  id: ${event.data.id}` +
+        c('blue', '\n└─────────────────')
+      );
+
+    case 'milestone_result':
+      return (
+        c(event.data.success ? 'green' : 'red', '\n┌─ MILESTONE RESULT') +
+        `\n│  ${event.data.index}/${event.data.total}: ${event.data.title}` +
+        `\n│  id: ${event.data.id}` +
+        `\n│  success: ${event.data.success ? 'yes' : 'no'}` +
+        c(event.data.success ? 'green' : 'red', '\n└─────────────────')
+      );
+
+    case 'milestone_revised':
+      return (
+        c('yellow', '\n┌─ MILESTONE REVISED') +
+        (event.data.fromId ? `\n│  from: ${event.data.fromId}` : '') +
+        (event.data.milestoneId ? `\n│  milestone: ${event.data.milestoneId}` : '') +
+        (event.data.remaining ? `\n│  remaining: ${event.data.remaining.join(', ') || '—'}` : '') +
+        (event.data.revisedCount !== undefined ? `\n│  revised_count: ${event.data.revisedCount}` : '') +
+        (event.data.reason ? `\n│  reason: ${event.data.reason}` : '') +
+        c('yellow', '\n└─────────────────')
+      );
+
+    case 'milestone_memory_cycle':
+      return (
+        c('green', '\n┌─ MILESTONE MEMORY') +
+        `\n│  milestone: ${event.data.milestoneId}` +
+        `\n│  writes: ${event.data.writes.join(', ') || '—'}` +
+        c('green', '\n└─────────────────')
       );
 
     case 'error':

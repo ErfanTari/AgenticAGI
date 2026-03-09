@@ -115,18 +115,11 @@ export async function runAutonomousLoop(
         const execResult = await executePlan(plan, llmHandler);
 
         if (execResult.success) {
-          // Mark milestone done
+          // Mark milestone done — use savePlanEX() only (it calls updatePlanEX internally)
           const updatedMilestones = [...milestones];
           updatedMilestones[currentIdx] = { ...milestone, done: true };
-          const { updatePlanEX, savePlanEX } = await import('./memory/plan-ex.js');
-          updatePlanEX(planEx.code, {
-            milestones: updatedMilestones,
-            current_milestone: currentIdx + 1,
-            last_action: milestone.name,
-            checkpoint_ts: new Date().toISOString(),
-            status: currentIdx + 1 >= milestones.length ? 'complete' : 'in_progress',
-          });
           planEx = { ...planEx, milestones: updatedMilestones, current_milestone: currentIdx + 1, last_action: milestone.name };
+          const { savePlanEX } = await import('./memory/plan-ex.js');
           savePlanEX({
             ...planEx,
             status: currentIdx + 1 >= milestones.length ? 'complete' : 'in_progress',

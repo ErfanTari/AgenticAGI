@@ -1,11 +1,11 @@
-import type { Classification } from './types.js';
 import type { ComplexityResult } from './planner.js';
 import type { TaskPlan, TaskStep } from './schemas.js';
 import type { SkillResult } from './skills/types.js';
-import type { Message } from './types.js';
+import type { DecompositionResult, Message, DecomposedUnit, UnitMemoryResult } from './types.js';
 
 export type TransparencyEvent =
-  | { type: 'intent'; data: Classification }
+  | { type: 'decomposition'; data: DecompositionResult }
+  | { type: 'unit_memory_search'; data: { unit: DecomposedUnit; result: UnitMemoryResult } }
   | { type: 'complexity'; data: ComplexityResult }
   | { type: 'plan'; data: TaskPlan }
   | { type: 'step_start'; data: { step: TaskStep } }
@@ -24,6 +24,10 @@ export type TransparencyEvent =
   | { type: 'planner_reasoning'; data: { thought: string } }
   | { type: 'failure_classified'; data: { error: string; class: string } }
   | { type: 'context_compacted'; data: { before: number; after: number } }
+  | { type: 'milestone_start'; data: { id: string; title: string; index: number; total: number } }
+  | { type: 'milestone_result'; data: { id: string; title: string; success: boolean; index: number; total: number } }
+  | { type: 'milestone_revised'; data: { fromId?: string; remaining?: string[]; milestoneId?: string; revisedCount?: number; reason?: string } }
+  | { type: 'milestone_memory_cycle'; data: { milestoneId: string; writes: string[] } }
   | { type: 'project_transition'; data: { code: string; from: string; to: string } }
   | { type: 'saga_rollback'; data: { step: string; reason: string } }
   | { type: 'meeting_complete'; data: { updatesWritten: string[] } }
