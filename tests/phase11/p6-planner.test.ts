@@ -54,10 +54,10 @@ describe('Phase 11 P6: Enhanced Planner', () => {
     expect(result.estimatedSteps).toBeGreaterThan(0);
   });
 
-  it('P6D: isComplexTask still works as wrapper', async () => {
-    const { isComplexTask } = await import('../../core/planner.js');
-    const result = await isComplexTask('hello', { intent: 'greeting', codes: [] });
-    expect(result).toHaveProperty('isComplex');
+  it('P6D: assessComplexity returns expected shape', async () => {
+    const { assessComplexity } = await import('../../core/planner.js');
+    const result = await assessComplexity('hello', { intent: 'greeting', codes: [] });
+    expect(result).toHaveProperty('level');
     expect(result).toHaveProperty('reason');
     expect(result).toHaveProperty('estimatedSteps');
   });

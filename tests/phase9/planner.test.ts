@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { isComplexTask, decomposeTask, resolveTemplates } from '../../core/planner.js';
+import { describe, it, expect } from 'vitest';
+import { assessComplexity, decomposeTask, resolveTemplates } from '../../core/planner.js';
 import type { Classification, LLMHandler } from '../../core/types.js';
 
 const simpleClassification: Classification = {
@@ -20,51 +20,51 @@ function createMockLLM(response: string): LLMHandler & { calls: number } {
 }
 
 describe('Priority 2: Goal Complexity Detector', () => {
-  it('P2A: single actions → isComplex=false', async () => {
-    const result = await isComplexTask('hello', simpleClassification);
-    expect(result.isComplex).toBe(false);
+  it('P2A: single actions → LOW complexity', async () => {
+    const result = await assessComplexity('hello', simpleClassification);
+    expect(result.level).toBe('LOW');
   });
 
-  it('P2A: simple question → isComplex=false', async () => {
-    const result = await isComplexTask('what is 2+2?', simpleClassification);
-    expect(result.isComplex).toBe(false);
+  it('P2A: simple question → LOW complexity', async () => {
+    const result = await assessComplexity('what is 2+2?', simpleClassification);
+    expect(result.level).toBe('LOW');
   });
 
-  it('P2B: multi-step → isComplex=true', async () => {
-    const result = await isComplexTask(
+  it('P2B: multi-step → non-LOW complexity', async () => {
+    const result = await assessComplexity(
       'first write a file called test.txt, then run a bash command to list files',
       simpleClassification,
     );
-    expect(result.isComplex).toBe(true);
-    expect(result.requiresSkills.length).toBeGreaterThanOrEqual(1);
+    expect(result.level).not.toBe('LOW');
+    expect(result.estimatedSteps).toBeGreaterThanOrEqual(2);
   });
 
-  it('P2B: file and run → isComplex=true', async () => {
-    const result = await isComplexTask(
+  it('P2B: file and run → non-LOW complexity', async () => {
+    const result = await assessComplexity(
       'create a file with the script and then execute it',
       simpleClassification,
     );
-    expect(result.isComplex).toBe(true);
+    expect(result.level).not.toBe('LOW');
   });
 
-  it('P2C: loop signal → isComplex=true', async () => {
-    const result = await isComplexTask(
+  it('P2C: loop signal → non-LOW complexity', async () => {
+    const result = await assessComplexity(
       'for each file in the directory, read and summarize it then write a report',
       simpleClassification,
     );
-    expect(result.isComplex).toBe(true);
+    expect(result.level).not.toBe('LOW');
   });
 
   it('P2D: heuristic fires without LLM (<5ms, no LLM call)', async () => {
     const mockLLM = createMockLLM('{}');
     const start = performance.now();
-    const result = await isComplexTask(
+    const result = await assessComplexity(
       'first create a file, then run it, and finally search the web for results',
       simpleClassification,
       mockLLM,
     );
     const elapsed = performance.now() - start;
-    expect(result.isComplex).toBe(true);
+    expect(result.level).not.toBe('LOW');
     expect(elapsed).toBeLessThan(5);
     expect(mockLLM.calls).toBe(0);
   });
@@ -74,16 +74,15 @@ describe('Priority 2: Goal Complexity Detector', () => {
       isComplex: true,
       reason: 'Needs multiple steps',
       estimatedSteps: 3,
-      requiresSkills: ['file_writer', 'run_bash'],
     }));
     // 1 signal (multiStep) + long message
-    const result = await isComplexTask(
+    const result = await assessComplexity(
       'then do some complex processing on the data that I have been working on for a while and make sure everything is properly organized',
       simpleClassification,
       mockLLM,
     );
     expect(mockLLM.calls).toBe(1);
-    expect(result.isComplex).toBe(true);
+    expect(result.level).not.toBe('LOW');
   });
 });
 
