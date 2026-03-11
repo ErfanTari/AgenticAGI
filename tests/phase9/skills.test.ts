@@ -1,9 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import * as llm from '../../core/llm.js';
 import { fileWriter } from '../../core/skills/tools/file_writer.js';
 import { runBash } from '../../core/skills/tools/run_bash.js';
+import { implementAndTestSkill } from '../../core/skills/tools/implement_and_test.js';
 import { getSkill } from '../../core/skills/registry.js';
 
 // Test workspace
@@ -25,6 +27,10 @@ afterAll(() => {
   if (fs.existsSync(workspaceDir)) {
     fs.rmSync(workspaceDir, { recursive: true, force: true });
   }
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('Phase 9 Priority 1: file_writer and run_bash skills', () => {
@@ -290,6 +296,92 @@ describe('Phase 9 Priority 1: file_writer and run_bash skills', () => {
 
       expect(result.success).toBe(true);
       expect(result.output).toContain('Hello from script');
+    });
+  });
+
+  describe('implement_and_test', () => {
+    it('repairs an existing broken test file instead of retrying code only', async () => {
+      const implPath = path.resolve(process.cwd(), 'workspace', 'puzzle.js');
+      const testPath = path.resolve(process.cwd(), 'workspace', 'puzzle.test.js');
+
+      fs.writeFileSync(implPath, [
+        'export function solvePuzzle() {',
+        '  return 42;',
+        '}',
+        '',
+      ].join('\n'), 'utf-8');
+
+      fs.writeFileSync(testPath, [
+        "import assert from 'node:assert';",
+        "import { solvePuzzle } from './puzzle.js';",
+        '',
+        'assert.strictEqual(solvePuzzle(), 42);',
+        "console.log('All tests passed!';",
+        '',
+      ].join('\n'), 'utf-8');
+
+      const llmSpy = vi.spyOn(llm, 'callLLM').mockResolvedValue(JSON.stringify({
+        code: [
+          'export function solvePuzzle() {',
+          '  return 42;',
+          '}',
+          '',
+        ].join('\n'),
+        tests: [
+          "import assert from 'node:assert';",
+          "import { solvePuzzle } from './puzzle.js';",
+          '',
+          'assert.strictEqual(solvePuzzle(), 42);',
+          "console.log('All tests passed!');",
+          '',
+        ].join('\n'),
+      }));
+
+      const result = await implementAndTestSkill.execute({
+        implementation_prompt: 'Fix the existing puzzle implementation so the tests pass.',
+        test_prompt: "Write ESM tests for solvePuzzle(). Import from './puzzle.js' and confirm it returns 42.",
+        filename: 'puzzle.js',
+        test_filename: 'puzzle.test.js',
+        max_attempts: '3',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('Tests passed on attempt 2');
+      expect(fs.readFileSync(testPath, 'utf-8')).toContain("console.log('All tests passed!');");
+      expect(llmSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('runs nested existing project files from the project directory', async () => {
+      const implPath = path.resolve(process.cwd(), 'workspace', 'hello-server', 'server.js');
+      const testPath = path.resolve(process.cwd(), 'workspace', 'hello-server', 'server.test.js');
+      fs.mkdirSync(path.dirname(implPath), { recursive: true });
+
+      fs.writeFileSync(implPath, [
+        'export function hello() {',
+        "  return 'hello world';",
+        '}',
+        '',
+      ].join('\n'), 'utf-8');
+
+      fs.writeFileSync(testPath, [
+        "import assert from 'node:assert';",
+        "import { hello } from './server.js';",
+        '',
+        "assert.strictEqual(hello(), 'hello world');",
+        "console.log('All tests passed!');",
+        '',
+      ].join('\n'), 'utf-8');
+
+      const result = await implementAndTestSkill.execute({
+        implementation_prompt: 'Validate the existing hello server implementation.',
+        test_prompt: "Write ESM tests for hello(). Import from './server.js' and confirm it returns hello world.",
+        filename: 'hello-server/server.js',
+        test_filename: 'hello-server/server.test.js',
+        max_attempts: '1',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('Tests passed on attempt 1');
     });
   });
 });

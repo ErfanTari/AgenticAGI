@@ -2,6 +2,14 @@ import Database from 'better-sqlite3';
 import type { IndexEntry, QueryFilter } from './types.js';
 export declare function initDatabase(dbPath?: string): Database.Database;
 export declare function getDb(): Database.Database;
+export declare function getSettingValue(d: Database.Database, key: string): string | null;
+export declare function setSettingValue(d: Database.Database, key: string, value: string): void;
+/**
+ * H2 — Reconcile operational metadata from frontmatter into SQLite rows.
+ * Runs at startup: if a row has all-zero operational scores but the .md file
+ * has non-zero values (written by C4), restore them into SQLite.
+ */
+export declare function reconcileOperationalMetadata(): void;
 export declare function insertEntry(entry: IndexEntry): void;
 export declare function getEntryByCode(code: string): IndexEntry | undefined;
 export declare function queryEntries(filter: QueryFilter): IndexEntry[];

@@ -57,6 +57,22 @@ function parseDiskEntry(filePath) {
     const frontmatterEnd = markdown.indexOf('\n---', 4);
     const bodyStart = frontmatterEnd >= 0 ? markdown.indexOf('\n', frontmatterEnd + 4) : -1;
     const body = bodyStart >= 0 ? markdown.slice(bodyStart).trim() : markdown;
+    // C5: parse operational metadata for DB-rebuild resilience
+    const parseNum = (v, def) => {
+        const n = parseFloat(v ?? '');
+        return isNaN(n) ? def : n;
+    };
+    const operationalMeta = {
+        importance_score: parseNum(meta.importance_score, 0),
+        utility_score: parseNum(meta.utility_score, 0),
+        usage_count: Math.floor(parseNum(meta.usage_count, 0)),
+        decay_rate: parseNum(meta.decay_rate, 0.1),
+        active_page: Math.floor(parseNum(meta.active_page, 1)),
+        confidence: parseNum(meta.confidence, 1.0),
+        last_accessed: meta.last_accessed ?? meta.updated ?? '',
+        pinned: Math.floor(parseNum(meta.pinned, 0)),
+        source: meta.source ?? 'agent',
+    };
     const entry = {
         code: meta.code,
         nb: meta.nb,
@@ -70,6 +86,7 @@ function parseDiskEntry(filePath) {
     };
     return {
         entry,
+        operationalMeta,
         markdown,
         searchableText: `${entry.name} ${entry.summary} ${body}`,
         counterKey: `${entry.nb}.${entry.type}`,
@@ -77,6 +94,35 @@ function parseDiskEntry(filePath) {
     };
 }
 function bootstrapIndexFromMemoryFiles() {
+    // FIX 3: Clean up any orphaned .tmp files left by a crashed atomic write.
+    if (fs.existsSync(PATHS.memory)) {
+        const cleanTmpFiles = (dir) => {
+            let entries;
+            try {
+                entries = fs.readdirSync(dir);
+            }
+            catch {
+                return;
+            }
+            for (const entry of entries) {
+                const full = path.join(dir, entry);
+                try {
+                    const stat = fs.statSync(full);
+                    if (stat.isDirectory()) {
+                        cleanTmpFiles(full);
+                    }
+                    else if (entry.endsWith('.md.tmp')) {
+                        try {
+                            fs.unlinkSync(full);
+                        }
+                        catch { /* ignore */ }
+                    }
+                }
+                catch { /* ignore stat errors */ }
+            }
+        };
+        cleanTmpFiles(PATHS.memory);
+    }
     const d = getDb();
     const countRow = d.prepare('SELECT COUNT(*) as count FROM index_entries').get();
     if (countRow.count > 0)
@@ -97,8 +143,16 @@ function bootstrapIndexFromMemoryFiles() {
         }
     }
     const insertEntryStmt = d.prepare(`
-    INSERT OR IGNORE INTO index_entries (code, nb, type, name, status, updated, summary, path, due_date)
-    VALUES (@code, @nb, @type, @name, @status, @updated, @summary, @path, @due_date)
+    INSERT OR IGNORE INTO index_entries (
+      code, nb, type, name, status, updated, summary, path, due_date,
+      importance_score, utility_score, usage_count, decay_rate, active_page,
+      confidence, last_accessed, pinned, source
+    )
+    VALUES (
+      @code, @nb, @type, @name, @status, @updated, @summary, @path, @due_date,
+      @importance_score, @utility_score, @usage_count, @decay_rate, @active_page,
+      @confidence, @last_accessed, @pinned, @source
+    )
   `);
     const upsertCounterStmt = d.prepare(`
     INSERT INTO counters (type, current) VALUES (?, ?)
@@ -112,6 +166,7 @@ function bootstrapIndexFromMemoryFiles() {
             insertEntryStmt.run({
                 ...item.entry,
                 due_date: item.entry.due_date ?? null,
+                ...item.operationalMeta,
             });
         }
         for (const [type, current] of maxCounters.entries()) {
@@ -150,8 +205,7 @@ export function initDatabase(dbPath) {
     }
     db = new Database(resolvedPath);
     db.pragma('journal_mode = WAL');
-    // FK enforcement is enabled after the dedup + orphan cleanup block below.
-    // (1) Create all tables first (FK constraints not yet enforced).
+    db.pragma('foreign_keys = ON');
     db.exec(`
     CREATE TABLE IF NOT EXISTS index_entries (
       code      TEXT PRIMARY KEY,
@@ -169,8 +223,9 @@ export function initDatabase(dbPath) {
     CREATE INDEX IF NOT EXISTS idx_type   ON index_entries(type);
     CREATE INDEX IF NOT EXISTS idx_status ON index_entries(status);
 
-  `);
-    db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_entry
+    ON index_entries(nb, type, LOWER(name))
+    WHERE status != 'archived';
 
     CREATE TABLE IF NOT EXISTS relationships (
       from_code  TEXT NOT NULL,
@@ -240,47 +295,15 @@ export function initDatabase(dbPath) {
     `);
     }
     catch { /* indexes may already exist */ }
-    // Phase 4: Initialize FTS5 and chunks tables (must exist before orphan cleanup)
+    // Phase 4: Initialize FTS5 and chunks tables
     initFTS();
     initChunksTable();
-    // (2) Dedup — remap child rows to the kept code, then delete duplicates.
-    // Must run before FK enforcement so deletes don't violate constraints.
-    const dupGroups = db.prepare(`
-    SELECT nb, type, LOWER(name) as lname
-    FROM index_entries
-    GROUP BY nb, type, LOWER(name)
-    HAVING COUNT(*) > 1
-  `).all();
-    for (const g of dupGroups) {
-        const rows = db.prepare(`
-      SELECT rowid, code FROM index_entries
-      WHERE nb=? AND type=? AND LOWER(name)=?
-      ORDER BY rowid DESC
-    `).all(g.nb, g.type, g.lname);
-        const keepCode = rows[0].code;
-        const deleteCodes = rows.slice(1).map(r => r.code);
-        if (deleteCodes.length === 0)
-            continue;
-        const ph = deleteCodes.map(() => '?').join(',');
-        // Remap child rows to the kept code before removing duplicates
-        db.prepare(`UPDATE relationships SET from_code=? WHERE from_code IN (${ph})`).run(keepCode, ...deleteCodes);
-        db.prepare(`UPDATE relationships SET to_code=?   WHERE to_code   IN (${ph})`).run(keepCode, ...deleteCodes);
-        db.prepare(`UPDATE chunks         SET code=?     WHERE code       IN (${ph})`).run(keepCode, ...deleteCodes);
-        // Delete the duplicate parent rows (child rows now all point to keepCode)
-        db.prepare(`DELETE FROM index_entries WHERE code IN (${ph})`).run(...deleteCodes);
-    }
-    // (3) Enforce unique entries per (nb, type, name) — safe now that dupes are gone
-    try {
-        db.exec(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_entry
-      ON index_entries(nb, type, LOWER(name))
-      WHERE status != 'archived'
-    `);
-    }
-    catch { /* index already exists */ }
-    // (4) Enable FK enforcement — no orphans or duplicates remain
-    db.pragma('foreign_keys = ON');
     bootstrapIndexFromMemoryFiles();
+    // H2: Reconcile operational metadata from frontmatter for existing rows
+    try {
+        reconcileOperationalMetadata();
+    }
+    catch { /* non-fatal */ }
     // Phase 10: Ensure embedding_model_hash counter row exists
     db.prepare("INSERT OR IGNORE INTO counters (type, current) VALUES ('embedding_model_hash', 0)").run();
     // Phase 10: Run embedding migration check async — never blocks init
@@ -291,6 +314,56 @@ export function getDb() {
     if (!db)
         throw new Error('Database not initialized. Call initDatabase() first.');
     return db;
+}
+export function getSettingValue(d, key) {
+    const row = d.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+    return row?.value ?? null;
+}
+export function setSettingValue(d, key, value) {
+    d.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+}
+/**
+ * H2 — Reconcile operational metadata from frontmatter into SQLite rows.
+ * Runs at startup: if a row has all-zero operational scores but the .md file
+ * has non-zero values (written by C4), restore them into SQLite.
+ */
+export function reconcileOperationalMetadata() {
+    const d = getDb();
+    const staleRows = d.prepare(`
+    SELECT code, path FROM index_entries
+    WHERE importance_score = 0 AND utility_score = 0 AND usage_count = 0
+    LIMIT 500
+  `).all();
+    let reconciled = 0;
+    for (const row of staleRows) {
+        try {
+            const content = fs.readFileSync(row.path, 'utf8');
+            const meta = parseFrontmatter(content);
+            if (!meta)
+                continue;
+            const parseNum = (v, def) => {
+                const n = parseFloat(v ?? '');
+                return isNaN(n) ? def : n;
+            };
+            const importance = parseNum(meta.importance_score, 0);
+            const utility = parseNum(meta.utility_score, 0);
+            const usage = parseNum(meta.usage_count, 0);
+            if (importance > 0 || utility > 0 || usage > 0) {
+                d.prepare(`
+          UPDATE index_entries SET
+            importance_score = ?, utility_score = ?, usage_count = ?,
+            decay_rate = ?, active_page = ?, confidence = ?,
+            last_accessed = ?, pinned = ?
+          WHERE code = ?
+        `).run(importance, utility, Math.floor(usage), parseNum(meta.decay_rate, 0.1), Math.floor(parseNum(meta.active_page, 1)), parseNum(meta.confidence, 1.0), meta.last_accessed ?? '', Math.floor(parseNum(meta.pinned, 0)), row.code);
+                reconciled++;
+            }
+        }
+        catch { /* file missing or unreadable — skip */ }
+    }
+    if (reconciled > 0) {
+        console.log(`[startup] reconciled operational metadata for ${reconciled} entries`);
+    }
 }
 export function insertEntry(entry) {
     const d = getDb();

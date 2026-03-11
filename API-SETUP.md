@@ -1,6 +1,27 @@
-# API Setup Guide for Fallback Models
+# API Setup Guide for Local + Cloud Models
 
-This guide explains how to configure fallback API providers (Anthropic Claude or Google Gemini) for when the local LM Studio model is unavailable.
+This guide explains how to configure LM Studio as the default local model and Anthropic Claude or Google Gemini as cloud fallbacks.
+
+## Default Runtime
+
+The project now defaults to a local-first setup:
+
+```env
+LLM_ENDPOINT=http://YOUR_MAC_STUDIO:1234/v1/chat/completions
+LLM_MODEL=qwen/qwen3.5-35b-a3b
+PLANNER_MODEL=qwen/qwen3.5-35b-a3b
+EXECUTOR_MODEL=qwen/qwen3.5-35b-a3b
+
+LLM_FALLBACK_PROVIDER=gemini
+LLM_FALLBACK_MODEL=gemini-2.5-flash
+GEMINI_API_KEY=AIzaSy-your-actual-key-here
+```
+
+`chat.ts` stays local-primary by default.
+
+`pnpm ui` adds a header toggle:
+- `local` → LM Studio first, Gemini fallback
+- `cloud` → Gemini first, LM Studio fallback
 
 ## Why Use Fallback Models?
 
@@ -42,9 +63,9 @@ ANTHROPIC_API_KEY=sk-ant-api03-your-actual-key-here
 - **Sonnet 4.6:** $3/million input tokens, $15/million output tokens
 - **Free tier:** $5 credit to start
 
-## Option 2: Google Gemini Flash
+## Option 2: Google Gemini
 
-**Best for:** Fast responses, simple tasks, vision capabilities
+**Best for:** Strong reasoning without LM Studio, fast setup through Google's OpenAI-compatible endpoint
 
 ### Get Your API Key
 
@@ -56,19 +77,42 @@ ANTHROPIC_API_KEY=sk-ant-api03-your-actual-key-here
 
 ### Configure
 
-In your `.env` file:
+To use Gemini as the cloud fallback behind LM Studio:
+
+```env
+LLM_ENDPOINT=http://YOUR_MAC_STUDIO:1234/v1/chat/completions
+LLM_MODEL=qwen/qwen3.5-35b-a3b
+PLANNER_MODEL=qwen/qwen3.5-35b-a3b
+EXECUTOR_MODEL=qwen/qwen3.5-35b-a3b
+
+LLM_FALLBACK_PROVIDER=gemini
+LLM_FALLBACK_MODEL=gemini-2.5-flash
+GEMINI_API_KEY=AIzaSy-your-actual-key-here
+```
+
+If you want Gemini as the active model outside the UI toggle:
+
+```env
+LLM_ENDPOINT=https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
+LLM_MODEL=gemini-2.5-flash
+GEMINI_API_KEY=AIzaSy-your-actual-key-here
+PLANNER_MODEL=gemini-2.5-flash
+EXECUTOR_MODEL=gemini-2.5-flash
+```
+
+If you want Gemini only as a fallback behind another primary:
 
 ```env
 LLM_FALLBACK_PROVIDER=gemini
-LLM_FALLBACK_MODEL=gemini-2.0-flash-exp
+LLM_FALLBACK_MODEL=gemini-2.5-flash
 GEMINI_API_KEY=AIzaSy-your-actual-key-here
 ```
 
 ### Available Models
 
-- `gemini-2.0-flash-exp` — **Recommended** — Fast, multimodal
-- `gemini-1.5-flash` — Stable, production-ready
-- `gemini-1.5-pro` — More capable, slower
+- `gemini-2.5-flash` — **Recommended** — fast, stable, OpenAI-compatible
+- `gemini-2.5-pro` — stronger reasoning, slower and more expensive
+- `gemini-2.0-flash` — lighter fallback if you need older compatibility
 
 ### Pricing (as of 2025)
 
@@ -86,8 +130,7 @@ pnpm exec tsx quick-test.ts
 
 You should see:
 ```
-[llm] Primary failed — trying fallback
-[llm] Provider: fallback (gemini/gemini-2.0-flash-exp) — 1243ms
+[llm] Provider: primary (gemini-2.5-flash) — 1243ms
 ```
 
 ## Security Best Practices
@@ -140,30 +183,32 @@ curl https://api.anthropic.com/v1/messages \
   -d '{"model":"claude-sonnet-4-6","max_tokens":100,"messages":[{"role":"user","content":"test"}]}'
 ```
 
-**Gemini:**
+**Gemini (OpenAI-compatible):**
 ```bash
-curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=$GEMINI_API_KEY" \
+curl "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions" \
   -H "Content-Type: application/json" \
-  -d '{"contents":[{"parts":[{"text":"test"}]}]}'
+  -H "Authorization: Bearer $GEMINI_API_KEY" \
+  -d '{"model":"gemini-2.5-flash","messages":[{"role":"user","content":"test"}],"max_tokens":20}'
 ```
 
 ## Switching Between Providers
 
-Just update `.env`:
+For CLI/runtime defaults, update `.env`:
 
 ```env
-# Switch to Gemini
-LLM_FALLBACK_PROVIDER=gemini
-LLM_FALLBACK_MODEL=gemini-2.0-flash-exp
+# Switch primary to Gemini
+LLM_ENDPOINT=https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
+LLM_MODEL=gemini-2.5-flash
 GEMINI_API_KEY=AIzaSy...
 
-# Or back to Anthropic
-# LLM_FALLBACK_PROVIDER=anthropic
-# LLM_FALLBACK_MODEL=claude-sonnet-4-6
-# ANTHROPIC_API_KEY=sk-ant-...
+# Or switch back to LM Studio primary
+LLM_ENDPOINT=http://YOUR_MAC_STUDIO:1234/v1/chat/completions
+LLM_MODEL=qwen/qwen3.5-35b-a3b
+PLANNER_MODEL=qwen/qwen3.5-35b-a3b
+EXECUTOR_MODEL=qwen/qwen3.5-35b-a3b
 ```
 
-No code changes needed!
+For the web UI, use the provider buttons in the header. No restart is required.
 
 ## Cost Optimization Tips
 

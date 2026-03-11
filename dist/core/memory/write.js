@@ -6,7 +6,29 @@ import { getDb, insertEntry, getEntryByCode } from './index.js';
 import { indexContent } from './fts.js';
 import { chunkMarkdown } from './chunks.js';
 import { storeChunks, fetchEmbeddings } from './embeddings.js';
-import { commitMemoryWrite } from './versioning.js';
+import { scheduleMemoryCommit } from './versioning.js';
+/**
+ * FIX 3 — Atomic file write using a .tmp intermediate file.
+ * Writes to filePath.tmp first, then atomically renames to filePath.
+ * On the same filesystem, rename() is atomic — no partial file is ever visible.
+ * If rename fails, the .tmp file is cleaned up before throwing.
+ */
+export function atomicWriteFile(filePath, content) {
+    const tmpPath = filePath + '.tmp';
+    try {
+        fs.writeFileSync(tmpPath, content, 'utf8');
+        fs.renameSync(tmpPath, filePath);
+    }
+    catch (err) {
+        try {
+            fs.unlinkSync(tmpPath);
+        }
+        catch (cleanupErr) {
+            console.warn(`[memory] Failed to clean up temp file ${tmpPath}:`, cleanupErr);
+        }
+        throw err;
+    }
+}
 function sanitizeName(name) {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
@@ -20,21 +42,36 @@ function resolveEntryPath(nb, type, code, name) {
     return path.join(PATHS.memory, subfolder, filename);
 }
 function buildFrontmatter(entry) {
-    return [
+    const today = entry.updated ?? new Date().toISOString().slice(0, 10);
+    const lines = [
         '---',
         `code: ${entry.code}`,
         `nb: ${entry.nb}`,
         `type: ${entry.type}`,
         `name: ${entry.name}`,
-        `status: ${entry.status}`,
-        `updated: ${entry.updated}`,
-        `summary: ${entry.summary}`,
-        '---',
-    ].join('\n');
+        `status: ${entry.status ?? 'active'}`,
+        `updated: ${today}`,
+        `summary: ${(entry.summary ?? '').replace(/\n/g, ' ')}`,
+    ];
+    if (entry.due_date) {
+        lines.push(`due_date: ${entry.due_date}`);
+    }
+    lines.push(`importance_score: ${entry.importance_score ?? 0}`, `utility_score: ${entry.utility_score ?? 0}`, `usage_count: ${entry.usage_count ?? 0}`, `decay_rate: ${entry.decay_rate ?? 0.1}`, `active_page: ${entry.active_page ?? 1}`, `confidence: ${entry.confidence ?? 1.0}`, `last_accessed: ${entry.last_accessed ?? today}`, `pinned: ${entry.pinned ?? 0}`, `source: ${entry.source ?? 'agent'}`, '---');
+    return lines.join('\n');
 }
 function buildMarkdown(entry, body) {
     const frontmatter = buildFrontmatter(entry);
     return frontmatter + '\n\n# ' + entry.name + '\n\n' + body + '\n';
+}
+function extractBodyFromMarkdown(markdown) {
+    const frontmatterEnd = markdown.indexOf('\n---\n');
+    if (frontmatterEnd < 0)
+        return markdown.trimEnd();
+    const afterFrontmatter = markdown.slice(frontmatterEnd + 5);
+    const headingMatch = afterFrontmatter.match(/^\n?# [^\n]*\n\n/);
+    if (!headingMatch)
+        return afterFrontmatter.trimEnd();
+    return afterFrontmatter.slice(headingMatch[0].length).trimEnd();
 }
 export function createEntry(input) {
     const d = getDb();
@@ -53,11 +90,14 @@ export function createEntry(input) {
     };
     const filePath = resolveEntryPath(input.nb, input.type, code, input.name);
     const markdown = buildMarkdown(entryData, input.body);
-    // BUG-C2 fix: SQLite transaction FIRST, file write SECOND.
-    // The index is always authoritative — a file without an index row is unfindable.
-    // If the file write fails after the transaction, the row exists and can be repaired.
+    // FIX F: Write markdown file FIRST, then SQLite.
+    // If file write throws, SQLite is never touched (no partial commit).
+    // If SQLite fails after file write, clean up the file.
     const entry = { ...entryData, path: filePath };
-    // Step 2: Run SQLite transaction (insertEntry + FTS + chunks)
+    // Step 2: Write file to disk first
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    atomicWriteFile(filePath, markdown); // throws on failure — SQLite never touched
+    // Step 3: Run SQLite transaction (insertEntry + FTS + chunks) after file write
     const run = d.transaction(() => {
         insertEntry(entry);
         indexContent(code, input.nb, `${input.name} ${input.summary} ${input.body}`);
@@ -66,22 +106,24 @@ export function createEntry(input) {
             storeChunks(chunks);
         }
     });
-    run(); // throws on failure — no file written yet
-    // Step 3: Write file to disk after successful transaction
     try {
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        fs.writeFileSync(filePath, markdown, 'utf-8');
+        run();
     }
     catch (err) {
-        // File write failed after SQLite committed — log error but do NOT throw.
-        // The SQLite row is valid; the entry can be repaired on next upsert.
-        console.warn(`[memory-write] File write failed for ${code} at ${filePath}:`, err);
+        // SQLite failed after file write — clean up the file to avoid orphan
+        try {
+            fs.unlinkSync(filePath);
+        }
+        catch {
+            console.warn(`[memory-write] Could not clean up orphaned file ${filePath} after SQLite failure`);
+        }
+        throw err;
     }
     // Schedule embedding computation — fire-and-forget, best-effort
     scheduleEmbedding(entry.code);
     // Git version commit — fire-and-forget, never blocks write
     // BUG-2 fix: log errors to stderr so git commit failures are visible but non-blocking
-    commitMemoryWrite(code, input.name, 'agent').catch(err => console.warn('[memory-write] git commit failed:', err));
+    scheduleMemoryCommit(`${code}: ${input.name} [agent]`);
     return entry;
 }
 /**
@@ -118,46 +160,85 @@ export function upsertEntry(input) {
                 due_date: input.due_date ?? null,
             };
             const markdown = buildMarkdown(entryMeta, input.body ?? '');
-            // SQLite update first, then file write
-            d.prepare('UPDATE index_entries SET summary = ?, status = ?, updated = ?, path = ? WHERE code = ?').run(input.summary ?? '', input.status ?? 'active', updated, newFilePath, existing.code);
             try {
                 fs.mkdirSync(path.dirname(newFilePath), { recursive: true });
-                fs.writeFileSync(newFilePath, markdown, 'utf-8');
+                atomicWriteFile(newFilePath, markdown);
             }
             catch (err) {
                 console.warn(`[memory-write] File recreate failed for ${existing.code}:`, err);
+                throw err;
+            }
+            try {
+                d.prepare('UPDATE index_entries SET name = ?, summary = ?, status = ?, updated = ?, path = ?, due_date = ? WHERE code = ?').run(input.name, input.summary ?? '', input.status ?? 'active', updated, newFilePath, input.due_date ?? null, existing.code);
+            }
+            catch (err) {
+                try {
+                    fs.unlinkSync(newFilePath);
+                }
+                catch {
+                    console.warn(`[memory-write] Could not clean up recreated file ${newFilePath} after SQLite failure`);
+                }
+                throw err;
             }
             try {
                 indexContent(existing.code, input.nb, `${input.name} ${input.summary ?? ''} ${input.body ?? ''}`);
             }
             catch { /* non-fatal */ }
-            commitMemoryWrite(existing.code, input.name, 'agent').catch(err => console.warn('[memory-write] git commit failed:', err));
+            scheduleMemoryCommit(`${existing.code}: ${input.name} [agent]`);
             return { code: existing.code, created: false };
         }
-        // Atomic: DB row update + markdown file rewrite in the same transaction.
-        // If either fails the whole transaction rolls back — no partial updates.
-        const updateTx = d.transaction(() => {
-            d.prepare('UPDATE index_entries SET summary = ?, status = ?, updated = ? WHERE code = ?').run(input.summary ?? '', input.status ?? 'active', updated, existing.code);
-            if (entry && fs.existsSync(entry.path)) {
-                const md = fs.readFileSync(entry.path, 'utf-8');
-                const headerEnd = md.indexOf('\n---\n');
-                if (headerEnd >= 0) {
-                    const header = md.slice(0, headerEnd + 5);
-                    const newMd = header + '\n# ' + entry.name + '\n\n' + (input.body ?? '') + '\n';
-                    fs.writeFileSync(entry.path, newMd, 'utf-8');
+        // FIX F: upsertEntry existing-row branch: regenerate full frontmatter from current data.
+        // Build new frontmatter + old body. File write first, then SQLite.
+        const newEntryMeta = {
+            code: existing.code,
+            nb: input.nb,
+            type: input.type,
+            name: input.name,
+            status: input.status ?? 'active',
+            updated,
+            summary: input.summary ?? '',
+            due_date: input.due_date ?? null,
+        };
+        const newFrontmatter = buildFrontmatter(newEntryMeta);
+        // Get existing file body (content below frontmatter separator)
+        let bodyContent = input.body ?? '';
+        const targetPath = entry?.path ?? resolveEntryPath(input.nb, input.type, existing.code, input.name);
+        const previousFileExists = fs.existsSync(targetPath);
+        const previousContent = previousFileExists ? fs.readFileSync(targetPath, 'utf-8') : null;
+        if (!input.body && previousContent) {
+            bodyContent = extractBodyFromMarkdown(previousContent);
+        }
+        const newMd = newFrontmatter + '\n\n# ' + input.name + '\n\n' + bodyContent + '\n';
+        // Write file first, then SQLite (FIX F)
+        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+        atomicWriteFile(targetPath, newMd);
+        try {
+            // SQLite update after file write
+            d.prepare('UPDATE index_entries SET name = ?, summary = ?, status = ?, updated = ?, path = ?, due_date = ? WHERE code = ?').run(input.name, input.summary ?? '', input.status ?? 'active', updated, targetPath, input.due_date ?? null, existing.code);
+        }
+        catch (err) {
+            if (previousContent !== null) {
+                atomicWriteFile(targetPath, previousContent);
+            }
+            else {
+                try {
+                    fs.unlinkSync(targetPath);
+                }
+                catch {
+                    console.warn(`[memory-write] Could not clean up ${targetPath} after SQLite failure`);
                 }
             }
-        });
-        updateTx();
+            throw err;
+        }
         // Re-index FTS after transaction — non-fatal if it fails (data safe, search may lag)
         try {
-            indexContent(existing.code, input.nb, `${input.name} ${input.summary ?? ''} ${input.body ?? ''}`);
+            indexContent(existing.code, input.nb, `${input.name} ${input.summary ?? ''} ${bodyContent}`);
         }
         catch (err) {
             console.warn(`[memory] FTS reindex failed for ${existing.code}:`, err);
         }
         // Git version commit for update — fire-and-forget
-        commitMemoryWrite(existing.code, input.name, 'agent').catch(err => console.warn('[memory-write] git commit failed:', err));
+        scheduleMemoryCommit(`${existing.code}: ${input.name} [agent]`);
         return { code: existing.code, created: false };
     }
     const created = createEntry(input);
@@ -179,7 +260,7 @@ export function updateEntry(code, updates) {
             .replace(/^status: .+$/m, `status: ${newStatus}`)
             .replace(/^summary: .+$/m, `summary: ${newSummary}`)
             .replace(/^updated: .+$/m, `updated: ${updated}`);
-        fs.writeFileSync(entry.path, newContent, 'utf-8');
+        atomicWriteFile(entry.path, newContent);
     }
     return { ...entry, status: newStatus, summary: newSummary, updated };
 }

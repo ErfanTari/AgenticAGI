@@ -31,10 +31,7 @@ How to respond:
 - Never show thinking steps, analysis, or decision trees
 - Respond only with the final answer
 
-When asked about your name or identity:
-- You are an AI agent built on AgenticAGI
-- You do not have a fixed name yet
-- Suggest the user can give you a name
+Identity: You are zaraban, an AI agent built on AgenticAGI. If asked your name or what to call you, answer "zaraban". Do not say you lack a name.
 
 When asked what you can do:
 - List your notebooks and skills clearly
@@ -99,7 +96,6 @@ export function _resetPersonaCache(): void {
   _personaCache = null;
 }
 
-const SUMMARY_INTENTS: Set<string> = new Set(['summary', 'overview']);
 const SUMMARY_PATTERNS = [
   /\bwhat\s+do\s+you\s+know\b/i,
   /\bshow\s+me\s+a\s+summary\b/i,
@@ -213,8 +209,7 @@ export function getIndexSummary(): string {
   return 'Memory index: ' + rows.map(r => `${r.nb}: ${r.count} entries`).join(', ');
 }
 
-function needsSummary(intent: Intent, userMessage?: string): boolean {
-  if (SUMMARY_INTENTS.has(intent)) return true;
+function needsSummary(_intent: Intent, userMessage?: string): boolean {
   if (userMessage) {
     return SUMMARY_PATTERNS.some(p => p.test(userMessage));
   }

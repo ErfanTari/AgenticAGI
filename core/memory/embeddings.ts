@@ -100,7 +100,14 @@ Respond with ONLY valid JSON (no markdown, no explanation):
 
       const response = await fetch(LLM_CONFIG.endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY
+            ? {
+                Authorization: `Bearer ${process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY}`,
+              }
+            : {}),
+        },
         body: JSON.stringify({
           model: LLM_CONFIG.model,
           messages: [{ role: 'user', content: prompt }],

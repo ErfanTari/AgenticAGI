@@ -66,28 +66,10 @@ describe('BUG-2: fire-and-forget error logging', () => {
     expect(bareSwallow).toBeNull();
   });
 
-  it('BUG-2B: writeEpisodicMemory .catch logs to console.warn', () => {
-    const src = fs.readFileSync(
-      path.join(process.cwd(), 'core/agent.ts'),
-      'utf-8',
-    );
-    const bareSwallow = src.match(/writeEpisodicMemory\([^)]+\)\.catch\(\(\) => \{\}\)/g);
-    expect(bareSwallow).toBeNull();
-  });
+  // BUG-2B was for writeEpisodicMemory which was removed in cleanup sprint.
 });
 
-// ─── BUG-3: writeEpisodicMemory explicit verified guard ────────────────────
-
-describe('BUG-3: writeEpisodicMemory verified !== true guard', () => {
-  it('BUG-3A: executor.ts uses strict !== true check', () => {
-    const src = fs.readFileSync(
-      path.join(process.cwd(), 'core/executor.ts'),
-      'utf-8',
-    );
-    // Must use strict !== true, not just falsy !verification.verified
-    expect(src).toContain('verification.verified !== true');
-  });
-});
+// BUG-3 was for writeEpisodicMemory verified guard — removed in cleanup sprint.
 
 // ─── BUG-4: findRelevantProcedure denominator ──────────────────────────────
 

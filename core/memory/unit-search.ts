@@ -320,14 +320,14 @@ async function searchFallback(
 
 async function searchUnit(unit: DecomposedUnit): Promise<UnitMemoryResult> {
   const person = searchPerson(unit.content);
-  if (person) {
+  if (person && person.entries.length > 0) {
     const result = { ...person, unitId: unit.id };
     transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
     return result;
   }
 
   const project = searchProject(unit.content);
-  if (project) {
+  if (project && project.entries.length > 0) {
     const result = { ...project, unitId: unit.id };
     transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
     return result;
@@ -340,7 +340,7 @@ async function searchUnit(unit: DecomposedUnit): Promise<UnitMemoryResult> {
   }
 
   const procedure = searchProcedure(unit.content);
-  if (procedure) {
+  if (procedure && procedure.entries.length > 0) {
     const result = { ...procedure, unitId: unit.id };
     transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
     return result;

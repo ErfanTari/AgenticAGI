@@ -38,7 +38,10 @@ try {
   if (activePlan) {
     const milestone = activePlan.milestones?.[activePlan.current_milestone];
     const milestoneName = milestone?.name ?? activePlan.next_action ?? 'pending milestone';
-    console.log(`📋 Active execution plan found: "${activePlan.task_name}"\n   Next: ${milestoneName}\n   Continue? (just say "continue" or proceed with other work)\n`);
+    const statusLine = activePlan.status === 'paused'
+      ? `Paused: ${activePlan.abort_reason ?? milestoneName}`
+      : `In progress: ${milestoneName}`;
+    console.log(`📋 Active execution plan found: "${activePlan.task_name}"\n   ${statusLine}\n   Continue? (just say "continue" or proceed with other work)\n`);
   }
 } catch { /* startup check is advisory */ }
 

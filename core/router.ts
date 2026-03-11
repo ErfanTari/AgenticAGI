@@ -4,6 +4,7 @@ import { stripThinkingTags } from './llm.js';
 import { decomposeTask } from './planner.js';
 import { fetchByCode, hybridSearch, queryEntries, updateEntry, upsertEntry } from './memory/mod.js';
 import { writeReflection } from './memory/episodic.js';
+import { addRelationship, getRelationshipsFrom } from './memory/relationships.js';
 import { getSkillDescriptions } from './skills/registry.js';
 import { runSkill } from './skills/runner.js';
 import type {
@@ -19,90 +20,165 @@ import type { TaskGoal, TaskPlan, VerificationResult } from './schemas.js';
 
 // ─── Factual Assertion Patterns (FIX D) ─────────────────────────────────────
 
-const FACTUAL_PATTERNS: Array<{
-  pattern: RegExp;
-  nb: string;
-  type: string;
-  extract: (match: RegExpMatchArray) => { name: string; summary: string } | null;
-}> = [
-  {
-    // "Sara is the lead developer" / "James is the PM"
-    pattern: /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+is\s+the\s+(\w+)/,
-    nb: 'WHO',
-    type: 'CT',
-    extract: (match) => ({
-      name: match[1].trim(),
-      summary: `${match[1].trim()} is the ${match[2].trim()}`,
-    }),
-  },
-  {
-    // "Sara works on the backend" / "James worked on auth"
-    pattern: /\b([A-Z][a-z]+)\s+(?:works|worked)\s+on\s+(.+?)(?:\.|,|$)/,
-    nb: 'WHO',
-    type: 'CT',
-    extract: (match) => ({
-      name: match[1].trim(),
-      summary: `${match[1].trim()} works on ${match[2].trim()}`,
-    }),
-  },
-  {
-    // "started a new project called Zaraban" / "created project called Foo"
-    pattern: /(?:started|created|launched|began)\s+(?:a\s+)?(?:new\s+)?project\s+(?:called\s+)?([A-Z][^\s.,]+)/i,
-    nb: 'WHAT',
-    type: 'PJ',
-    extract: (match) => ({
-      name: match[1].trim(),
-      summary: `Project: ${match[1].trim()}`,
-    }),
-  },
-  {
-    // "new project called ProjectName"
-    pattern: /new project called\s+([A-Za-z][^\s.,]+)/i,
-    nb: 'WHAT',
-    type: 'PJ',
-    extract: (match) => ({
-      name: match[1].trim(),
-      summary: `Project: ${match[1].trim()}`,
-    }),
-  },
-  {
-    // "due on March 15" / "deadline 2026-03-15" / "deadline on January 5"
-    pattern: /(?:due|deadline)\s+(?:on\s+)?([A-Za-z]+\s+\d+|\d{4}-\d{2}-\d{2})/i,
-    nb: 'WHEN',
-    type: 'DL',
-    extract: (match) => ({
-      name: `Deadline: ${match[1].trim()}`,
-      summary: `Deadline on ${match[1].trim()}`,
-    }),
-  },
+const PROJECT_START_PATTERNS = [
+  /\b(?:started|created|launched|began)\s+(?:a\s+)?(?:new\s+)?project(?:\s+today)?\s+(?:called\s+)?([A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)(?=[.,]|$)/i,
+  /\bnew project called\s+([A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*)(?=[.,]|$)/i,
 ];
 
-function persistFactualAssertions(unitTexts: string[]): void {
-  for (const text of unitTexts) {
-    for (const { pattern, nb, type, extract } of FACTUAL_PATTERNS) {
-      const match = text.match(pattern);
-      if (!match) continue;
-      const extracted = extract(match);
-      if (!extracted) continue;
+const PERSON_ROLE_PATTERN = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+is\s+the\s+([a-z][a-z\s-]+?)(?=(?:\s+and\s+[A-Z][a-z])|(?:\s+on\s+(?:it|[A-Z]))|(?:\s+for\s+(?:it|[A-Z]))|[.,]|$)/g;
+const PERSON_PROJECT_PATTERNS = [
+  /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:works|worked)\s+(?:on|for)\s+(?:the\s+)?([A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*|it)(?=[.,]|$)/g,
+  /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:reviews?|reviewed|manages?|managed|leads?)\s+(?:the\s+)?([A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*|it)(?=[.,]|$)/g,
+] as const;
+const DEADLINE_PATTERN = /\b(.+?)\s+(?:is\s+)?due\s+(?:on\s+)?([A-Za-z]+\s+\d{1,2}(?:,\s*\d{4})?|\d{4}-\d{2}-\d{2})\b/i;
+type ProjectLink = { code: string; name: string };
 
-      // Fire-and-forget — do not await
-      Promise.resolve().then(() => {
-        try {
-          upsertEntry({
-            nb,
-            type,
-            name: extracted.name,
+function normalizeLabel(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').replace(/[.,]+$/, '');
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function detectProjectStart(text: string): string | null {
+  for (const pattern of PROJECT_START_PATTERNS) {
+    const match = text.match(pattern);
+    if (match?.[1]) return normalizeLabel(match[1]);
+  }
+  return null;
+}
+
+function parseDueDate(raw: string): string | undefined {
+  const cleaned = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) return cleaned;
+
+  const inferredYear = new Date().getFullYear();
+  const candidate = cleaned.match(/\d{4}/) ? cleaned : `${cleaned}, ${inferredYear}`;
+  const parsed = new Date(candidate);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function maybeAddRelationship(fromCode: string, toCode: string, note: string): void {
+  const existing = getRelationshipsFrom(fromCode, 'works_for');
+  if (existing.some(rel => rel.to_code === toCode)) return;
+  addRelationship({
+    from_code: fromCode,
+    relation: 'works_for',
+    to_code: toCode,
+    note,
+  });
+}
+
+function persistFactualAssertions(unitTexts: string[]): void {
+  Promise.resolve().then(() => {
+    let currentProject: ProjectLink | null = null;
+
+    for (const text of unitTexts) {
+      try {
+        const projectName = detectProjectStart(text);
+        if (projectName) {
+          const project = upsertEntry({
+            nb: 'WHAT',
+            type: 'PJ',
+            name: projectName,
             status: 'active',
-            summary: extracted.summary,
+            summary: `Project: ${projectName}`,
             body: text,
           });
-        } catch {
-          // best-effort
+          currentProject = { code: project.code, name: projectName };
         }
-      }).catch(() => {});
-      break; // one pattern per unit is sufficient
+
+        for (const match of text.matchAll(PERSON_ROLE_PATTERN)) {
+          const personName = normalizeLabel(match[1]);
+          const role = normalizeLabel(match[2]);
+          const person = upsertEntry({
+            nb: 'WHO',
+            type: 'CT',
+            name: personName,
+            status: 'active',
+            summary: `${personName} is the ${role}`,
+            body: text,
+          });
+
+          const explicitProject = text.match(new RegExp(`${escapeRegex(personName)}\\s+is\\s+the\\s+${escapeRegex(role)}\\s+(?:on|for)\\s+(?:the\\s+)?([A-Z][A-Za-z0-9_-]*(?:\\s+[A-Z][A-Za-z0-9_-]*)*)`, 'i'));
+          const relatedProjectName: string | undefined = explicitProject?.[1]
+            ? normalizeLabel(explicitProject[1])
+            : currentProject?.name;
+          if (!relatedProjectName) continue;
+
+          const project: ProjectLink = currentProject?.name === relatedProjectName
+            ? currentProject
+            : (() => {
+                const created = upsertEntry({
+                  nb: 'WHAT',
+                  type: 'PJ',
+                  name: relatedProjectName,
+                  status: 'active',
+                  summary: `Project: ${relatedProjectName}`,
+                  body: text,
+                });
+                return { code: created.code, name: relatedProjectName };
+              })();
+
+          currentProject = project;
+          maybeAddRelationship(person.code, project.code, role);
+        }
+
+        for (const pattern of PERSON_PROJECT_PATTERNS) {
+          for (const match of text.matchAll(pattern)) {
+            const personName = normalizeLabel(match[1]);
+            const projectName: string | undefined = match[2].toLowerCase() === 'it'
+              ? currentProject?.name
+              : normalizeLabel(match[2]);
+            if (!projectName) continue;
+
+            const person = upsertEntry({
+              nb: 'WHO',
+              type: 'CT',
+              name: personName,
+              status: 'active',
+              summary: `${personName} works on ${projectName}`,
+              body: text,
+            });
+            const project: ProjectLink = currentProject?.name === projectName
+              ? currentProject
+              : (() => {
+                  const created = upsertEntry({
+                    nb: 'WHAT',
+                    type: 'PJ',
+                    name: projectName,
+                    status: 'active',
+                    summary: `Project: ${projectName}`,
+                    body: text,
+                  });
+                  return { code: created.code, name: projectName };
+                })();
+            currentProject = project;
+            maybeAddRelationship(person.code, project.code, 'works on project');
+          }
+        }
+
+        const deadline = text.match(DEADLINE_PATTERN);
+        if (deadline?.[1] && deadline[2]) {
+          const subject = normalizeLabel(deadline[1]);
+          const dueDate = parseDueDate(deadline[2]);
+          upsertEntry({
+            nb: 'WHEN',
+            type: 'DL',
+            name: `${subject} deadline`,
+            status: 'active',
+            summary: `Due ${normalizeLabel(deadline[2])}`,
+            body: text,
+            due_date: dueDate,
+          });
+        }
+      } catch {
+        // best-effort persistence
+      }
     }
-  }
+  }).catch(() => {});
 }
 
 const GREETING_ONLY = /^\s*(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy|greetings)\s*[!.?]*\s*$/i;

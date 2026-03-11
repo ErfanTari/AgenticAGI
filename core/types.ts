@@ -15,6 +15,35 @@ export type Intent =
   | 'meeting'
   | 'general';
 
+export type RouteKind = 'conversational' | 'agentic' | 'query';
+
+export interface DecomposedUnit {
+  id: string;
+  route: RouteKind;
+  content: string;
+  order: number;
+}
+
+export interface DecompositionResult {
+  units: DecomposedUnit[];
+}
+
+export type UnitSearchStrategy =
+  | 'person'
+  | 'project'
+  | 'time'
+  | 'procedure'
+  | 'bm25'
+  | 'vector_fallback';
+
+export interface UnitMemoryResult {
+  unitId: string;
+  strategy: UnitSearchStrategy;
+  confidence: number;
+  entries: IndexEntry[];
+  contents: string[];
+}
+
 export interface Classification {
   intent: Intent;
   codes: string[];

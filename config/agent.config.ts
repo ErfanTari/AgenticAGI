@@ -85,7 +85,7 @@ export const LLM_FALLBACK_CONFIG = process.env.LLM_FALLBACK_PROVIDER
         ? process.env.GEMINI_API_KEY ?? ''
         : process.env.ANTHROPIC_API_KEY ?? '',
       endpoint: process.env.LLM_FALLBACK_PROVIDER === 'gemini'
-        ? 'https://generativelanguage.googleapis.com/v1beta/models'
+        ? 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
         : process.env.ANTHROPIC_ENDPOINT ?? 'https://api.anthropic.com/v1/messages',
     }
   : null;

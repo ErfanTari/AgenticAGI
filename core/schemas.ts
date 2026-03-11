@@ -39,13 +39,45 @@ export const TaskStepSchema = z.object({
 
 export type TaskStep = z.infer<typeof TaskStepSchema>;
 
+export const TaskGoalSchema = z.object({
+  id: z.string(),
+  sourceUnitIds: z.array(z.string()).default([]),
+  description: z.string(),
+});
+
+export type TaskGoal = z.infer<typeof TaskGoalSchema>;
+
+export const TaskMilestoneSchema = z.object({
+  id: z.string(),
+  goalIds: z.array(z.string()).default([]),
+  title: z.string(),
+  description: z.string(),
+  completionCriteria: z.string(),
+  steps: z.array(TaskStepSchema).min(1),
+});
+
+export type TaskMilestone = z.infer<typeof TaskMilestoneSchema>;
+
 export const TaskPlanSchema = z.object({
   goal: z.string(),
   steps: z.array(TaskStepSchema).min(1).max(8),
+  goals: z.array(TaskGoalSchema).default([]),
+  milestones: z.array(TaskMilestoneSchema).default([]),
+  complexity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'MAX']).default('LOW'),
+  needsConfirmation: z.boolean().default(false),
   estimatedDuration: z.string().optional(),
 });
 
-export type TaskPlan = z.infer<typeof TaskPlanSchema> & { createdAt: string };
+export type TaskPlan = {
+  goal: string;
+  steps: TaskStep[];
+  goals?: TaskGoal[];
+  milestones?: TaskMilestone[];
+  complexity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'MAX';
+  needsConfirmation?: boolean;
+  estimatedDuration?: string;
+  createdAt: string;
+};
 
 export const taskPlanJsonSchema = z.toJSONSchema(TaskPlanSchema) as Record<string, unknown>;
 

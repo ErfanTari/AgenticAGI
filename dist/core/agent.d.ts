@@ -1,4 +1,4 @@
-import type { Message, LLMHandler, AgentResponse } from './types.js';
+import type { AgentResponse, LLMHandler, Message } from './types.js';
 export declare let isProcessingMessage: boolean;
 export declare function startAgent(): void;
 export declare function stopAgent(): void;

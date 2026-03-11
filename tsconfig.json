@@ -16,7 +16,8 @@
   },
   "include": [
     "core/**/*.ts",
-    "config/**/*.ts"
+    "config/**/*.ts",
+    "server/**/*.ts"
   ],
   "exclude": [
     "node_modules",

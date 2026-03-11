@@ -48,13 +48,32 @@ const NODE_BUILTINS = new Set([
   'node:util', 'node:v8', 'node:vm', 'node:wasi', 'node:worker_threads', 'node:zlib',
 ]);
 
+function normalizePackageName(specifier: string): string | null {
+  const trimmed = specifier.trim();
+  if (!trimmed || NODE_BUILTINS.has(trimmed)) return null;
+
+  if (trimmed.startsWith('@')) {
+    const [scope, name] = trimmed.split('/');
+    if (!scope || !name) return trimmed;
+    return `${scope}/${name}`;
+  }
+
+  return trimmed.split('/')[0];
+}
+
 function extractNpmPackages(code: string): string[] {
   const imports: string[] = [];
   const esmPattern = /^import\s+.*?\s+from\s+['"]([^./][^'"]*)['"]/gm;
+  const esmSideEffectPattern = /^import\s+['"]([^./][^'"]*)['"]/gm;
   const cjsPattern = /require\(['"]([^./][^'"]*)['"]\)/g;
+  const dynamicImportPattern = /import\(\s*['"]([^./][^'"]*)['"]\s*\)/g;
   for (const match of code.matchAll(esmPattern)) imports.push(match[1]);
+  for (const match of code.matchAll(esmSideEffectPattern)) imports.push(match[1]);
   for (const match of code.matchAll(cjsPattern)) imports.push(match[1]);
-  return [...new Set(imports.map(p => p.split('/')[0]).filter(p => !NODE_BUILTINS.has(p)))];
+  for (const match of code.matchAll(dynamicImportPattern)) imports.push(match[1]);
+  return [...new Set(imports
+    .map(normalizePackageName)
+    .filter((pkg): pkg is string => Boolean(pkg)))];
 }
 
 async function installNpmPackages(
@@ -86,9 +105,9 @@ async function installNpmPackages(
 function extractMissingPackageFromError(output: string): string | null {
   // Match "Cannot find package 'X'" or "MODULE_NOT_FOUND" with module name
   const cannotFind = output.match(/Cannot find package '([^']+)'/);
-  if (cannotFind) return cannotFind[1];
+  if (cannotFind) return normalizePackageName(cannotFind[1]);
   const moduleNotFound = output.match(/Cannot find module '([^./][^']+)'/);
-  if (moduleNotFound) return moduleNotFound[1].split('/')[0];
+  if (moduleNotFound) return normalizePackageName(moduleNotFound[1]);
   return null;
 }
 
@@ -176,6 +195,20 @@ function workspacePath(filename: string): string {
   const resolved = path.resolve(WORKSPACE_ROOT, filename);
   if (!resolved.startsWith(WORKSPACE_ROOT)) throw new Error('Path outside workspace');
   return resolved;
+}
+
+function ensureProjectDir(projectDir: string): void {
+  fs.mkdirSync(projectDir, { recursive: true });
+  const pkgJson = path.join(projectDir, 'package.json');
+  if (!fs.existsSync(pkgJson)) {
+    fs.writeFileSync(pkgJson, '{"type":"module"}\n', 'utf-8');
+  }
+}
+
+function relativeToProject(filename: string, projectDir: string): string {
+  const resolved = workspacePath(filename);
+  const relative = path.relative(projectDir, resolved);
+  return relative.length > 0 ? relative.replace(/\\/g, '/') : path.basename(resolved);
 }
 
 function readWorkspaceFile(filename: string): string | null {
@@ -292,14 +325,20 @@ function extractFunctionName(testPrompt: string): string {
 function extractImportPath(testPrompt: string, filename: string): string {
   const m = testPrompt.match(/['"](\.\/[^'"]+)['"]/);
   if (m) return m[1];
-  // Fall back to deriving from the implementation filename
+  // Fall back to deriving the relative path from the test file directory.
   return `./${filename}`;
 }
 
-async function generateTests(testPrompt: string, filename: string): Promise<string> {
+function deriveImportPath(filename: string, testFilename: string): string {
+  const relative = path.relative(path.dirname(testFilename), filename).replace(/\\/g, '/');
+  if (!relative || relative === '') return `./${path.basename(filename)}`;
+  return relative.startsWith('.') ? relative : `./${relative}`;
+}
+
+async function generateTests(testPrompt: string, filename: string, testFilename: string): Promise<string> {
   // Extract the function name and import path so we can build the scaffold ourselves
   const fnName = extractFunctionName(testPrompt);
-  const importPath = extractImportPath(testPrompt, filename);
+  const importPath = extractImportPath(testPrompt, deriveImportPath(filename, testFilename));
 
   // Ask the LLM only for the assert lines — tiny response, no room for analysis
   const messages: Message[] = [
@@ -446,8 +485,12 @@ export const implementAndTestSkill: MCPSkill = {
     const projectDir = path.dirname(implementationFilePath);
 
     // Reuse existing artifacts when present so "check/fix" operates on real files, not fresh rewrites.
+    ensureProjectDir(projectDir);
+
     let code = readWorkspaceFile(filename) ?? await generateCode(implementationPrompt);
-    let tests = readWorkspaceFile(testFilename) ?? await generateTests(testPrompt, filename);
+    let tests = readWorkspaceFile(testFilename) ?? await generateTests(testPrompt, filename, testFilename);
+    const implementationCommandPath = relativeToProject(filename, projectDir);
+    const testCommandPath = relativeToProject(testFilename, projectDir);
 
     // Scan implementation for npm packages and install before first run
     const requiredPackages = extractNpmPackages(code);
@@ -473,7 +516,7 @@ export const implementAndTestSkill: MCPSkill = {
         return { success: false, output: '', error: `File write failed: ${String(err)}` };
       }
 
-      const implementationSyntax = await runNodeCheck(filename, 10000, projectDir);
+      const implementationSyntax = await runNodeCheck(implementationCommandPath, 10000, projectDir);
       if (!implementationSyntax.success) {
         lastTestOutput = implementationSyntax.output;
         if (attempt < maxAttempts) {
@@ -493,7 +536,7 @@ export const implementAndTestSkill: MCPSkill = {
         break;
       }
 
-      const testSyntax = await runNodeCheck(testFilename, 10000, projectDir);
+      const testSyntax = await runNodeCheck(testCommandPath, 10000, projectDir);
       if (!testSyntax.success) {
         lastTestOutput = testSyntax.output;
         if (attempt < maxAttempts) {
@@ -514,7 +557,7 @@ export const implementAndTestSkill: MCPSkill = {
       }
 
       // Run tests
-      const result = await runNodeFile(testFilename, 30000, projectDir);
+      const result = await runNodeFile(testCommandPath, 30000, projectDir);
       lastTestOutput = result.output;
 
       // Handle MODULE_NOT_FOUND: try to install missing package then retry
@@ -524,7 +567,7 @@ export const implementAndTestSkill: MCPSkill = {
           const retryInstall = await installNpmPackages([missingPkg], projectDir);
           if (retryInstall.success) {
             // Retry this attempt without incrementing counter
-            const retryResult = await runNodeFile(testFilename, 30000, projectDir);
+            const retryResult = await runNodeFile(testCommandPath, 30000, projectDir);
             lastTestOutput = retryResult.output;
             if (retryResult.success) {
               try {

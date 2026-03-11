@@ -270,6 +270,125 @@ Follow this order strictly. Do not skip steps.
 
 ---
 
+## Current Runtime Routing (Phase 13+)
+
+The runtime no longer starts by classifying the entire user message into one
+top-level intent. Understanding comes first, routing comes second.
+
+### Fast-path bypasses
+
+These stay in TypeScript and skip decomposition entirely:
+
+- `/log ...` → immediate `NOW.LOG` write
+- `/meeting` → immediate Meeting Mode
+- Direct code fetch like `WHO.CT-000001` → direct fetch path
+
+### Normal runtime flow
+
+```
+1. Decompose the message into ordered semantic units
+   route ∈ { conversational | agentic | query }
+
+2. Search memory for every unit in parallel
+   - person signal     → WHO
+   - project signal    → PLAN.PJ / WHAT
+   - time signal       → WHEN.EV / WHEN.RF
+   - procedure signal  → HOW.PR
+   - otherwise         → BM25 first, vector only as fallback
+
+3. Execute by route
+   - conversational units → one batched LLM response
+   - query units          → direct retrieval / hybrid fallback
+   - agentic units        → multi-goal planner + executor
+
+4. Merge route outputs by original unit order
+```
+
+### Important routing rules
+
+- Query units that precede agentic work are resolved first and injected into the
+  planner as prior context. They are not treated as goals.
+- Compound messages must not be swallowed by a single legacy compatibility path.
+  If decomposition under-splits, the system retries with a stricter prompt and
+  then uses a narrow heuristic repair pass.
+- Legacy intent labels still exist for compatibility in tests and metadata, but
+  runtime routing in `processMessage()` is decomposition-first.
+- Greeting, `synthesis_query`, `relationship_write`, and old classifier-first
+  branching are no longer primary execution routes.
+
+### Skills in the current architecture
+
+- Skills are primarily execution steps inside plans.
+- Conversational arithmetic is the main exception (`calculator`).
+- A narrow single-unit compatibility shim still exists for simple cases like
+  `file_writer`, `run_bash`, `web_search`, `calculator`, and deterministic
+  memory writes, but it is not the source of truth for routing.
+- Deterministic read-only skills (`web_search`, `calculator`, `file_reader`,
+  `memory_read`, `web_fetch`, `url_extract`) now return their real output
+  directly in the compatibility path instead of asking the LLM to paraphrase
+  them. This prevents false-complete replies like "Let me search for you"
+  after the skill has already run.
+- If an LLM reply still starts with deferred-action narration (`Let me...`,
+  `I'll use...`, `I should...`) after a skill or conversational response, the
+  runtime strips that reasoning preamble before returning text to the user.
+- `implement_and_test` is now grounded to the real workspace when filenames
+  already exist: it reuses existing implementation/test files, syntax-checks
+  both artifacts before execution, and can repair either file instead of only
+  retrying code generation.
+- `implement_and_test` now resolves execution relative to the actual project
+  directory for nested workspace paths, creates a project-local `package.json`
+  when needed, and installs detected npm dependencies from that directory
+  before the first run. Scoped packages and side-effect imports are normalized
+  correctly before install.
+- The assistant identity is fixed in the runtime system prompt: the agent name
+  is `zaraban`. Identity questions should resolve from prompt context first,
+  not from memory search.
+
+### Current model runtime
+
+- Default runtime is local-first:
+  - `LLM_ENDPOINT` / `LLM_MODEL` point at LM Studio
+  - `PLANNER_MODEL` and `EXECUTOR_MODEL` track the same local model
+  - `LLM_FALLBACK_PROVIDER=gemini` with `LLM_FALLBACK_MODEL=gemini-2.5-flash`
+- `chat.ts` stays local-primary by default and falls back to Gemini automatically.
+- `pnpm ui` exposes a provider toggle in the header:
+  - `local` → LM Studio primary, Gemini fallback
+  - `cloud` → Gemini primary, LM Studio fallback
+- Provider selection is async-scoped in `core/llm.ts`, so nested LLM calls
+  inside planner/executor flows and LLM-backed skills use the same provider
+  order as the top-level request.
+- Embeddings are separate from this toggle and continue using the embedding
+  configuration already present in the runtime.
+
+---
+
+## PLAN.EX Lifecycle (Current Rules)
+
+`PLAN.EX` is the persisted execution-state notebook for planned work.
+
+- `active` / `in_progress` / `paused` = resumable execution state
+- `complete` / `failed` = terminal state, must never resurface as active
+- Status is written to both SQLite and markdown frontmatter
+- Startup surfaces resumable plans differently:
+  - `paused` → show the pause reason
+  - `in_progress` / `active` → show the next milestone/action
+- After each milestone:
+  - write `WHEN.EV`
+  - optionally write `HOW.PR` if a reusable pattern was discovered
+  - update `PLAN.EX`
+  - infer/write relationships where possible
+- After final completion:
+  - write `WHEN.RF`
+  - update `PLAN.PJ` when relevant
+  - extract durable facts into `WHAT` / `WHO` where justified
+
+This lifecycle had a real bug during the Phase 13 transition: completed plans
+were not being marked terminal, which caused active PLAN.EX accumulation and
+false “Continue?” prompts on startup. The fix is now part of the architecture:
+terminal plan states must always be persisted.
+
+---
+
 ## Heartbeat (Background Process)
 
 The heartbeat runs every 30 minutes when the agent is idle.
@@ -318,14 +437,16 @@ Skills are loaded lazily. The full skill list is NOT injected into every prompt.
 
 ```
 Query arrives
-→ Agent classifies intent (takes <100ms with small local model or simple rules)
-→ Loads only skills relevant to that intent
-→ Injects only those skill descriptions into the prompt
+→ Fast-path check (/log, /meeting, direct code fetch)
+→ Decompose into semantic units
+→ If agentic work exists: planner gets only relevant skill descriptions
+→ Executor runs only the skills selected by the plan
+→ Simple single-unit compatibility may directly invoke one skill when safe
 
-"hello"            → no skills loaded
-"search the web"   → load: web_search only
-"read this file"   → load: file_read only
-"update project"   → load: memory_write only
+"hello"                     → no skills loaded
+"show active projects"      → no skills loaded
+"build a REST API"          → planner sees skill catalog, selects steps
+"write notes.txt with ..."  → compatibility shim may use file_writer directly
 ```
 
 ### Required skills (build in this order)
@@ -364,11 +485,14 @@ Each phase must work cleanly before the next begins.
 
 ### Phase 3 — Agent Core Loop
 - Receive message
-- Classify intent
+- Run fast-path bypass checks
+- Decompose into semantic units
 - Follow memory query flow (5 steps above, in order)
-- Load only relevant skills
-- Call LLM with lean context
-- Write any new memory entries
+- Search memory per unit in parallel
+- Route conversational/query/agentic work separately
+- Load only relevant skills for the selected execution path
+- Call LLM with lean context only where needed
+- Write memory as part of milestone and post-execution flows
 - Return response
 
 **Done when:** simple queries ("what's the status of project Xray?") resolve in under 2 seconds with no hybrid search triggered.
@@ -518,6 +642,45 @@ When this is working correctly:
 If any of these are failing — stop adding features and fix the foundation.
 
 ---
+
+## Transition Notes (Legacy Intent Removal)
+
+These notes override older classifier-first assumptions elsewhere in this file.
+
+- `processMessage()` no longer begins with `classifyIntent()`. Runtime routing is
+  decomposition-first.
+- Old top-level routes such as greeting-only execution, `synthesis_query`, and
+  explicit `relationship_write` are not primary runtime branches anymore.
+- The compatibility shim is intentionally narrow and exists to preserve older
+  tests and simple direct tool flows, not to decide overall message meaning.
+- Bugs fixed during the transition:
+  - PLAN.EX accumulation: completed/failed plans now persist terminal status
+  - Compound routing loss: under-split messages now retry decomposition and avoid
+    single-unit compatibility hijacking
+- Context-then-task failure: resolved query units are injected into planning
+  context instead of being ignored or treated as goals
+- Conversational factual persistence is now best-effort after the reply:
+  project starts, person-role clauses, project/person relationships, and
+  deadlines can be written without a second LLM call
+- Signal-based memory search no longer gets stuck on empty direct hits: if a
+  person/project/procedure signal yields no entries, the runtime falls through
+  to BM25/vector fallback instead of returning empty direct-search context
+- Milestone revision now preserves executable steps even when the LLM revises
+  remaining milestone ids/titles, so re-evaluation cannot silently drop the
+  runnable tail of the plan
+- Memory write integrity is file-first again in practice: markdown frontmatter
+  now includes `due_date`, update paths rewrite the file before SQLite changes,
+  and failed SQLite updates roll the file back instead of leaving markdown/DB
+  drift
+- Report-back skill prompts like “run X and tell me what happened” stay on the
+  simple skill path rather than being over-upgraded into compound routing
+- Existing-code repair is now a first-class skill behavior: executor reports
+  like “Tests did not pass after 3 attempts” should only happen after both the
+  implementation and the generated/reused tests have been given a chance to be
+  repaired inside the loop
+
+When in doubt, trust the current runtime flow above, not historical classifier
+descriptions from earlier implementation phases.
 
 ## Performance Targets
 
@@ -1300,3 +1463,12 @@ Live behavioral testing against Qwen 3.5 35B (`qwen/qwen3.5-35b-a3b`) at `http:/
 *This document is the source of truth for this project.
 Update it when architecture decisions change.
 Do not let implementation drift from it silently.*
+
+---
+
+## Phase 12.1 — Intent Hardening Notes
+
+- Intent routing now treats explicit software/app/program creation prompts as `planned_workflow`, not `memory_write`
+- Assistant identity questions such as "what should I refer to you as" are `general` and must not trigger relationship detection
+- HOW notebook routing is narrowed to stored procedures and workflow-style implementation questions, avoiding false `memory_query` matches for generic world how-to prompts
+- Synthesis prompts like "write a weekly status report based on everything you know" route to `synthesis_query` instead of being swallowed by broad write patterns

@@ -265,4 +265,87 @@ describe('Phase 11 P2: Execution Log + PLAN.EX', () => {
     // Entry was updated (no throw)
     expect(true).toBe(true);
   });
+
+  it('P2P: completed PLAN.EX entries are not returned as active on restart', async () => {
+    const { initDatabase, getEntryByCode } = await import('../../core/memory/index.js');
+    initDatabase(PATHS.db);
+    const { createPlanEX, updatePlanEX, loadActivePlanEX } = await import('../../core/memory/plan-ex.js');
+
+    const code = createPlanEX({
+      task_name: 'Completed Task',
+      project_code: '',
+      goal: 'Finish the task',
+      milestones: [{ id: 'm1', name: 'Done', done: false }],
+      current_milestone: 0,
+      next_milestone_id: 'm1',
+      completed_milestone_ids: [],
+      todos: [],
+      constraints: {},
+      last_action: '',
+      next_action: 'Finish milestone',
+      conf_score: 0.9,
+      session_id: 'sess-complete',
+      checkpoint_ts: new Date().toISOString(),
+      started: new Date().toISOString(),
+      attempt_counts: {},
+      last_failures: {},
+      recent_turns: [],
+      loaded_memory_utility: {},
+      file_checksums: {},
+    });
+
+    updatePlanEX(code, {
+      status: 'complete',
+      completed_milestone_ids: ['m1'],
+      next_milestone_id: null,
+    });
+
+    expect(loadActivePlanEX()).toBeNull();
+
+    const row = getEntryByCode(code);
+    expect(row?.status).toBe('complete');
+    const content = fs.readFileSync(row!.path, 'utf-8');
+    expect(content).toContain('status: complete');
+  });
+
+  it('P2Q: failed PLAN.EX entries are not returned as active on restart', async () => {
+    const { initDatabase, getEntryByCode } = await import('../../core/memory/index.js');
+    initDatabase(PATHS.db);
+    const { createPlanEX, updatePlanEX, loadActivePlanEX } = await import('../../core/memory/plan-ex.js');
+
+    const code = createPlanEX({
+      task_name: 'Failed Task',
+      project_code: '',
+      goal: 'Fail the task',
+      milestones: [{ id: 'm1', name: 'Attempt', done: false }],
+      current_milestone: 0,
+      next_milestone_id: 'm1',
+      completed_milestone_ids: [],
+      todos: [],
+      constraints: {},
+      last_action: '',
+      next_action: 'Attempt milestone',
+      conf_score: 0.5,
+      session_id: 'sess-failed',
+      checkpoint_ts: new Date().toISOString(),
+      started: new Date().toISOString(),
+      attempt_counts: {},
+      last_failures: {},
+      recent_turns: [],
+      loaded_memory_utility: {},
+      file_checksums: {},
+    });
+
+    updatePlanEX(code, {
+      status: 'failed',
+      abort_reason: 'Simulated failure',
+    });
+
+    expect(loadActivePlanEX()).toBeNull();
+
+    const row = getEntryByCode(code);
+    expect(row?.status).toBe('failed');
+    const content = fs.readFileSync(row!.path, 'utf-8');
+    expect(content).toContain('status: failed');
+  });
 });

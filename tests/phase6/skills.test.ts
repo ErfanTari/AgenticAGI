@@ -486,18 +486,18 @@ describe('skill output in LLM context', () => {
     expect(messages[0].content).toContain('xxxxx');
   });
 
-  it('end-to-end: skill output reaches mockLLM system prompt', async () => {
-    let capturedMessages: Message[] = [];
+  it('end-to-end: deterministic skills return direct output without LLM paraphrase', async () => {
+    const capturedSystems: string[] = [];
     const capturingLLM = async (messages: Message[]) => {
-      capturedMessages = messages;
+      capturedSystems.push(messages[0]?.content ?? '');
       return 'Got it.';
     };
 
-    await processMessage('what is 10 + 20', [], { llmHandler: capturingLLM });
+    const res = await processMessage('what is 10 + 20', [], { llmHandler: capturingLLM });
 
-    expect(capturedMessages.length).toBeGreaterThan(0);
-    expect(capturedMessages[0].content).toContain('## Skill Output');
-    expect(capturedMessages[0].content).toContain('10 + 20 = 30');
+    expect(res.intent).toBe('skill');
+    expect(res.reply).toContain('10 + 20 = 30');
+    expect(capturedSystems.some(system => system.includes('## Skill Output'))).toBe(false);
   });
 });
 

@@ -1,6 +1,6 @@
 # AgenticAGI — Architecture Deep Dive
 
-> Based on actual source code as of Phase 11. Every claim references a real file.
+> Based on actual source code as of the Phase 13 decomposition-first runtime and subsequent routing hardening.
 
 ---
 
@@ -25,77 +25,87 @@ The codebase is TypeScript/Node.js (ESM), uses `better-sqlite3` for its index, w
 
 ## 3. Top-Level Request Lifecycle
 
-A user message enters `processMessage()` in `core/agent.ts` and flows through these stages:
+A user message enters `processMessage()` in `core/agent.ts` and now flows through a decomposition-first pipeline:
 
 ```
 User Message
     │
     ▼
-[1] classifyIntent()          ← core/intent.ts
-    │  Pure regex, no LLM
-    │  Returns: Classification { intent, nb, type, name, codes, skill, … }
+[1] Fast-path bypasses        ← core/agent.ts
+    ├── /log ...     → immediate NOW.LOG write
+    ├── /meeting     → Meeting Mode
+    └── direct code  → direct memory fetch
     │
     ▼
-[2] Intent Router             ← core/agent.ts (the big if/else tree)
-    │
-    ├── 'greeting'            → Direct reply, no memory, no LLM
-    ├── 'episodic_query'      → resolveQuery (WHEN nb) → buildContext → LLM
-    ├── 'meeting'             → runMeetingMode() → LLM briefing
-    ├── 'synthesis_query'     → decomposeTask → executePlan → verifyExecution → buildUserReport
-    ├── 'planned_workflow'    → isComplexTask check → same planner/executor pipeline
-    ├── 'relationship_write'  → addRelationship() (create target if missing)
-    ├── 'memory_write'        → LLM extraction → upsertEntry()
-    ├── 'skill'               → runWithRetry(skill, input) → buildContext → LLM
-    └── 'memory_query'        → resolveQuery → hybridSearch fallback → buildContext → LLM
-         / 'code_fetch'
-         / 'general'
+[2] decomposeMessage()        ← core/decomposition.ts
+    │  LLM-first structured decomposition
+    │  Returns: DecompositionResult { units[] }
+    │  unit.route ∈ { conversational | agentic | query }
     │
     ▼
-[3] buildContext()            ← core/context.ts
-    │  Assembles: system prompt + owner persona + memory + skills + skill output + history
-    │  Token budget: 1500 tokens soft, 2000 hard ceiling
-    │  Rolling summarization when history > 6 turns
+[3] searchMemoryForUnits()    ← core/memory/unit-search.ts
+    │  Runs one search per unit in parallel
+    │  BM25 first, vector only as fallback
     │
     ▼
-[4] callLLM()                 ← core/llm.ts
-    │  Calls the configured LLM endpoint (local or remote)
+[4] routeDecomposedUnits()    ← core/router.ts
+    │
+    ├── conversational units → one batched LLM response
+    ├── query units          → direct retrieval / hybrid fallback
+    └── agentic units        → multi-goal planner + executor
+         ▲
+         └── resolved query units are injected into planning context
     │
     ▼
-[5] AgentResponse
+[5] Merge route outputs by original unit order
+    │
+    ▼
+[6] AgentResponse
     { reply, intent, resolved, created?, error?, retries? }
 ```
 
+Legacy exported intent labels still exist for compatibility, but they are no longer the primary runtime router.
+
 ---
 
-## 4. Intent Classification (`core/intent.ts`)
+## 4. Decomposition + Legacy Compatibility
 
-`classifyIntent()` is **pure regex** — no LLM, no database. It runs in microseconds.
+`core/decomposition.ts` is now the primary understanding layer.
 
-### Priority Order
+### Decomposition model
 
-1. **Code in message + relation verb** → `relationship_query`
-2. **Code in message (no write intent)** → `code_fetch`
-3. **Greeting regex** (with no write/code following) → `greeting`
-4. **Assistant identity patterns** ("who made you") → `general`
-5. **`/log ` prefix** → `memory_write` (NOW.LOG)
-6. **Planned workflow patterns** (book/build/setup/develop/implement…) → `planned_workflow`
-   — Must be checked before generic write patterns to prevent "create a calculator app" → `memory_write`
-7. **Write patterns** (create/add/remember…) excluding web/file/coding tasks → `memory_write`
-8. **Synthesis patterns** (weekly report/status/summarize all…) → `synthesis_query`
-9. **Meeting patterns** (`/meeting`, "start meeting mode") → `meeting`
-10. **Episodic patterns** (what happened/history of…) → `episodic_query`
-11. **Memory read patterns** (read/list/show/check my…) → `memory_query`
-12. **Skill detection** → `skill` (calculator/web_search/file_reader/file_writer/run_bash)
-13. **Notebook patterns** (who/what/when/how/why/now/plan keywords) → `memory_query` or `general`
+`decomposeMessage()` asks the LLM for a structured array of semantic units:
 
-### Skill Detection
+```typescript
+interface DecomposedUnit {
+  id: string;
+  route: 'conversational' | 'agentic' | 'query';
+  content: string;
+  order: number;
+}
+```
 
-`detectSkill()` performs sub-classification for `skill` intent:
-- If message contains multi-step language ("then", "after that", "followed by") → returns `null` (falls through to planner)
-- Otherwise matches: `run_bash` > `web_search` > `file_writer` > `file_reader` > `calculator`
-- Extracts structured input (e.g., `{ expression: "2 + 2" }` for calculator)
+### Hardening behavior
 
-### What Gets Extracted
+- If the initial decomposition under-splits an obviously compound message, the system retries with a stricter compound prompt.
+- If that still fails, a narrow heuristic repair pass splits only on strong clause boundaries.
+- The heuristic layer exists to protect the decomposition architecture, not to replace it.
+
+### `core/intent.ts` status
+
+`classifyIntent()` still exists, but it is now a compatibility shim for legacy tests, metadata, and a few older call paths. It is not the primary runtime router.
+
+### What still uses the compatibility shim
+
+- direct/simple `file_writer`
+- direct/simple `run_bash`
+- direct/simple `web_search`
+- direct/simple `calculator`
+- deterministic memory writes
+
+Those paths are only allowed for single-unit, non-compound messages.
+
+### Compatibility extraction shape
 
 ```typescript
 interface Classification {
@@ -225,23 +235,26 @@ Score = (BM25F_field_weighted + recency_decay + importance_boost + utility_boost
 
 ## 7. Planner/Executor Pipeline
 
-### 7a. Complexity Detection (`core/planner.ts`)
+### 7a. Task Planning (`core/planner.ts`)
 
-Before routing to the planner, `isComplexTask()` runs:
+Agentic units are grouped into one planning request. The planner receives:
 
-1. **Heuristic signals** (fast, no LLM): counts indicators like multi-step language, explicit skill references, "research + save" patterns, word count > 50. If ≥2 signals → `isComplex = true`.
-2. **LLM fallback** (only when exactly 1 heuristic signal OR message ≥ 100 chars): asks LLM: `{"isComplex": true/false, "reason": "brief", "estimatedSteps": N}`. Cached result.
+- agentic goals only
+- decomposition summary
+- memory context from unit search
+- prior query results resolved earlier in the same message
+- skill catalog
 
-`planned_workflow` intent always bypasses this check (already decided by classifier).
-
-### 7b. Task Decomposition (`core/planner.ts`)
-
-`decomposeTask(message, { skills }, llmHandler)` prompts the LLM with the available skill descriptions and asks it to return a `TaskPlan`:
+`decomposeTask(message, context, llmHandler)` returns a milestone-aware `TaskPlan`:
 
 ```typescript
 interface TaskPlan {
   goal: string;
+  goals?: TaskGoal[];
+  milestones?: TaskMilestone[];
   steps: TaskStep[];
+  complexity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'MAX';
+  needsConfirmation?: boolean;
   estimatedDuration?: string;
   createdAt: string;
 }
@@ -261,31 +274,53 @@ interface TaskStep {
 
 The LLM response is validated against `TaskPlanSchema` (Zod v4). If validation fails, a retry is attempted with the schema sent directly as a structured output hint.
 
-Template tokens (`{{step_id_result}}`) allow one step's output to flow into the next step's input.
+Current rule: all plans use milestones. `LOW` complexity gets exactly one milestone; higher-complexity plans must use explicit milestone boundaries.
 
-### 7c. Execution (`core/executor.ts`)
+Template tokens (`{{step_id_result}}`) still allow one step's output to flow into later inputs.
 
-`executePlan()` runs steps sequentially:
+### 7b. Execution (`core/executor.ts`)
+
+`executePlan()` now executes by milestone, then by step:
 
 ```
-For each step in plan.steps:
-    1. Timeout check (5 min total)
-    2. Dependency check — all required deps in results map?
-       - Missing required dep → abort plan
-       - Missing optional dep → skip this step
-    3. Risk guard — confidence_score < 0.75 AND risk_level = 'HIGH' → abort
-    4. Resolve template tokens in input (e.g., {{search_result}} → actual value)
-    5. Flatten nested objects (prevents [object Object] serialization)
-    6. Guardrail: unresolved tokens = fail fast (unless from optional failed deps)
-    7. runWithRetry(step.skill, resolvedInput, llmHandler)
-    8. Log execution record (fire-and-forget, non-fatal)
-    9. Emit transparency events (step_start, step_result, failure_classified)
-    10. Store output in results map by step.id AND step.storeResultAs
+For each milestone in plan.milestones:
+    1. Emit milestone_start
+    2. Execute steps sequentially with dependency / timeout / risk guards
+    3. On failure: persist PLAN.EX as failed and abort
+    4. On success: run post-milestone memory cycle
+    5. Emit milestone_result
+    6. Reevaluate remaining milestones conservatively
 ```
 
 Required step failure → plan aborts. Optional step failure → continue with remaining steps.
 
-### 7d. Verification (`core/executor.ts`)
+### 7c. Post-milestone memory cycle
+
+After each completed milestone:
+
+1. write `WHEN.EV`
+2. optionally write `HOW.PR`
+3. update `PLAN.EX`
+4. infer/write relationships where possible
+
+After full completion:
+
+1. write `WHEN.RF`
+2. update matching `PLAN.PJ` summary when relevant
+3. extract durable facts into `WHAT` / `WHO` where justified
+
+### 7d. PLAN.EX state machine (`core/memory/plan-ex.ts`)
+
+`PLAN.EX` is the persisted execution-state notebook for planned work.
+
+- `active` / `in_progress` → resumable
+- `complete` / `failed` → terminal
+- Active-plan loading only returns resumable states
+- Status is updated in both SQLite and markdown frontmatter
+
+This was hardened after a real bug where completed plans remained `active` and accumulated false startup resume prompts.
+
+### 7e. Verification (`core/executor.ts`)
 
 `verifyExecution()` sends plan goal + completed/failed summaries to the LLM and asks:
 ```json
@@ -293,15 +328,9 @@ Required step failure → plan aborts. Optional step failure → continue with r
 ```
 Verification is advisory — never blocks execution.
 
-### 7e. Episodic Memory After Execution
+### 7f. Completion memory
 
-After any successful multi-step plan (≥2 steps, verification passed), two writes happen fire-and-forget:
-
-1. `writeEpisodicMemory()` → `HOW.PR` — a "Pattern" procedure entry: goal + skill sequence + step outputs + verification
-2. `writeEpisodicEvent()` → `WHEN.EV` — an episodic event: trigger + task_name + skill_sequence + outcome
-3. `writeReflection()` → `WHEN.RF` — an LLM-generated reflection on the event
-
-Failures also get `WHEN.EV` entries (survivorship bias prevention).
+Final plan completion still writes episodic and reflective memory. Failures also produce `WHEN.EV` entries to avoid survivorship bias.
 
 ---
 
@@ -436,9 +465,15 @@ An event emitter that publishes internal agent events without coupling subsystem
 
 ```typescript
 type TransparencyEvent =
-  | { type: 'intent'; data: Classification }
+  | { type: 'decomposition'; data: DecompositionResult }
+  | { type: 'unit_memory_search'; data: { unit: DecomposedUnit; result: UnitMemoryResult } }
+  | { type: 'plan'; data: TaskPlan }
   | { type: 'step_start'; data: { step: TaskStep } }
   | { type: 'step_result'; data: { step, result, ms } }
+  | { type: 'milestone_start'; data: { id, title, index, total } }
+  | { type: 'milestone_result'; data: { id, title, success, index, total } }
+  | { type: 'milestone_revised'; data: { fromId, remaining } }
+  | { type: 'milestone_memory_cycle'; data: { milestoneId, writes } }
   | { type: 'failure_classified'; data: { error, class: FailureClass } }
   | { type: 'context_built'; data: { tokens, sections } }
   | { type: 'context_compacted'; data: { before, after } }
@@ -454,34 +489,29 @@ The renderer (`core/transparency-renderer.ts`) subscribes and renders these as h
 User Input
     │
     ▼
-classifyIntent()          [pure regex, <1ms]
+Fast-path bypass check    [/log, /meeting, direct code]
     │
     ▼
-Intent Router             [agent.ts]
+decomposeMessage()        [structured LLM output]
     │
-    ├─── Simple path ──────────────────────────────────────┐
-    │    (greeting/code_fetch/memory_write/skill)          │
-    │                                                       │
-    ├─── Complex path ─────────────────────────────────────┤
-    │    isComplexTask?                                     │
-    │    → decomposeTask (LLM → TaskPlan)                  │
-    │    → executePlan (skill loop)                        │
-    │    → verifyExecution (LLM)                           │
-    │    → buildUserReport                                  │
-    │    → writeEpisodicMemory (async)                     │
-    │                                                       │
-    └─── Memory query path ────────────────────────────────┤
-         resolveQuery (5-step escalation)                  │
-         → hybridSearch fallback (BM25 + vector + RRF)     │
-         │                                                  │
-         ▼                                                  │
-    buildContext()         [token-aware assembly]          │
-         │                                                  │
-         ▼                                                  │
-    callLLM()              [configured endpoint]           │
-         │                                                  │
-         ▼                                                  │
-    AgentResponse ←────────────────────────────────────────┘
+searchMemoryForUnits()    [parallel per-unit search]
+    │
+    ▼
+routeDecomposedUnits()    [router.ts]
+    │
+    ├── conversational → buildContext() → callLLM()
+    ├── query          → direct retrieval / hybrid fallback
+    └── agentic        → decomposeTask()
+                         → executePlan() by milestone
+                         → verifyExecution()
+                         → buildUserReport()
+                         → milestone/final memory writes
+    │
+    ▼
+merge by unit order
+    │
+    ▼
+AgentResponse
 ```
 
 ---
@@ -490,18 +520,22 @@ Intent Router             [agent.ts]
 
 | File | Role |
 |------|------|
-| `core/agent.ts` | Main request handler, intent router |
-| `core/intent.ts` | Pure regex intent classifier |
-| `core/planner.ts` | Complexity detection, task decomposition |
-| `core/executor.ts` | Plan execution loop, verification, reporting |
+| `core/agent.ts` | Main request handler, fast paths, compatibility shim |
+| `core/decomposition.ts` | Structured message decomposition + compound hardening |
+| `core/router.ts` | Route execution for conversational / query / agentic units |
+| `core/intent.ts` | Legacy compatibility classifier, no longer primary router |
+| `core/planner.ts` | Multi-goal, milestone-aware task planning |
+| `core/executor.ts` | Milestone execution loop, verification, reporting |
 | `core/context.ts` | Context assembly, token budget, rolling summarization |
 | `core/react.ts` | ReAct retry wrapper for skills |
 | `core/resolver.ts` | 5-step memory query escalation |
 | `core/llm.ts` | LLM endpoint adapter |
 | `core/heartbeat.ts` | Background memory health checks |
 | `core/transparency.ts` | Internal event bus |
+| `core/memory/unit-search.ts` | Parallel per-unit memory search with BM25/vector fallback |
 | `core/memory/index.ts` | SQLite init, schema, bootstrap from disk |
 | `core/memory/write.ts` | createEntry, upsertEntry, updateEntry |
+| `core/memory/plan-ex.ts` | PLAN.EX persistence, active-plan loading, terminal status handling |
 | `core/memory/search.ts` | hybridSearch, BM25+vector+RRF |
 | `core/memory/fts.ts` | FTS5 full-text search |
 | `core/memory/embeddings.ts` | Vector embeddings, cosine similarity |

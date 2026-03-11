@@ -8,8 +8,14 @@
   },
   "scripts": {
     "build": "tsc",
+    "build:ui-app": "node scripts/build-macos-launcher.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ui": "node server/ui-bootstrap.mjs",
+    "ui:open": "node scripts/ui-app-launcher.mjs open",
+    "ui:start": "node scripts/ui-app-launcher.mjs start",
+    "ui:status": "node scripts/ui-app-launcher.mjs status",
+    "ui:stop": "node scripts/ui-app-launcher.mjs stop"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",

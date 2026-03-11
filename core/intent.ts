@@ -5,6 +5,12 @@ const CODE_REGEX = /\b([A-Z]+\.[A-Z]+-\d{6,})\b/g;
 
 const GREETING_REGEX = /^\s*(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy|greetings)\b/i;
 
+const ASSISTANT_IDENTITY_PATTERNS = [
+  /\bwhat\s+should\s+i\s+(?:call|refer\s+to)\s+you\s+as\b/i,
+  /\bwhat(?:'s| is)\s+your\s+name\b/i,
+  /\bdo\s+you\s+have\s+a\s+name\b/i,
+];
+
 // --- Write patterns (order matters: checked before read patterns) ---
 const WRITE_PATTERNS = [
   /\b(create|add|new|write|save|store|remember)\b/i,
@@ -87,9 +93,13 @@ const MULTI_STEP_LANGUAGE = /\b(then\s+|after\s+that\s+|first\s+.{3,}\s+then\s+|
 
 // Technical/coding tasks that use "write/create" but are NOT memory writes
 const CODING_TASK_PATTERNS = [
+  /\b(?:write|create|build|make|develop|implement)\s+a\s+(?:simple\s+|basic\s+|small\s+)?(?:web\s+)?(?:app(?:lication)?|software|program|tool|calculator|website|site)\b/i,
   /\bwrite\s+a\s+(web\s+)?(scraper|crawler|parser|bot|script|program|function|class|module|api|server|cli)\b/i,
   /\bcreate\s+a\s+(web\s+)?(scraper|crawler|parser|bot|script|program|function|class|module|api|server|cli)\b/i,
   /\bbuild\s+a\s+(web\s+)?(scraper|crawler|parser|bot|script|program|function|class|module|api|server|cli)\b/i,
+  /\b(?:write|create|build|make|develop|implement)\b.*\b(?:workspace|folder|directory)\b/i,
+  /\b(?:write|create|build|make|develop|implement)\b.*\b(?:html|css|javascript|typescript|js|ts|python|py)\b/i,
+  /\b(?:write|create|build|make|develop|implement)\b.*\bgame\b/i,
 ];
 
 // --- File writer patterns ---
@@ -171,10 +181,10 @@ const WHEN_PATTERNS = [
 
 // --- HOW patterns ---
 const HOW_PATTERNS = [
-  /\bhow\s+do\s+I\b/i,
-  /\bhow\s+to\b/i,
   /\bprocedures?\b/i,
   /\bsteps?\s+to\b/i,
+  /\bhow\s+do\s+i\s+(?:deploy|build|run|start|stop|configure|set\s+up|install|use|debug|fix|update|release|test)\b/i,
+  /\bhow\s+to\s+(?:deploy|build|run|start|stop|configure|set\s+up|install|use|debug|fix|update|release|test)\b/i,
 ];
 
 // --- WHY patterns ---
@@ -209,7 +219,7 @@ const NOTEBOOK_PATTERNS: Array<{ pattern: RegExp; nb: string; type: string }> = 
   { pattern: /\bknowledge\b/i,                         nb: 'WHAT', type: 'KN' },
   { pattern: /\bcalendar\b|\bevents?\b|\bmeeting\b/i,  nb: 'WHEN', type: 'CA' },
   { pattern: /\bdeadlines?\b/i,                        nb: 'WHEN', type: 'DL' },
-  { pattern: /\bprocedures?\b|\bhow\s+to\b/i,          nb: 'HOW',  type: 'PR' },
+  { pattern: /\bprocedures?\b|\bsteps?\s+to\b|\bhow\s+to\s+(?:deploy|build|run|start|stop|configure|set\s+up|install|use|debug|fix|update|release|test)\b/i, nb: 'HOW',  type: 'PR' },
   { pattern: /\breflections?\b/i,                      nb: 'WHY',  type: 'MT' },
   { pattern: /\bquestions?\b/i,                        nb: 'WHY',  type: 'QU' },
   { pattern: /\btodos?\b|\btasks?\b/i,                 nb: 'NOW',  type: 'TD' },
@@ -475,7 +485,7 @@ export function classifyIntent(message: string): Classification {
   }
 
   // Second — other explicit commands
-  if (/^\/meeting/i.test(msg)) {
+  if (/^\/meeting\b/i.test(msg)) {
     return { intent: 'meeting', codes: [] };
   }
 
@@ -491,20 +501,19 @@ export function classifyIntent(message: string): Classification {
   let skill: string | undefined;
   let skillInput: Record<string, unknown> | undefined;
 
-  // Priority 0: Natural language ownership without explicit codes
-  const naturalRelation = extractRelation(message);
-  const subjectIsUser = /\b(i|me|my|erfan|tari)\b/i.test(message);
-  const hasRelationVerb = naturalRelation !== undefined;
-
-  if (hasRelationVerb && subjectIsUser && !matchesAny(message, WRITE_PATTERNS)) {
-    intent = 'relationship_write';
-    relation = naturalRelation;
-    const detected = detectNotebook(message);
-    nb = detected.nb;
-    type = detected.type;
+  if (matchesAny(message, ASSISTANT_IDENTITY_PATTERNS)) {
+    return { intent: 'general', codes, status, name, relation, due_date };
   }
+
+  if (matchesAny(message, MEETING_PATTERNS)) {
+    return { intent: 'meeting', codes, status, name, relation, due_date };
+  }
+
+  const naturalRelation = extractRelation(message);
+
   // Priority 1: Contains a valid code
-  else if (codes.length > 0 && relation) {
+  if (codes.length > 0 && (relation ?? naturalRelation)) {
+    relation = relation ?? naturalRelation;
     intent = 'relationship_query';
     const detected = detectNotebook(message);
     nb = detected.nb;
@@ -520,34 +529,32 @@ export function classifyIntent(message: string): Classification {
   else if (GREETING_REGEX.test(message) && codes.length === 0 && !matchesAny(message, WRITE_PATTERNS)) {
     intent = 'greeting';
   }
-  // Priority 3: Write patterns — but NOT if this is a web/file action task or explicit file write
-  else if (matchesAny(message, WRITE_PATTERNS) && !matchesAny(message, WEB_FILE_ACTION_PATTERNS) && !matchesAny(message, FILE_WRITER_PATTERNS) && !matchesAny(message, CODING_TASK_PATTERNS)) {
+  // Priority 3: Synthesis queries should bypass broad write routing.
+  else if (matchesAny(message, SYNTHESIS_PATTERNS)) {
+    intent = 'synthesis_query';
+  }
+  // Priority 4: Explicit software/app/program creation is planned work, not a memory write.
+  else if (matchesAny(message, CODING_TASK_PATTERNS)) {
+    intent = 'planned_workflow';
+  }
+  // Priority 5: Write patterns — but NOT if this is a web/file action task or explicit file write
+  else if (matchesAny(message, WRITE_PATTERNS) && !matchesAny(message, WEB_FILE_ACTION_PATTERNS) && !matchesAny(message, FILE_WRITER_PATTERNS) && !matchesAny(message, CODING_TASK_PATTERNS) && !matchesAny(message, SYNTHESIS_PATTERNS)) {
     intent = 'memory_write';
     const detected = detectNotebook(message);
     nb = detected.nb;
     type = detected.type;
   }
-  // Priority 3b: Synthesis query — cross-notebook read+generate+save tasks
-  // Checked after write patterns so "save" doesn't short-circuit to memory_write
-  else if (matchesAny(message, SYNTHESIS_PATTERNS)) {
-    intent = 'synthesis_query';
-    // nb intentionally undefined — reads all notebooks
-  }
-  // Priority 3c: /log prefix → NOW.LOG entry
+  // Priority 6: /log prefix → NOW.LOG entry
   else if (LOG_PREFIX_PATTERN.test(message)) {
     intent = 'memory_write';
     nb = 'NOW';
     type = 'LOG';
   }
-  // Priority 3d: Meeting intent
-  else if (matchesAny(message, MEETING_PATTERNS)) {
-    intent = 'meeting';
-  }
-  // Priority 3e: Episodic query
+  // Priority 7: Episodic query
   else if (matchesAny(message, EPISODIC_QUERY_PATTERNS)) {
     intent = 'episodic_query';
   }
-  // Priority 4: Skill detection (web_search, calculator, file_reader)
+  // Priority 8: Skill detection (web_search, calculator, file_reader)
   // Checked BEFORE notebook patterns — same priority position web_search had before
   else {
     const skillMatch = detectSkill(message);

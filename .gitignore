@@ -1,6 +1,9 @@
 .env
 node_modules/
 dist/
+.ui-runtime/
+.ui-control/
+apps/macos/build/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm

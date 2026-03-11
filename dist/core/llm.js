@@ -1,190 +1,206 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { LLM_CONFIG, LLM_FALLBACK_CONFIG } from '../config/agent.config.js';
 import { transparency } from './transparency.js';
+const llmRuntimeStore = new AsyncLocalStorage();
+function getTimeoutForModel(modelName) {
+    const lower = modelName.toLowerCase();
+    if (/72b|70b|80b|35b|32b|20b/.test(lower))
+        return 90000;
+    if (/7b|8b|13b|14b/.test(lower))
+        return 20000;
+    if (/1b|2b|3b|4b/.test(lower))
+        return 10000;
+    return 20000;
+}
+function getDefaultApiKey() {
+    return process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY;
+}
+export function getPrimaryLLMProfile() {
+    if (!LLM_CONFIG.endpoint || !LLM_CONFIG.model)
+        return null;
+    return {
+        kind: 'openai-compatible',
+        label: 'primary',
+        endpoint: LLM_CONFIG.endpoint,
+        model: LLM_CONFIG.model,
+        apiKey: getDefaultApiKey(),
+        temperature: LLM_CONFIG.temperature,
+        maxTokens: LLM_CONFIG.maxTokens,
+        timeoutMs: LLM_CONFIG.timeoutMs,
+    };
+}
+export function getFallbackLLMProfile() {
+    if (!LLM_FALLBACK_CONFIG?.endpoint || !LLM_FALLBACK_CONFIG.model)
+        return null;
+    if (LLM_FALLBACK_CONFIG.provider === 'gemini') {
+        return {
+            kind: 'openai-compatible',
+            label: 'fallback',
+            endpoint: LLM_FALLBACK_CONFIG.endpoint,
+            model: LLM_FALLBACK_CONFIG.model,
+            apiKey: LLM_FALLBACK_CONFIG.apiKey,
+            temperature: LLM_CONFIG.temperature,
+            maxTokens: LLM_CONFIG.maxTokens,
+            timeoutMs: getTimeoutForModel(LLM_FALLBACK_CONFIG.model),
+        };
+    }
+    if (!LLM_FALLBACK_CONFIG.apiKey)
+        return null;
+    return {
+        kind: 'anthropic',
+        label: 'fallback',
+        endpoint: LLM_FALLBACK_CONFIG.endpoint,
+        model: LLM_FALLBACK_CONFIG.model,
+        apiKey: LLM_FALLBACK_CONFIG.apiKey,
+        maxTokens: LLM_CONFIG.maxTokens,
+        timeoutMs: getTimeoutForModel(LLM_FALLBACK_CONFIG.model),
+    };
+}
+function getRuntimeOverride() {
+    return llmRuntimeStore.getStore() ?? {
+        primary: getPrimaryLLMProfile(),
+        fallback: getFallbackLLMProfile(),
+    };
+}
+export function withLLMRuntime(runtime, fn) {
+    return llmRuntimeStore.run(runtime, fn);
+}
 /**
  * Strip model reasoning/thinking artifacts from LLM responses.
  * Applied to EVERY response before it touches any downstream logic.
- * Handles: <think> blocks, orphaned closing tags, preamble sentences.
+ *
+ * FIX H: Only strip unambiguous reasoning artifacts:
+ * - <think>...</think> blocks
+ * - <thought>...</thought> blocks
+ * - <|im_start|>...<|im_end|> tokens
+ * - Orphaned <think> or <thought> without closing tag
+ *
+ * Does NOT strip based on content patterns like:
+ * - **Constraint Checklist, **Mental Sandbox, **Analyze
+ * - "The user..." / "Thinking Process:" line removal
  */
-function stripThinkingTags(raw) {
+export function stripThinkingTags(raw) {
     let cleaned = raw;
     // 1. Remove complete <think>...</think> blocks
     cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
-    // 2. Remove orphaned think tags
+    // 2. Remove complete <thought>...</thought> blocks
+    cleaned = cleaned.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
+    // 3. Remove orphaned think/thought closing tags
     cleaned = cleaned.replace(/<\/think>/gi, '');
+    cleaned = cleaned.replace(/<\/thought>/gi, '');
+    // 4. Remove orphaned think/thought opening tags (no closing tag = entire rest is reasoning)
+    // Only strip if the tag appears at start of response or after whitespace
     cleaned = cleaned.replace(/<think>/gi, '');
-    // 3. Remove LM Studio special tokens
+    cleaned = cleaned.replace(/<thought>/gi, '');
+    // 5. Remove LM Studio special tokens <|im_start|>...<|im_end|>
     cleaned = cleaned.replace(/<\|im_start\|>[\s\S]*?<\|im_end\|>/g, '');
     cleaned = cleaned.replace(/<\|im_start\|>/g, '');
     cleaned = cleaned.replace(/<\|im_end\|>/g, '');
-    // 4. Remove Thinking Process block — consume ALL numbered items that follow,
-    //    not just up to the first blank line
-    cleaned = cleaned.replace(/^Thinking Process:[\s\S]*?(?=\n\n(?!\d+\.|\*\*|\s*[-•]))/, '');
-    // 5. Remove standalone numbered analysis blocks at the start of the response
-    //    "1. **Analyze...**\n2. **Check...**\n..." (2+ items)
-    cleaned = cleaned.replace(/^(\s*\d+\.\s+\*\*[\s\S]*?){2,}(?=\n\n[^0-9])/, '');
-    // 6. Remove Constraint Checklist blocks
-    cleaned = cleaned.replace(/\*\*Constraint Checklist[\s\S]*$/gi, '');
-    // 7. Remove Confidence Score lines
-    cleaned = cleaned.replace(/Confidence Score:.*$/gim, '');
-    // 8. Remove Mental Sandbox blocks
-    cleaned = cleaned.replace(/\*\*Mental Sandbox[\s\S]*$/gi, '');
-    // 9. Remove numbered analysis blocks starting with **Analyze
-    cleaned = cleaned.replace(/\*\*Analyze[\s\S]*?(?=\n\n[A-Z]|$)/gi, '');
-    // 10. Preamble sentences at the START of the response only
-    //     Anchored to ^ so mid-content "Let me know" is NOT stripped
-    const OPENING_PREAMBLES = [
-        /^Let me [^\n]+\n+/,
-        /^I need to [^\n]+\n+/,
-        /^I will [^\n]+\n+/,
-        /^I can see [^\n]+\n+/,
-        /^I'm going to [^\n]+\n+/,
-        /^I should [^\n]+\n+/,
-        /^Let['´s][^\n]+\n+/,
-        // "The user wants/needs/is asking/asked..."
-        /^The user (wants|needs|is asking|asked)[^\n]+\n+/,
-        /^The user's [^\n]+\n+/,
-    ];
-    for (const pattern of OPENING_PREAMBLES) {
-        cleaned = cleaned.replace(pattern, '');
-    }
-    // 11. Artifact detection — if stripping left only a number or punctuation (e.g. "1.")
-    //     return empty string so callers treat this as a failed generation
+    // Safety rule: if stripping left empty/whitespace and original was non-empty, return original
     const stripped = cleaned.trim();
-    if (/^\d+\.?\s*$/.test(stripped)) {
-        return '';
+    if (stripped.length === 0 && raw.trim().length > 0) {
+        console.warn('[llm] stripThinkingTags: result was empty after stripping — returning original response');
+        return raw.trim();
     }
     return stripped;
-}
-/**
- * Collapse consecutive system messages and validate message ordering.
- *
- * Qwen3.5's jinja template requires:
- *   - Exactly one system message at index 0 (no consecutive system messages)
- *   - The final message must have role "user"
- *   - No two consecutive messages with the same role
- *
- * This function merges all system-role messages into the first system entry,
- * then verifies the invariants, logging a warning for anything it cannot fix.
- */
-function sanitizeMessages(messages) {
-    if (messages.length === 0)
-        return messages;
-    // 1. Merge all system messages into the first system entry
-    const systemContents = messages.filter(m => m.role === 'system').map(m => m.content);
-    const nonSystem = messages.filter(m => m.role !== 'system');
-    const result = systemContents.length > 0
-        ? [{ role: 'system', content: systemContents.join('\n\n') }, ...nonSystem]
-        : [...nonSystem];
-    // 2. Validate: last message must be role "user"
-    const last = result[result.length - 1];
-    if (last?.role !== 'user') {
-        console.warn(`[llm] WARNING: messages array does not end with role "user" — last role is "${last?.role}". ` +
-            `Qwen3.5 jinja template will reject this.`);
-    }
-    // 3. Validate: no two consecutive messages with the same role (after system merge)
-    for (let i = 1; i < result.length; i++) {
-        if (result[i].role === result[i - 1].role) {
-            console.warn(`[llm] WARNING: consecutive messages with role "${result[i].role}" at indices ${i - 1} and ${i}. ` +
-                `This will break Qwen3.5's jinja template.`);
-        }
-    }
-    // 4. Log the full array for debugging
-    if (process.env.DEBUG_LLM === 'true') {
-        console.log('[llm] messages sent to LM Studio:');
-        for (const [i, m] of result.entries()) {
-            const preview = m.content.length > 120 ? m.content.slice(0, 120) + '…' : m.content;
-            console.log(`  [${i}] role=${m.role}  content=${JSON.stringify(preview)}`);
-        }
-    }
-    return result;
 }
 /**
  * Call the primary LLM (Mac Studio / OpenAI-compatible endpoint).
  * Timeout is tiered by model size (70B+=90s, 7B-14B=20s, 1B-4B=10s, default=20s).
  * On timeout, logs a warning with model name so caller knows what happened.
  */
-async function callPrimary(messages, options) {
+async function callOpenAICompatibleProfile(profile, messages, options) {
     const controller = new AbortController();
-    const timeoutMs = LLM_CONFIG.timeoutMs;
+    const timeoutMs = profile.timeoutMs;
     const timer = setTimeout(() => {
-        console.warn('[llm] Still thinking — %s is processing a complex query. Timeout after %ds.', LLM_CONFIG.model, timeoutMs / 1000);
+        console.warn('[llm] Still thinking — %s is processing a complex query. Timeout after %ds.', profile.model, timeoutMs / 1000);
         controller.abort();
     }, timeoutMs);
-    const sanitized = sanitizeMessages(messages);
     try {
-        const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY;
-        const headers = { 'Content-Type': 'application/json' };
-        if (apiKey)
-            headers.Authorization = `Bearer ${apiKey}`;
-        const requestBody = {
-            model: LLM_CONFIG.model,
-            messages: sanitized,
-            max_tokens: options?.maxTokens ?? LLM_CONFIG.maxTokens,
-            temperature: LLM_CONFIG.temperature,
-        };
-        // Add structured output schema if provided (LM Studio json_schema format)
-        if (options?.responseSchema) {
-            requestBody.response_format = {
-                type: 'json_schema',
-                json_schema: {
-                    name: 'response',
-                    strict: true,
-                    schema: options.responseSchema,
-                },
-            };
-        }
-        const response = await fetch(LLM_CONFIG.endpoint, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(requestBody),
-            signal: controller.signal,
-        });
-        if (!response.ok) {
-            throw new Error(`Primary LLM: ${response.status} ${response.statusText}`);
-        }
-        const data = await response.json();
-        return data.choices[0].message.content;
+        return await callOpenAICompatibleEndpoint(profile.endpoint, profile.model, profile.apiKey, messages, options, controller.signal, profile.label, profile.temperature, profile.maxTokens);
     }
     finally {
         clearTimeout(timer);
     }
 }
+async function callOpenAICompatibleEndpoint(endpoint, model, apiKey, messages, options, signal, label, temperature, defaultMaxTokens) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey)
+        headers.Authorization = `Bearer ${apiKey}`;
+    const requestBody = {
+        model,
+        messages,
+        max_tokens: options?.maxTokens ?? defaultMaxTokens,
+        temperature,
+    };
+    if (options?.responseSchema) {
+        requestBody.response_format = {
+            type: 'json_schema',
+            json_schema: {
+                name: 'response',
+                strict: true,
+                schema: options.responseSchema,
+            },
+        };
+    }
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+        signal,
+    });
+    if (!response.ok) {
+        throw new Error(`${label}: ${response.status} ${response.statusText}`);
+    }
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) {
+        throw new Error(`${label}: empty response content`);
+    }
+    return content;
+}
 /**
  * Call the Anthropic Messages API as fallback.
  * Extracts system messages into the top-level `system` parameter.
  */
-async function callAnthropic(messages) {
-    if (!LLM_FALLBACK_CONFIG || !LLM_FALLBACK_CONFIG.apiKey) {
+async function callAnthropicProfile(profile, messages, options) {
+    if (!profile.apiKey) {
         throw new Error('Anthropic fallback not configured (missing API key)');
     }
     const systemParts = messages.filter(m => m.role === 'system').map(m => m.content);
     const nonSystem = messages.filter(m => m.role !== 'system');
-    const response = await fetch(LLM_FALLBACK_CONFIG.endpoint, {
+    const response = await fetch(profile.endpoint, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'x-api-key': LLM_FALLBACK_CONFIG.apiKey,
+            'x-api-key': profile.apiKey,
             'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-            model: LLM_FALLBACK_CONFIG.model,
+            model: profile.model,
             system: systemParts.join('\n'),
             messages: nonSystem,
-            max_tokens: LLM_CONFIG.maxTokens,
+            max_tokens: options?.maxTokens ?? profile.maxTokens,
         }),
     });
     if (!response.ok) {
-        throw new Error(`Anthropic fallback: ${response.status} ${response.statusText}`);
+        throw new Error(`${profile.label}: ${response.status} ${response.statusText}`);
     }
     const data = await response.json();
     return data.content[0].text;
+}
+async function callProfile(profile, messages, options) {
+    if (profile.kind === 'anthropic') {
+        return await callAnthropicProfile(profile, messages, options);
+    }
+    return await callOpenAICompatibleProfile(profile, messages, options);
 }
 /**
  * Call LLM with automatic fallback.
  *
  * Flow:
  * 1. Try primary (Mac Studio) with tiered timeout based on model size
- * 2. If unreachable or times out → fall back to Anthropic API
+ * 2. If unreachable or times out → fall back to the configured cloud provider
  * 3. Log which provider handled the request + response time
  * 4. Never crash — callers catch the final throw
  */
@@ -195,13 +211,13 @@ export async function callLLM(messages, options) {
         type: 'llm_request',
         data: { system: systemMsg?.content ?? '', messages, schema: options?.responseSchema },
     });
-    // Try primary
-    if (LLM_CONFIG.endpoint) {
+    const runtime = getRuntimeOverride();
+    if (runtime.primary) {
         const start = performance.now();
         try {
-            const raw = await callPrimary(messages, options);
+            const raw = await callProfile(runtime.primary, messages, options);
             const elapsed = Math.round(performance.now() - start);
-            console.log('[llm] Provider: primary (%s) — %dms', LLM_CONFIG.model, elapsed);
+            console.log('[llm] Provider: %s (%s) — %dms', runtime.primary.label, runtime.primary.model, elapsed);
             transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
             const stripped = stripThinkingTags(raw);
             transparency.emit({ type: 'llm_stripped', data: { stripped } });
@@ -209,16 +225,15 @@ export async function callLLM(messages, options) {
         }
         catch (err) {
             const elapsed = Math.round(performance.now() - start);
-            console.warn('[llm] Primary failed after %dms: %s — trying fallback', elapsed, String(err));
+            console.warn('[llm] %s failed after %dms: %s — trying fallback', runtime.primary.label, elapsed, String(err));
         }
     }
-    // Try fallback
-    if (LLM_FALLBACK_CONFIG) {
+    if (runtime.fallback) {
         const start = performance.now();
         try {
-            const raw = await callAnthropic(messages);
+            const raw = await callProfile(runtime.fallback, messages, options);
             const elapsed = Math.round(performance.now() - start);
-            console.log('[llm] Provider: fallback (%s/%s) — %dms', LLM_FALLBACK_CONFIG.provider, LLM_FALLBACK_CONFIG.model, elapsed);
+            console.log('[llm] Provider: %s (%s) — %dms', runtime.fallback.label, runtime.fallback.model, elapsed);
             transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
             const stripped = stripThinkingTags(raw);
             transparency.emit({ type: 'llm_stripped', data: { stripped } });
@@ -226,7 +241,7 @@ export async function callLLM(messages, options) {
         }
         catch (err) {
             const elapsed = Math.round(performance.now() - start);
-            console.warn('[llm] Fallback failed after %dms: %s', elapsed, String(err));
+            console.warn('[llm] %s failed after %dms: %s', runtime.fallback.label, elapsed, String(err));
         }
     }
     throw new Error('All LLM providers unreachable');

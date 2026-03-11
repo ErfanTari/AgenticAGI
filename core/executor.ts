@@ -336,14 +336,25 @@ async function reviseRemainingMilestones(
     const completedSet = new Set(completedMilestones);
     const originalRemaining = milestones.filter(m => !completedSet.has(m.id));
 
-    const newRemaining: TaskMilestone[] = parsed.milestones.map(r => ({
-      id: r.id,
-      goalIds: [],
-      title: r.title,
-      description: r.description,
-      completionCriteria: r.completionCriteria,
-      steps: originalRemaining.find(orig => orig.id === r.id)?.steps ?? [],
-    }));
+    const usedOriginalIds = new Set<string>();
+    const newRemaining: TaskMilestone[] = parsed.milestones.map((r, index) => {
+      const matchedOriginal = originalRemaining.find(orig => !usedOriginalIds.has(orig.id) && orig.id === r.id)
+        ?? originalRemaining.find((orig, originalIndex) => !usedOriginalIds.has(orig.id) && originalIndex === index);
+
+      if (!matchedOriginal) {
+        throw new Error('Milestone revision returned an unmappable milestone tail');
+      }
+
+      usedOriginalIds.add(matchedOriginal.id);
+      return {
+        id: r.id,
+        goalIds: matchedOriginal.goalIds,
+        title: r.title,
+        description: r.description,
+        completionCriteria: r.completionCriteria,
+        steps: matchedOriginal.steps,
+      };
+    });
 
     const revisedCount = newRemaining.length - originalRemaining.length;
     transparency.emit({
@@ -798,60 +809,6 @@ export function buildUserReport(
   }
 
   return lines.join('\n').trim();
-}
-
-/**
- * Write episodic HOW.PR memory entry for successful multi-step plans.
- * Only writes when 2+ steps completed AND verification passed.
- * Returns the created/updated code, or null if conditions not met.
- */
-export async function writeEpisodicMemory(
-  plan: TaskPlan,
-  result: ExecutionResult,
-  verification: VerificationResult,
-): Promise<string | null> {
-  if (result.completed.length < 2) return null;
-  // BUG-3 fix: explicit check for true to reject undefined/null/truthy non-boolean values
-  if (verification.verified !== true) return null;
-
-  const skillSequence = result.completed.map(s => s.skill).join(' → ');
-  const verificationSummary = verification.issues.length > 0
-    ? `Issues: ${verification.issues.join(', ')}`
-    : 'All steps verified.';
-
-  const body = `## Goal
-${plan.goal}
-
-## Skill Sequence
-${skillSequence}
-
-## Steps Completed
-${result.completed.map(s => `- ${s.skill}: ${(s.display ?? s.output).slice(0, 100)}`).join('\n')}
-
-## Verification
-- Confidence: ${verification.confidence}
-- ${verificationSummary}
-
-## Notes
-- Estimated duration: ${plan.estimatedDuration ?? 'unknown'}
-- Steps: ${result.completed.length} completed, ${result.failed.length} failed/skipped
-`;
-
-  const name = 'Pattern: ' + plan.goal.slice(0, 60);
-
-  try {
-    const { code } = upsertEntry({
-      nb: 'HOW',
-      type: 'PR',
-      name,
-      status: 'active',
-      summary: `Auto-generated procedure for: ${plan.goal.slice(0, 80)}`,
-      body,
-    });
-    return code;
-  } catch {
-    return null;
-  }
 }
 
 /**

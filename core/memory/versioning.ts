@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 import { simpleGit } from 'simple-git';
 import type { SimpleGit } from 'simple-git';
 import { PATHS } from '../../config/agent.config.js';
@@ -191,7 +192,6 @@ function registerShutdownFlush(): void {
     }
     if (pendingMessages.length === 0) return;
     try {
-      const { execSync } = require('child_process');
       execSync('git add . && git commit -m "memory: shutdown flush"', {
         cwd: PATHS.memory,
         stdio: 'ignore',

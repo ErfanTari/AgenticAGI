@@ -59,7 +59,7 @@ interface OperationalMeta {
 
 function buildFrontmatter(entry: Omit<IndexEntry, 'path'> & OperationalMeta): string {
   const today = entry.updated ?? new Date().toISOString().slice(0, 10);
-  return [
+  const lines = [
     '---',
     `code: ${entry.code}`,
     `nb: ${entry.nb}`,
@@ -68,6 +68,11 @@ function buildFrontmatter(entry: Omit<IndexEntry, 'path'> & OperationalMeta): st
     `status: ${entry.status ?? 'active'}`,
     `updated: ${today}`,
     `summary: ${(entry.summary ?? '').replace(/\n/g, ' ')}`,
+  ];
+  if (entry.due_date) {
+    lines.push(`due_date: ${entry.due_date}`);
+  }
+  lines.push(
     `importance_score: ${entry.importance_score ?? 0}`,
     `utility_score: ${entry.utility_score ?? 0}`,
     `usage_count: ${entry.usage_count ?? 0}`,
@@ -78,12 +83,23 @@ function buildFrontmatter(entry: Omit<IndexEntry, 'path'> & OperationalMeta): st
     `pinned: ${entry.pinned ?? 0}`,
     `source: ${entry.source ?? 'agent'}`,
     '---',
-  ].join('\n');
+  );
+  return lines.join('\n');
 }
 
 function buildMarkdown(entry: Omit<IndexEntry, 'path'>, body: string): string {
   const frontmatter = buildFrontmatter(entry);
   return frontmatter + '\n\n# ' + entry.name + '\n\n' + body + '\n';
+}
+
+function extractBodyFromMarkdown(markdown: string): string {
+  const frontmatterEnd = markdown.indexOf('\n---\n');
+  if (frontmatterEnd < 0) return markdown.trimEnd();
+
+  const afterFrontmatter = markdown.slice(frontmatterEnd + 5);
+  const headingMatch = afterFrontmatter.match(/^\n?# [^\n]*\n\n/);
+  if (!headingMatch) return afterFrontmatter.trimEnd();
+  return afterFrontmatter.slice(headingMatch[0].length).trimEnd();
 }
 
 export function createEntry(input: CreateEntryInput): IndexEntry {
@@ -186,15 +202,32 @@ export function upsertEntry(
         due_date: input.due_date ?? null,
       };
       const markdown = buildMarkdown(entryMeta, input.body ?? '');
-      // SQLite update first, then file write
-      d.prepare(
-        'UPDATE index_entries SET summary = ?, status = ?, updated = ?, path = ? WHERE code = ?'
-      ).run(input.summary ?? '', input.status ?? 'active', updated, newFilePath, existing.code);
       try {
         fs.mkdirSync(path.dirname(newFilePath), { recursive: true });
         atomicWriteFile(newFilePath, markdown);
       } catch (err) {
         console.warn(`[memory-write] File recreate failed for ${existing.code}:`, err);
+        throw err;
+      }
+      try {
+        d.prepare(
+          'UPDATE index_entries SET name = ?, summary = ?, status = ?, updated = ?, path = ?, due_date = ? WHERE code = ?'
+        ).run(
+          input.name,
+          input.summary ?? '',
+          input.status ?? 'active',
+          updated,
+          newFilePath,
+          input.due_date ?? null,
+          existing.code,
+        );
+      } catch (err) {
+        try {
+          fs.unlinkSync(newFilePath);
+        } catch {
+          console.warn(`[memory-write] Could not clean up recreated file ${newFilePath} after SQLite failure`);
+        }
+        throw err;
       }
       try {
         indexContent(existing.code, input.nb, `${input.name} ${input.summary ?? ''} ${input.body ?? ''}`);
@@ -219,41 +252,48 @@ export function upsertEntry(
 
     // Get existing file body (content below frontmatter separator)
     let bodyContent = input.body ?? '';
-    if (entry && fs.existsSync(entry.path)) {
-      const existingMd = fs.readFileSync(entry.path, 'utf-8');
-      const bodyStart = existingMd.indexOf('\n---\n');
-      if (bodyStart >= 0) {
-        const afterFrontmatter = existingMd.slice(bodyStart + 5); // skip '\n---\n'
-        // If input provides a body, use it; otherwise keep existing body
-        if (!input.body) {
-          // Extract body (everything after the # heading line)
-          const headingEnd = afterFrontmatter.indexOf('\n\n');
-          bodyContent = headingEnd >= 0 ? afterFrontmatter.slice(headingEnd + 2).trimEnd() : afterFrontmatter.trimEnd();
-        }
-      }
+    const targetPath = entry?.path ?? resolveEntryPath(input.nb, input.type, existing.code, input.name);
+    const previousFileExists = fs.existsSync(targetPath);
+    const previousContent = previousFileExists ? fs.readFileSync(targetPath, 'utf-8') : null;
+    if (!input.body && previousContent) {
+      bodyContent = extractBodyFromMarkdown(previousContent);
     }
 
     const newMd = newFrontmatter + '\n\n# ' + input.name + '\n\n' + bodyContent + '\n';
-    const targetPath = entry?.path ?? resolveEntryPath(input.nb, input.type, existing.code, input.name);
 
     // Write file first, then SQLite (FIX F)
-    if (entry && fs.existsSync(targetPath)) {
-      atomicWriteFile(targetPath, newMd);
-    }
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    atomicWriteFile(targetPath, newMd);
 
-    // SQLite update after file write
-    d.prepare(
-      'UPDATE index_entries SET summary = ?, status = ?, updated = ? WHERE code = ?'
-    ).run(
-      input.summary ?? '',
-      input.status ?? 'active',
-      updated,
-      existing.code
-    );
+    try {
+      // SQLite update after file write
+      d.prepare(
+        'UPDATE index_entries SET name = ?, summary = ?, status = ?, updated = ?, path = ?, due_date = ? WHERE code = ?'
+      ).run(
+        input.name,
+        input.summary ?? '',
+        input.status ?? 'active',
+        updated,
+        targetPath,
+        input.due_date ?? null,
+        existing.code,
+      );
+    } catch (err) {
+      if (previousContent !== null) {
+        atomicWriteFile(targetPath, previousContent);
+      } else {
+        try {
+          fs.unlinkSync(targetPath);
+        } catch {
+          console.warn(`[memory-write] Could not clean up ${targetPath} after SQLite failure`);
+        }
+      }
+      throw err;
+    }
 
     // Re-index FTS after transaction — non-fatal if it fails (data safe, search may lag)
     try {
-      indexContent(existing.code, input.nb, `${input.name} ${input.summary ?? ''} ${input.body ?? ''}`);
+      indexContent(existing.code, input.nb, `${input.name} ${input.summary ?? ''} ${bodyContent}`);
     } catch (err) {
       console.warn(`[memory] FTS reindex failed for ${existing.code}:`, err);
     }

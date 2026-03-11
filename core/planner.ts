@@ -1,6 +1,6 @@
 import type { Classification, LLMHandler, Message } from './types.js';
 import { TaskPlanSchema, taskPlanJsonSchema } from './schemas.js';
-import type { TaskPlan } from './schemas.js';
+import type { TaskGoal, TaskMilestone, TaskPlan, TaskStep } from './schemas.js';
 import { transparency } from './transparency.js';
 import { queryEntries } from './memory/index.js';
 import { fetchByCode } from './memory/fetch.js';
@@ -615,9 +615,144 @@ export function extractThought(raw: string): string | null {
   return match ? match[1].trim() : null;
 }
 
+export interface PlannerContext {
+  skills: string;
+  history?: string;
+  goals?: TaskGoal[];
+  memoryContext?: string;
+  decompositionSummary?: string;
+}
+
+function derivePlanComplexity(stepCount: number): ComplexityLevel {
+  if (stepCount <= 2) return 'LOW';
+  if (stepCount <= 4) return 'MEDIUM';
+  if (stepCount <= 6) return 'HIGH';
+  return 'MAX';
+}
+
+function shouldRequireConfirmation(steps: TaskStep[]): boolean {
+  return steps.some(step => {
+    const text = `${step.description} ${JSON.stringify(step.input)}`.toLowerCase();
+    const destructive = /\b(delete|destroy|wipe|reset|remove|drop table|rm -rf|format disk)\b/.test(text);
+    const externalSideEffect = /\b(send email|book flight|place order|charge card|publish live)\b/.test(text);
+    const riskyOverwrite = step.skill === 'file_writer' && /\b(overwrite|replace existing|rewrite from scratch|rebuild)\b/.test(text);
+    return destructive || externalSideEffect || riskyOverwrite;
+  });
+}
+
+function flattenMilestones(milestones: TaskMilestone[]): TaskStep[] {
+  return milestones.flatMap(milestone => milestone.steps);
+}
+
+function buildGoals(message: string, contextGoals?: TaskGoal[]): TaskGoal[] {
+  if (contextGoals && contextGoals.length > 0) return contextGoals;
+  return [{ id: 'goal_1', sourceUnitIds: [], description: message }];
+}
+
+function buildMilestonesFromSteps(steps: TaskStep[], goals: TaskGoal[], complexity: ComplexityLevel): TaskMilestone[] {
+  if (steps.length === 0) return [];
+
+  if (complexity === 'LOW' || steps.length <= 2) {
+    return [{
+      id: 'milestone_1',
+      goalIds: goals.map(goal => goal.id),
+      title: 'Complete task',
+      description: 'Finish the requested work.',
+      completionCriteria: steps.at(-1)?.description ?? 'Requested work completed.',
+      steps,
+    }];
+  }
+
+  const chunkSize = steps.length <= 4 ? 2 : 3;
+  const milestones: TaskMilestone[] = [];
+  for (let i = 0; i < steps.length; i += chunkSize) {
+    const chunk = steps.slice(i, i + chunkSize);
+    milestones.push({
+      id: `milestone_${milestones.length + 1}`,
+      goalIds: goals.map(goal => goal.id),
+      title: `Milestone ${milestones.length + 1}`,
+      description: chunk.map(step => step.description).join(' Then '),
+      completionCriteria: chunk.at(-1)?.description ?? 'Milestone complete.',
+      steps: chunk,
+    });
+  }
+  return milestones;
+}
+
+function normalizeMilestones(
+  rawMilestones: unknown,
+  fallbackSteps: TaskStep[],
+  goals: TaskGoal[],
+  complexity: ComplexityLevel,
+): TaskMilestone[] {
+  if (!Array.isArray(rawMilestones) || rawMilestones.length === 0) {
+    return buildMilestonesFromSteps(fallbackSteps, goals, complexity);
+  }
+
+  const milestones: TaskMilestone[] = [];
+  for (let i = 0; i < rawMilestones.length; i++) {
+    const rawMilestone = rawMilestones[i];
+    if (!rawMilestone || typeof rawMilestone !== 'object' || Array.isArray(rawMilestone)) continue;
+    const milestone = rawMilestone as Partial<TaskMilestone>;
+    const steps = Array.isArray(milestone.steps) ? milestone.steps as TaskStep[] : [];
+    if (steps.length === 0) continue;
+
+    milestones.push({
+      id: typeof milestone.id === 'string' && milestone.id.trim() ? milestone.id : `milestone_${i + 1}`,
+      goalIds: Array.isArray(milestone.goalIds) && milestone.goalIds.length > 0
+        ? milestone.goalIds
+        : goals.map(goal => goal.id),
+      title: typeof milestone.title === 'string' && milestone.title.trim()
+        ? milestone.title
+        : `Milestone ${i + 1}`,
+      description: typeof milestone.description === 'string' && milestone.description.trim()
+        ? milestone.description
+        : steps.map(step => step.description).join(' Then '),
+      completionCriteria: typeof milestone.completionCriteria === 'string' && milestone.completionCriteria.trim()
+        ? milestone.completionCriteria
+        : steps.at(-1)?.description ?? 'Milestone complete.',
+      steps,
+    });
+  }
+
+  if (milestones.length === 0) {
+    return buildMilestonesFromSteps(fallbackSteps, goals, complexity);
+  }
+  return milestones;
+}
+
+function normalizePlanPayload(
+  raw: Record<string, unknown>,
+  message: string,
+  context: PlannerContext,
+): Omit<TaskPlan, 'createdAt'> | null {
+  const steps = Array.isArray(raw.steps) ? raw.steps as TaskStep[] : [];
+  const rawGoals = Array.isArray(raw.goals) ? raw.goals as TaskGoal[] : [];
+  const goals = rawGoals.length > 0 ? rawGoals : buildGoals(message, context.goals);
+  const complexity = typeof raw.complexity === 'string' && ['LOW', 'MEDIUM', 'HIGH', 'MAX'].includes(raw.complexity)
+    ? raw.complexity as ComplexityLevel
+    : derivePlanComplexity(steps.length);
+  const milestones = normalizeMilestones(raw.milestones, steps, goals, complexity);
+  const flattenedSteps = flattenMilestones(milestones).slice(0, 8);
+
+  if (flattenedSteps.length === 0) return null;
+
+  return {
+    goal: typeof raw.goal === 'string' && raw.goal.trim() ? raw.goal : message,
+    goals,
+    milestones,
+    steps: flattenedSteps,
+    complexity,
+    needsConfirmation: typeof raw.needsConfirmation === 'boolean'
+      ? raw.needsConfirmation
+      : shouldRequireConfirmation(flattenedSteps),
+    estimatedDuration: typeof raw.estimatedDuration === 'string' ? raw.estimatedDuration : undefined,
+  };
+}
+
 export async function decomposeTask(
   message: string,
-  context: { skills: string; history?: string },
+  context: PlannerContext,
   llmHandler: LLMHandler,
 ): Promise<TaskPlan> {
   // Look for a relevant past procedure to use as starting point
@@ -635,25 +770,62 @@ export async function decomposeTask(
     ? `${procedurePreamble}User request: ${message}`
     : message;
 
+  const goalsText = context.goals && context.goals.length > 0
+    ? context.goals.map(goal => `- ${goal.id}: ${goal.description} [units: ${goal.sourceUnitIds.join(', ') || '—'}]`).join('\n')
+    : '- goal_1: ' + message;
+
+  const planningContextSections = [
+    context.decompositionSummary ? `DECOMPOSED GOALS:\n${context.decompositionSummary}` : '',
+    context.memoryContext ? `RELEVANT MEMORY CONTEXT:\n${context.memoryContext}` : '',
+    goalsText ? `TASK GOALS:\n${goalsText}` : '',
+  ].filter(Boolean).join('\n\n');
+
   const planningPrompt: Message[] = [
     {
       role: 'system',
-      content: `You are a task planner. Decompose the user's request into a sequence of steps.
+      content: `You are a task planner. Decompose the user's request into goals, milestones, and steps.
 Each step uses one skill. Available skills:
 ${context.skills}
 
 Output ONLY raw JSON in COMPACT format (single line, no newlines, no indentation). No markdown. No code blocks. No backticks. No explanations. No thinking text.
 Start your response with { and end with }
 
-CRITICAL: Use compact JSON format: {"goal":"...","steps":[{...}]} - DO NOT use pretty-printed JSON with newlines.
+CRITICAL: Use compact JSON format: {"goal":"...","goals":[...],"milestones":[...],"steps":[...]} - DO NOT use pretty-printed JSON with newlines.
 
 Return ONLY a JSON object matching this schema:
 {
   "goal": "what the user wants",
+  "goals": [
+    {
+      "id": "goal_1",
+      "sourceUnitIds": ["unit_1"],
+      "description": "goal description"
+    }
+  ],
+  "milestones": [
+    {
+      "id": "milestone_1",
+      "goalIds": ["goal_1"],
+      "title": "meaningful checkpoint title",
+      "description": "what will be true when this milestone is complete",
+      "completionCriteria": "observable checkpoint",
+      "steps": [
+        {
+          "id": "step1",
+          "description": "what this step does",
+          "skill": "skill_name",
+          "input": { ... skill input params ... },
+          "dependsOn": [],
+          "storeResultAs": "step1_result",
+          "optional": false
+        }
+      ]
+    }
+  ],
   "steps": [
     {
       "id": "step1",
-      "description": "what this step does",
+      "description": "same ordered step list flattened from milestones",
       "skill": "skill_name",
       "input": { ... skill input params ... },
       "dependsOn": [],
@@ -661,6 +833,8 @@ Return ONLY a JSON object matching this schema:
       "optional": false
     }
   ],
+  "complexity": "LOW|MEDIUM|HIGH|MAX",
+  "needsConfirmation": false,
   "estimatedDuration": "30s"
 }
 
@@ -721,6 +895,7 @@ CRITICAL SKILL SELECTION RULES:
 - When writing JS test files use node:assert: import assert from 'node:assert'; assert.strictEqual(fibonacci(1), 1);
 - For test+fix loops: mark run_bash steps as optional: true so the plan continues to fix steps even if tests fail
 - PREFER implement_and_test over manual write→run→fix steps when the task is: write code + run tests + fix failures. This collapses the loop into ONE plan step, freeing the remaining steps for memory_write or other tasks. Do NOT encode write→test→fix as separate plan steps when implement_and_test is available.
+- For "check/debug/fix existing code" tasks, implement_and_test reuses existing workspace files when the provided filename/test_filename already exist. Use the real existing filenames so the skill edits the current artifact instead of generating a fresh one.
 
 implement_and_test input format:
 {
@@ -730,7 +905,7 @@ implement_and_test input format:
   "test_filename": "fibonacci.test.js",
   "max_attempts": 3
 }
-This skill handles the retry loop internally and writes a HOW.PR entry on success.
+This skill handles the retry loop internally, repairs both implementation and tests when needed, reuses existing files when present, and writes a HOW.PR entry on success.
 - NEVER use file_writer to "save" information unless user explicitly says "save to file" or names a file
 
 Rules:
@@ -739,6 +914,10 @@ Rules:
 - Use "storeResultAs" to name outputs that later steps reference via {{stepN_result}} in their input
 - Mark non-critical steps as "optional": true
 - If the task involves creating memory, include a memory_write step
+- Every plan MUST include milestones
+- LOW complexity gets exactly one milestone
+- MEDIUM/HIGH/MAX complexity must use multiple meaningful milestones when more than two steps are needed
+- Milestones are checkpoints in the world, not just arbitrary step buckets
 
 ARCHITECTURE RULES:
 - If the user asks to use memory (e.g. "from memory", "use everything you know about me"), step 1 MUST be memory_read.
@@ -846,7 +1025,9 @@ WEB BROWSING RULES (NEVER BREAK THESE):
 - web_fetch loads pages and returns links; run_bash+curl downloads files
 - curl command MUST single-quote the URL: curl -L -o file '{{download_url}}'
 - Use -L flag with curl to follow redirects
-- url_extract output is a single clean URL string — use it directly in next step`,
+- url_extract output is a single clean URL string — use it directly in next step
+
+${planningContextSections}`,
     },
     { role: 'user', content: userMessageWithProcedure },
   ];
@@ -907,10 +1088,21 @@ WEB BROWSING RULES (NEVER BREAK THESE):
     }
 
     try {
-      const raw = JSON.parse(sanitized);
+      const raw = JSON.parse(sanitized) as Record<string, unknown>;
       // Parse without max constraint, then enforce 8-step limit
-      if (raw.goal && Array.isArray(raw.steps) && raw.steps.length > 0) {
-        const trimmed = { ...raw, steps: raw.steps.slice(0, 8) };
+      if (
+        raw.goal &&
+        (
+          (Array.isArray(raw.steps) && raw.steps.length > 0) ||
+          (Array.isArray(raw.milestones) && raw.milestones.length > 0)
+        )
+      ) {
+        const normalized = normalizePlanPayload(raw, message, context);
+        if (!normalized) {
+          retryFeedback = 'Your plan must include at least one valid step. Return corrected JSON only.';
+          continue;
+        }
+        const trimmed = { ...normalized, steps: normalized.steps.slice(0, 8) };
 
         // DEBUG_DEEP: emit the full accepted plan JSON
         if (process.env.DEBUG_DEEP === 'true') {
@@ -943,6 +1135,10 @@ WEB BROWSING RULES (NEVER BREAK THESE):
           const plan: TaskPlan = {
             goal: result.data.goal,
             steps: result.data.steps,
+            goals: result.data.goals,
+            milestones: result.data.milestones,
+            complexity: result.data.complexity,
+            needsConfirmation: result.data.needsConfirmation,
             estimatedDuration: result.data.estimatedDuration,
             createdAt: new Date().toISOString(),
           };

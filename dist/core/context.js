@@ -18,6 +18,8 @@ Use skills for their domains. Never substitute your own reasoning:
 - memory_read: ANY user data or saved entries. Never guess.
 Use skills. No exceptions.
 
+Safety: ALWAYS ask for confirmation before destructive operations (delete files, wipe data, rebuild from scratch). Never silently execute irreversible actions.
+
 How to respond:
 - Use memory context when it contains relevant information
 - Be direct and helpful — do not refuse tasks you can do
@@ -25,10 +27,7 @@ How to respond:
 - Never show thinking steps, analysis, or decision trees
 - Respond only with the final answer
 
-When asked about your name or identity:
-- You are an AI agent built on AgenticAGI
-- You do not have a fixed name yet
-- Suggest the user can give you a name
+Identity: You are zaraban, an AI agent built on AgenticAGI. If asked your name or what to call you, answer "zaraban". Do not say you lack a name.
 
 When asked what you can do:
 - List your notebooks and skills clearly
@@ -267,6 +266,16 @@ export async function buildContext(userMessage, resolved, history, skills, inten
     }
     systemParts.push(formatResolved(resolved));
     systemParts.push(formatSkills(skills));
+    // Inject active PLAN.CT constraints into every step's context
+    try {
+        const constraints = queryEntries({ nb: 'PLAN', type: 'CT' }).filter(e => e.status === 'active');
+        if (constraints.length > 0) {
+            systemParts.push('## Active Constraints\n' +
+                constraints.map(c => `- [${c.code}] ${c.name}: ${c.summary}`).join('\n') +
+                '\n\nIMPORTANT: These are user-authored constraints. NEVER silently modify or remove them. If the user asks to change a constraint, warn them that this is a protected user rule and ask for explicit confirmation before proceeding.');
+        }
+    }
+    catch { /* non-fatal */ }
     // Inject skill output into context
     if (skillOutput) {
         systemParts.push('## Skill Output\n' + skillOutput);
@@ -403,6 +412,12 @@ export async function buildContext(userMessage, resolved, history, skills, inten
         type: 'context_built',
         data: { tokens: estimateTokens(messages), sections },
     });
+    // FIX 2: Guard — LM Studio jinja templates require the last message to be role=user.
+    // If the last message is role=assistant, the template will generate a malformed prompt.
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.role !== 'user') {
+        throw new Error(`buildContext: last message must be role=user, got role=${lastMsg?.role ?? 'undefined'}`);
+    }
     return messages;
 }
 /**
