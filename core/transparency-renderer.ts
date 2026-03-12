@@ -17,18 +17,6 @@ const c = (color: keyof typeof C, text: string) => `${C[color]}${text}${C.reset}
 
 function render(event: TransparencyEvent): string {
   switch (event.type) {
-    case 'complexity': {
-      const icon = event.data.isComplex ? c('red', '● COMPLEX') : c('green', '● SIMPLE');
-      return (
-        c('yellow', '\n┌─ COMPLEXITY ') +
-        icon +
-        `\n│  reason: ${event.data.reason}` +
-        `\n│  steps:  ${event.data.estimatedSteps}` +
-        `\n│  skills: ${event.data.requiresSkills?.join(', ') || '—'}` +
-        c('yellow', '\n└─────────────────')
-      );
-    }
-
     case 'plan': {
       const milestones = (event.data.milestones ?? [])
         .map((milestone: any, i: number) => {

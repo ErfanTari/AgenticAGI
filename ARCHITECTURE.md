@@ -164,7 +164,7 @@ Each file has YAML frontmatter (`code`, `nb`, `type`, `name`, `status`, `updated
 - `heartbeat_queue` — notifications generated during background scans
 - `settings` — key/value store (e.g., `embedding_model` for migration detection)
 
-**Write order** (`core/memory/write.ts`): SQLite transaction FIRST, file write SECOND. The index is authoritative — if the file write fails, the row exists and can be repaired. Never the reverse.
+**Write order** (`core/memory/write.ts`): File write FIRST, SQLite transaction SECOND. If the file write fails, SQLite is never touched (no partial commit). If SQLite fails after the file write, the file is cleaned up. Files are the canonical store — SQLite is rebuilt from disk on bootstrap.
 
 ### 5d. Create / Upsert Flow
 

@@ -55,17 +55,7 @@ You can use the platform **without any LLM** for testing — just pass a mock ha
 pnpm test
 ```
 
-This runs all 226 tests across 7 phases:
-
-| Phase | File | Tests | What it covers |
-|-------|------|------:|----------------|
-| 1 | `tests/phase1/memory.test.ts` | 15 | SQLite, code generation, markdown files |
-| 2 | `tests/phase2/relationship.test.ts` | 17 | Relationship graph queries |
-| 3 | `tests/phase3/agent.test.ts` | 45 | Intent classification, agent loop, context |
-| 4 | `tests/phase4/search.test.ts` | 35 | BM25, embeddings, hybrid search |
-| 5 | `tests/phase5/heartbeat.test.ts` | 27 | Background checks, notifications |
-| 6 | `tests/phase6/skills.test.ts` | 63 | Calculator, file_reader, web_search |
-| 7 | `tests/phase7/*.test.ts` | 24 | ReAct retry, Zod schemas, planning |
+This runs all tests across phases 1–14. Current baseline: 701 tests.
 
 ### Run a single phase
 
@@ -81,9 +71,27 @@ pnpm test:watch
 
 ---
 
-## 3. Using the Agent Programmatically
+## 3. Running the UI
 
-There is no CLI entry point yet — you interact with the agent by importing its functions. Create a script or use Node's REPL.
+The primary interface is the web UI:
+
+```bash
+pnpm ui
+```
+
+This starts the UI server and opens the chat interface in your browser.
+
+Additional UI commands:
+```bash
+pnpm ui:open   # Open the UI in browser without restarting
+pnpm ui:start  # Start in background
+pnpm ui:status # Check if running
+pnpm ui:stop   # Stop background server
+```
+
+## 4. Using the Agent Programmatically
+
+You can also interact with the agent by importing its functions directly.
 
 ### Quick start script
 
@@ -131,14 +139,14 @@ main().catch(console.error);
 Run it:
 
 ```bash
-npx tsx try.ts
+pnpm exec tsx try.ts
 ```
 
 > **Note:** Memory write and general queries call the LLM. If no LLM is configured, they will fail gracefully. Greetings, calculator, and file_reader work without any LLM.
 
 ---
 
-## 4. Using a Mock LLM (No Server Needed)
+## 5. Using a Mock LLM (No Server Needed)
 
 You can pass a `llmHandler` option to `processMessage` to avoid needing a real LLM:
 
@@ -190,7 +198,7 @@ main().catch(console.error);
 
 ---
 
-## 5. Testing the Phase 7 Features
+## 6. Testing the Phase 7 Features
 
 ### ReAct retry loop
 
@@ -276,7 +284,7 @@ console.log(drift?.message); // "1 active plan(s) may not align with North Star 
 
 ---
 
-## 6. What Works Without an LLM
+## 7. What Works Without an LLM
 
 These features work completely offline, no LLM server needed:
 
@@ -303,7 +311,7 @@ Features that **require** an LLM (or mock handler):
 
 ---
 
-## 7. Project Layout at a Glance
+## 8. Project Layout at a Glance
 
 ```
 memory/           ← Markdown files organized by notebook (WHO/, WHAT/, etc.)
@@ -323,7 +331,7 @@ tests/
 
 ---
 
-## 8. Common Workflows
+## 9. Common Workflows
 
 **"I want to add a new skill"**
 1. Create `core/skills/tools/my_skill.ts` implementing `MCPSkill`

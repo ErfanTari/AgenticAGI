@@ -1,4 +1,3 @@
-import type { ComplexityResult } from './planner.js';
 import type { TaskPlan, TaskStep } from './schemas.js';
 import type { SkillResult } from './skills/types.js';
 import type { DecompositionResult, Message, DecomposedUnit, UnitMemoryResult } from './types.js';
@@ -6,7 +5,6 @@ import type { DecompositionResult, Message, DecomposedUnit, UnitMemoryResult } f
 export type TransparencyEvent =
   | { type: 'decomposition'; data: DecompositionResult }
   | { type: 'unit_memory_search'; data: { unit: DecomposedUnit; result: UnitMemoryResult } }
-  | { type: 'complexity'; data: ComplexityResult }
   | { type: 'plan'; data: TaskPlan }
   | { type: 'step_start'; data: { step: TaskStep } }
   | {

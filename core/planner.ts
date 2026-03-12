@@ -65,13 +65,6 @@ export async function assessComplexity(
 
 // --- Complexity Detection (Priority 2) ---
 
-export interface ComplexityResult {
-  isComplex: boolean;
-  reason: string;
-  estimatedSteps: number;
-  requiresSkills: string[];
-}
-
 // Heuristic regex patterns for multi-step detection
 const COMPLEXITY_SIGNALS = {
   multiStep: /\b(then|after that|next|finally|first|second|and then|step \d|followed by)\b/i,
@@ -148,87 +141,6 @@ function countHeuristicSignals(message: string): { count: number; signals: strin
   if (COMPLEXITY_SIGNALS.saveMultiple.test(message)) signals.push('saveMultiple');
 
   return { count: signals.length, signals, skills };
-}
-
-export async function isComplexTask(
-  message: string,
-  _classification: Classification,
-  llmHandler?: LLMHandler,
-): Promise<ComplexityResult> {
-  const { count, signals, skills } = countHeuristicSignals(message);
-
-  function emitAndReturn(result: ComplexityResult): ComplexityResult {
-    transparency.emit({ type: 'complexity', data: result });
-    return result;
-  }
-
-  // Fast path: 2+ signals → complex
-  if (count >= 2) {
-    return emitAndReturn({
-      isComplex: true,
-      reason: `Heuristic: ${signals.join(', ')}`,
-      estimatedSteps: Math.max(2, skills.length + 1),
-      requiresSkills: skills,
-    });
-  }
-
-  // Fast path: 0 signals and short message → simple
-  if (count === 0 && message.length < 100) {
-    return emitAndReturn({
-      isComplex: false,
-      reason: 'Short message, no complexity signals',
-      estimatedSteps: 1,
-      requiresSkills: skills,
-    });
-  }
-
-  // Ambiguous: 1 signal or long message with 0 signals → ask LLM
-  if (llmHandler) {
-    try {
-      const prompt: Message[] = [
-        {
-          role: 'system',
-          content: `You are a task complexity analyzer. Given a user message, determine if it requires multiple steps to complete. Return ONLY a JSON object: {"isComplex": true/false, "reason": "brief explanation", "estimatedSteps": N, "requiresSkills": ["skill1"]}`,
-        },
-        { role: 'user', content: message },
-      ];
-      const response = await llmHandler(prompt, { maxTokens: 200 });
-      // BUG 4 Fix B: sanitize thinking tags before JSON extraction
-      const sanitized = response.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-      if (!sanitized) {
-        // LLM returned nothing after sanitization — default to complex for safety
-        if (process.env.DEBUG_PLANNER === 'true') {
-          console.debug('[planner] LLM complexity check empty after sanitization, defaulting to complex');
-        }
-        return emitAndReturn({
-          isComplex: true,
-          reason: 'LLM response empty after sanitization, defaulting to complex',
-          estimatedSteps: 3,
-          requiresSkills: skills,
-        });
-      }
-      const jsonMatch = sanitized.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return emitAndReturn({
-          isComplex: Boolean(parsed.isComplex),
-          reason: String(parsed.reason ?? 'LLM assessment'),
-          estimatedSteps: Number(parsed.estimatedSteps ?? 1),
-          requiresSkills: Array.isArray(parsed.requiresSkills) ? parsed.requiresSkills : skills,
-        });
-      }
-    } catch {
-      // LLM failed — fall back to heuristic
-    }
-  }
-
-  // Fallback: 1 signal → borderline complex
-  return emitAndReturn({
-    isComplex: count >= 1,
-    reason: count >= 1 ? `Borderline: ${signals.join(', ')}` : 'No signals detected',
-    estimatedSteps: count >= 1 ? 2 : 1,
-    requiresSkills: skills,
-  });
 }
 
 // --- Task Decomposer (Priority 3) ---
@@ -1161,7 +1073,8 @@ ${planningContextSections}`,
 }
 
 /**
- * Verify boolean assertions about a plan before execution.
+ * Post-plan assertion checker. Used in tests only.
+ * Not called during runtime execution.
  */
 export async function verifyPlanAssertions(
   plan: TaskPlan,
