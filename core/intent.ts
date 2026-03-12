@@ -1,5 +1,6 @@
 import type { Classification, Intent } from './types.js';
 import { getSkillDescriptions } from './skills/registry.js';
+import { localDatePlusDays } from './utils/date.js';
 
 const CODE_REGEX = /\b([A-Z]+\.[A-Z]+-\d{6,})\b/g;
 
@@ -302,16 +303,12 @@ function extractDueDate(message: string): string | undefined {
 
   // "due tomorrow" or "due by tomorrow"
   if (/\bdue\s+(?:by\s+)?tomorrow\b/i.test(message)) {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
+    return localDatePlusDays(1);
   }
 
   // "due next week" or "due by next week"
   if (/\bdue\s+(?:by\s+)?next\s+week\b/i.test(message)) {
-    const d = new Date();
-    d.setDate(d.getDate() + 7);
-    return d.toISOString().slice(0, 10);
+    return localDatePlusDays(7);
   }
 
   return undefined;

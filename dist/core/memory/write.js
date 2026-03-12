@@ -7,6 +7,7 @@ import { indexContent } from './fts.js';
 import { chunkMarkdown } from './chunks.js';
 import { storeChunks, fetchEmbeddings } from './embeddings.js';
 import { scheduleMemoryCommit } from './versioning.js';
+import { localDateString } from '../utils/date.js';
 /**
  * FIX 3 — Atomic file write using a .tmp intermediate file.
  * Writes to filePath.tmp first, then atomically renames to filePath.
@@ -42,7 +43,7 @@ function resolveEntryPath(nb, type, code, name) {
     return path.join(PATHS.memory, subfolder, filename);
 }
 function buildFrontmatter(entry) {
-    const today = entry.updated ?? new Date().toISOString().slice(0, 10);
+    const today = entry.updated ?? localDateString();
     const lines = [
         '---',
         `code: ${entry.code}`,
@@ -77,7 +78,7 @@ export function createEntry(input) {
     const d = getDb();
     // Step 1: Generate code (atomic counter increment in its own implicit transaction)
     const code = generateCode(input.nb, input.type);
-    const updated = new Date().toISOString().slice(0, 10);
+    const updated = localDateString();
     const entryData = {
         code,
         nb: input.nb,
@@ -144,7 +145,7 @@ export function upsertEntry(input) {
   `).get(input.nb, input.type, input.name);
     if (existing) {
         const entry = getEntryByCode(existing.code);
-        const updated = new Date().toISOString().slice(0, 10);
+        const updated = localDateString();
         // BUG-C4 fix: if the Markdown file is missing, treat as a create operation —
         // write the new file and update the SQLite row with the new path/content.
         if (entry && !fs.existsSync(entry.path)) {
@@ -248,7 +249,7 @@ export function updateEntry(code, updates) {
     const entry = getEntryByCode(code);
     if (!entry)
         throw new Error(`Entry not found: ${code}`);
-    const updated = new Date().toISOString().slice(0, 10);
+    const updated = localDateString();
     const newStatus = updates.status ?? entry.status;
     const newSummary = updates.summary ?? entry.summary;
     const d = getDb();

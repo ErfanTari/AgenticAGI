@@ -78,7 +78,6 @@ export function fetchOwnerPersona() {
 export function _resetPersonaCache() {
     _personaCache = null;
 }
-const SUMMARY_INTENTS = new Set(['summary', 'overview']);
 const SUMMARY_PATTERNS = [
     /\bwhat\s+do\s+you\s+know\b/i,
     /\bshow\s+me\s+a\s+summary\b/i,
@@ -169,9 +168,7 @@ export function getIndexSummary() {
         return 'Memory is empty.';
     return 'Memory index: ' + rows.map(r => `${r.nb}: ${r.count} entries`).join(', ');
 }
-function needsSummary(intent, userMessage) {
-    if (SUMMARY_INTENTS.has(intent))
-        return true;
+function needsSummary(_intent, userMessage) {
     if (userMessage) {
         return SUMMARY_PATTERNS.some(p => p.test(userMessage));
     }

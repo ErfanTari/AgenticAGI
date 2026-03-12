@@ -1,4 +1,5 @@
 import { getSkillDescriptions } from './skills/registry.js';
+import { localDatePlusDays } from './utils/date.js';
 const CODE_REGEX = /\b([A-Z]+\.[A-Z]+-\d{6,})\b/g;
 const GREETING_REGEX = /^\s*(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy|greetings)\b/i;
 const ASSISTANT_IDENTITY_PATTERNS = [
@@ -276,15 +277,11 @@ function extractDueDate(message) {
         return isoMatch[1];
     // "due tomorrow" or "due by tomorrow"
     if (/\bdue\s+(?:by\s+)?tomorrow\b/i.test(message)) {
-        const d = new Date();
-        d.setDate(d.getDate() + 1);
-        return d.toISOString().slice(0, 10);
+        return localDatePlusDays(1);
     }
     // "due next week" or "due by next week"
     if (/\bdue\s+(?:by\s+)?next\s+week\b/i.test(message)) {
-        const d = new Date();
-        d.setDate(d.getDate() + 7);
-        return d.toISOString().slice(0, 10);
+        return localDatePlusDays(7);
     }
     return undefined;
 }
@@ -451,19 +448,10 @@ export function classifyIntent(message) {
     if (matchesAny(message, MEETING_PATTERNS)) {
         return { intent: 'meeting', codes, status, name, relation, due_date };
     }
-    // Priority 0: Natural language ownership without explicit codes
     const naturalRelation = extractRelation(message);
-    const subjectIsUser = /\b(i|me|my|erfan|tari)\b/i.test(message);
-    const hasRelationVerb = naturalRelation !== undefined;
-    if (hasRelationVerb && subjectIsUser && !matchesAny(message, WRITE_PATTERNS) && !matchesAny(message, ASSISTANT_IDENTITY_PATTERNS)) {
-        intent = 'relationship_write';
-        relation = naturalRelation;
-        const detected = detectNotebook(message);
-        nb = detected.nb;
-        type = detected.type;
-    }
     // Priority 1: Contains a valid code
-    else if (codes.length > 0 && relation) {
+    if (codes.length > 0 && (relation ?? naturalRelation)) {
+        relation = relation ?? naturalRelation;
         intent = 'relationship_query';
         const detected = detectNotebook(message);
         nb = detected.nb;

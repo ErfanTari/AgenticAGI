@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { IndexEntry } from './memory/types.js';
+import { localDateString, localDatePlusDays } from './utils/date.js';
 import { getDb, getSettingValue, setSettingValue } from './memory/index.js';
 import { simpleGit } from 'simple-git';
 import { PATHS } from '../config/agent.config.js';
@@ -41,13 +42,11 @@ async function runHeartbeatSafe(): Promise<void> {
 // --- Helpers ---
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDateString();
 }
 
 function daysAgo(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return localDatePlusDays(-n);
 }
 
 function queryStale(nb: string, type: string, status: string, cutoff: string): IndexEntry[] {
@@ -61,10 +60,8 @@ function queryStale(nb: string, type: string, status: string, cutoff: string): I
 
 export function checkDeadlines(): Notification | null {
   // FIX 4: Only flag deadlines within the 24h window [today, tomorrow]
-  const todayStr = new Date().toISOString().split('T')[0];
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+  const todayStr = localDateString();
+  const tomorrowStr = localDatePlusDays(1);
 
   const d = getDb();
   const entries = d.prepare(
@@ -80,7 +77,7 @@ export function checkDeadlines(): Notification | null {
 }
 
 export function checkOverdueTodos(): Notification | null {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateString();
   const d = getDb();
 
   // Check NOW.TD todos

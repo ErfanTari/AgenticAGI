@@ -23,12 +23,12 @@
     "gpt-tokenizer": "^3.4.0",
     "mathjs": "^15.1.1",
     "simple-git": "^3.32.3",
+    "typescript": "^5.7.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22.0.0",
-    "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
   "pnpm": {

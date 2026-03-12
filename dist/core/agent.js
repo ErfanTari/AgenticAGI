@@ -1,3 +1,4 @@
+import { localDatePlusDays } from './utils/date.js';
 import { resolveQuery } from './resolver.js';
 import { buildContext } from './context.js';
 import { callLLM, stripThinkingTags } from './llm.js';
@@ -163,14 +164,10 @@ function extractDueDate(message) {
     if (isoMatch)
         return isoMatch[1];
     if (/\bdue\s+(?:by\s+)?tomorrow\b/i.test(message)) {
-        const date = new Date();
-        date.setDate(date.getDate() + 1);
-        return date.toISOString().slice(0, 10);
+        return localDatePlusDays(1);
     }
     if (/\bdue\s+(?:by\s+)?next\s+week\b/i.test(message)) {
-        const date = new Date();
-        date.setDate(date.getDate() + 7);
-        return date.toISOString().slice(0, 10);
+        return localDatePlusDays(7);
     }
     return undefined;
 }

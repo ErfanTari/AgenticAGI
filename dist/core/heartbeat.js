@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { localDateString, localDatePlusDays } from './utils/date.js';
 import { getDb, getSettingValue, setSettingValue } from './memory/index.js';
 import { simpleGit } from 'simple-git';
 import { PATHS } from '../config/agent.config.js';
@@ -30,12 +31,10 @@ async function runHeartbeatSafe() {
 }
 // --- Helpers ---
 function today() {
-    return new Date().toISOString().slice(0, 10);
+    return localDateString();
 }
 function daysAgo(n) {
-    const d = new Date();
-    d.setDate(d.getDate() - n);
-    return d.toISOString().slice(0, 10);
+    return localDatePlusDays(-n);
 }
 function queryStale(nb, type, status, cutoff) {
     const d = getDb();
@@ -44,10 +43,8 @@ function queryStale(nb, type, status, cutoff) {
 // --- Individual checks ---
 export function checkDeadlines() {
     // FIX 4: Only flag deadlines within the 24h window [today, tomorrow]
-    const todayStr = new Date().toISOString().split('T')[0];
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    const todayStr = localDateString();
+    const tomorrowStr = localDatePlusDays(1);
     const d = getDb();
     const entries = d.prepare('SELECT * FROM index_entries WHERE nb = ? AND status = ? AND due_date >= ? AND due_date <= ?').all('WHEN', 'upcoming', todayStr, tomorrowStr);
     if (entries.length === 0)
@@ -59,7 +56,7 @@ export function checkDeadlines() {
     };
 }
 export function checkOverdueTodos() {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localDateString();
     const d = getDb();
     // Check NOW.TD todos
     const todoEntries = d.prepare('SELECT * FROM index_entries WHERE nb = ? AND type = ? AND status = ? AND due_date < ?').all('NOW', 'TD', 'open', todayStr);
