@@ -32,6 +32,7 @@ const rl = readline.createInterface({
 console.log('Agent ready. Type a message and press Enter. Type "quit" to exit.\n');
 
 // Check for active PLAN.EX on startup — surface resumable execution plans
+// Phase 15 Conflict 2: also load associated working memory for context
 try {
   const { loadActivePlanEX } = await import('./core/memory/plan-ex.js');
   const activePlan = loadActivePlanEX();
@@ -42,6 +43,19 @@ try {
       ? `Paused: ${activePlan.abort_reason ?? milestoneName}`
       : `In progress: ${milestoneName}`;
     console.log(`📋 Active execution plan found: "${activePlan.task_name}"\n   ${statusLine}\n   Continue? (just say "continue" or proceed with other work)\n`);
+
+    // Load associated working memory if a project code is available
+    try {
+      const { loadWorkingMemory } = await import('./core/memory/working-memory.js');
+      const wm = activePlan.project_code
+        ? await loadWorkingMemory(activePlan.project_code)
+        : null;
+      if (wm) {
+        const lastStep = wm.stepLog.at(-1);
+        const lastStepSummary = lastStep ? `Last step: ${lastStep.summary}` : '';
+        console.log(`   Resuming from: ${wm.goal}${lastStepSummary ? `\n   ${lastStepSummary}` : ''}\n`);
+      }
+    } catch { /* working memory load is advisory */ }
   }
 } catch { /* startup check is advisory */ }
 

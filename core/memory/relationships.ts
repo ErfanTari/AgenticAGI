@@ -1,5 +1,7 @@
 import { getDb, getEntryByCode } from './index.js';
 import type { Relationship, AddRelationshipInput, TraversalNode } from './types.js';
+import { localDateString } from '../utils/date.js';
+import { invalidateProjectBrain } from './project.js';
 
 export function addRelationship(input: AddRelationshipInput): Relationship {
   const d = getDb();
@@ -12,7 +14,7 @@ export function addRelationship(input: AddRelationshipInput): Relationship {
     throw new Error(`Entry not found: ${input.to_code}`);
   }
 
-  const created = new Date().toISOString().slice(0, 10);
+  const created = localDateString();
   const row: Relationship = {
     from_code: input.from_code,
     relation: input.relation,
@@ -25,6 +27,23 @@ export function addRelationship(input: AddRelationshipInput): Relationship {
     INSERT INTO relationships (from_code, relation, to_code, note, created)
     VALUES (@from_code, @relation, @to_code, @note, @created)
   `).run(row);
+
+  // FIX-C5: Invalidate project brain cache when a relationship touches PLAN.PJ
+  try {
+    if (input.from_code.startsWith('PLAN.PJ')) invalidateProjectBrain(input.from_code, d);
+    if (input.to_code.startsWith('PLAN.PJ')) invalidateProjectBrain(input.to_code, d);
+    // Also check if either endpoint is linked to a PLAN.PJ
+    const linkedProjects = d.prepare(`
+      SELECT DISTINCT CASE WHEN from_code LIKE 'PLAN.PJ%' THEN from_code ELSE to_code END as pj_code
+      FROM relationships
+      WHERE (from_code = ? OR to_code = ?) AND (from_code LIKE 'PLAN.PJ%' OR to_code LIKE 'PLAN.PJ%')
+    `).all(input.from_code, input.from_code) as Array<{ pj_code: string }>;
+    for (const pjRow of linkedProjects) {
+      if (pjRow.pj_code) invalidateProjectBrain(pjRow.pj_code, d);
+    }
+  } catch {
+    // Project brain invalidation is best-effort
+  }
 
   return row;
 }

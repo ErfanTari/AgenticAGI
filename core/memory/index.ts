@@ -316,6 +316,18 @@ export function initDatabase(dbPath?: string): Database.Database {
     `);
   } catch { /* indexes may already exist */ }
 
+  // Phase 15 migrations: add new columns (idempotent — catches "column already exists")
+  const PHASE15_COLUMNS = [
+    'ALTER TABLE index_entries ADD COLUMN ttl_days INTEGER',
+    'ALTER TABLE index_entries ADD COLUMN fingerprint TEXT',
+    'ALTER TABLE index_entries ADD COLUMN project_brain_cache TEXT',
+    'ALTER TABLE relationships ADD COLUMN strength REAL DEFAULT 1.0',
+    'ALTER TABLE relationships ADD COLUMN last_active TEXT',
+  ];
+  for (const sql of PHASE15_COLUMNS) {
+    try { db.exec(sql); } catch { /* column already exists */ }
+  }
+
   // Phase 4: Initialize FTS5 and chunks tables
   initFTS();
   initChunksTable();

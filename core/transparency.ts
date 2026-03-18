@@ -29,7 +29,20 @@ export type TransparencyEvent =
   | { type: 'project_transition'; data: { code: string; from: string; to: string } }
   | { type: 'saga_rollback'; data: { step: string; reason: string } }
   | { type: 'meeting_complete'; data: { updatesWritten: string[] } }
-  | { type: 'linker_pass'; data: { linked: number } };
+  | { type: 'linker_pass'; data: { linked: number } }
+  | { type: 'intake'; data: { summary: string; signals: Record<string, unknown>; resolvedCodes: string[] } }
+  | { type: 'project_brain'; data: { hit: boolean; projectCode: string | null | undefined } }
+  | { type: 'working_memory_created'; data: { taskId: string; projectCode: string | null } }
+  | { type: 'working_memory_loaded'; data: { taskId: string; projectCode: string | null } }
+  | { type: 'working_memory_updated'; data: { taskId: string; event: string } }
+  | { type: 'working_memory_archived'; data: { taskId: string } }
+  | { type: 'session_cache_hit'; data: { code: string } }
+  | { type: 'session_cache_miss'; data: { code: string } }
+  | { type: 'session_cache_store'; data: { code: string } }
+  | { type: 'project_brain_hit'; data: { projectCode: string } }
+  | { type: 'project_brain_miss'; data: { projectCode: string } }
+  | { type: 'project_brain_rebuilt'; data: { projectCode: string } }
+  | { type: 'project_brain_invalidated'; data: { projectCode: string } };
 
 type TransparencyHandler = (event: TransparencyEvent) => void;
 

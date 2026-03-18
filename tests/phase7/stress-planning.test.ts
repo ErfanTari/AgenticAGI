@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { localDatePlusDays } from '../../core/utils/date.ts';
 import { classifyIntent } from '../../core/intent.js';
 import { processMessage } from '../../core/agent.js';
 import {
@@ -181,9 +182,7 @@ describe('Group 3: Vision + Planning', () => {
   // 3F — "due tomorrow" parsed correctly
   it('3F: "plan to review architecture due tomorrow" has correct due_date', () => {
     const c = classifyIntent('plan to review architecture due tomorrow');
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const expected = tomorrow.toISOString().slice(0, 10);
+    const expected = localDatePlusDays(1);
     expect(c.due_date).toBe(expected);
   });
 

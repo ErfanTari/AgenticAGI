@@ -4,6 +4,8 @@
 import { createEntry } from './write.js';
 import { queryEntries, getEntryByCode, getDb } from './index.js';
 import type { LLMHandler } from '../types.js';
+import { localDateString } from '../utils/date.js';
+import { stripThinkingTags } from '../llm.js';
 
 export interface EpisodicEvent {
   code: string;
@@ -72,9 +74,9 @@ export async function writeReflection(
       },
     ];
 
-    reflectionText = await llmHandler(messages, { maxTokens: 200 });
-    // Strip thinking tags
-    reflectionText = reflectionText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    // Double-strip: first pass removes the outermost think block; second pass catches residual headers
+    const raw = await llmHandler(messages, { maxTokens: 200 });
+    reflectionText = stripThinkingTags(stripThinkingTags(raw));
   } catch {
     reflectionText = `Completed task "${event.task_name}" with outcome: ${event.outcome}.`;
   }
@@ -89,10 +91,48 @@ ${taskCode}
 ${event.session_id}
 `;
 
+  const sessionSuffix = event.session_id ? ` [${event.session_id.slice(11, 19)}]` : '';
   const entry = createEntry({
     nb: 'WHEN',
     type: 'RF',
-    name: `Reflection: ${event.task_name.slice(0, 50)}`,
+    name: `Reflection: ${event.task_name.slice(0, 50)}${sessionSuffix}`,
+    status: 'active',
+    summary: reflectionText.slice(0, 100),
+    body,
+  });
+
+  return entry.code;
+}
+
+/**
+ * Write a WHEN.RF reflection synchronously (no LLM call).
+ * Used in the compatibility execution path where the reply is already returned
+ * and we can't wait for an LLM-based reflection.
+ */
+export function writeReflectionSync(
+  taskCode: string,
+  event: Omit<EpisodicEvent, 'code'>,
+): string {
+  const reflectionText = `Task "${event.task_name}" completed with outcome: ${event.outcome}. Skills: ${event.skill_sequence.join(' → ')}.`;
+  const body = `## Reflection on ${taskCode}
+${reflectionText}
+
+## Original Trigger
+${event.trigger}
+
+## Event Reference
+${taskCode}
+
+## Session
+${event.session_id}
+`;
+
+  // Include session_id suffix to prevent unique constraint collisions across runs
+  const sessionSuffix = event.session_id ? ` [${event.session_id.slice(11, 19)}]` : '';
+  const entry = createEntry({
+    nb: 'WHEN',
+    type: 'RF',
+    name: `Reflection: ${event.task_name.slice(0, 50)}${sessionSuffix}`,
     status: 'active',
     summary: reflectionText.slice(0, 100),
     body,
@@ -126,8 +166,7 @@ export async function compactEpisodicHistory(llmHandler: LLMHandler): Promise<vo
         },
         { role: 'user' as const, content: summaryText },
       ];
-      compacted = await llmHandler(messages, { maxTokens: 300 });
-      compacted = compacted.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      compacted = stripThinkingTags(await llmHandler(messages, { maxTokens: 300 }));
     } catch {
       compacted = summaryText;
     }
@@ -135,7 +174,7 @@ export async function compactEpisodicHistory(llmHandler: LLMHandler): Promise<vo
     const hxEntry = createEntry({
       nb: 'WHEN',
       type: 'HX',
-      name: `History: ${new Date().toISOString().slice(0, 10)}`,
+      name: `History: ${localDateString()}`,
       status: 'active',
       summary: 'Compacted episodic history',
       body: compacted,
@@ -183,7 +222,7 @@ export async function detectMacroSkills(llmHandler: LLMHandler): Promise<void> {
         { role: 'user' as const, content: patterns },
       ];
       const response = await llmHandler(messages, { maxTokens: 200 });
-      const cleaned = response.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      const cleaned = stripThinkingTags(response);
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);

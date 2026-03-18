@@ -8,6 +8,146 @@ import { chunkMarkdown } from './chunks.js';
 import { storeChunks, fetchEmbeddings } from './embeddings.js';
 import { scheduleMemoryCommit } from './versioning.js';
 import { localDateString } from '../utils/date.js';
+import { sessionCache } from './session-cache.js';
+function extractFingerprint(text) {
+    const fp = {};
+    const emailMatch = text.match(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/);
+    if (emailMatch)
+        fp.email = emailMatch[1].toLowerCase();
+    const phoneMatch = text.match(/\b(\+?[\d\s\-().]{7,15})\b/);
+    if (phoneMatch) {
+        const cleaned = phoneMatch[1].replace(/\D/g, '');
+        if (cleaned.length >= 7)
+            fp.phone = cleaned;
+    }
+    const handleMatch = text.match(/@([a-zA-Z0-9_]{3,})\b/);
+    if (handleMatch)
+        fp.handle = handleMatch[1].toLowerCase();
+    return fp;
+}
+function fingerprintKey(fp) {
+    if (fp.email)
+        return `email:${fp.email}`;
+    if (fp.phone)
+        return `phone:${fp.phone}`;
+    if (fp.handle)
+        return `handle:${fp.handle}`;
+    return null;
+}
+/**
+ * Stage 1 — Fingerprint-based deduplication for WHO entries.
+ * Matches on email, phone, or social handle.
+ * Returns the existing code if found, null otherwise.
+ */
+function findByFingerprint(body, summary, nb, type) {
+    const fp = extractFingerprint(`${body}\n${summary}`);
+    const key = fingerprintKey(fp);
+    if (!key)
+        return null;
+    try {
+        const d = getDb();
+        const rows = d.prepare(`
+      SELECT code, fingerprint FROM index_entries
+      WHERE nb = ? AND type = ? AND status != 'archived' AND fingerprint IS NOT NULL
+    `).all(nb, type);
+        for (const row of rows) {
+            try {
+                const storedFp = JSON.parse(row.fingerprint);
+                if (fp.email && storedFp.email === fp.email)
+                    return row.code;
+                if (fp.phone && storedFp.phone === fp.phone)
+                    return row.code;
+                if (fp.handle && storedFp.handle === fp.handle)
+                    return row.code;
+            }
+            catch { /* skip malformed fingerprint */ }
+        }
+    }
+    catch { /* best-effort */ }
+    return null;
+}
+/**
+ * Stage 2 — Fuzzy name match for WHO.CT and WHO.ORG.
+ * Matches: exact, substring, or initials match.
+ * Returns the existing code if found, null otherwise.
+ */
+function findByFuzzyName(name, nb, type) {
+    if (nb !== 'WHO')
+        return null;
+    try {
+        const d = getDb();
+        const lower = name.toLowerCase();
+        const rows = d.prepare(`
+      SELECT code, name FROM index_entries
+      WHERE nb = ? AND type = ? AND status != 'archived'
+    `).all(nb, type);
+        for (const row of rows) {
+            const rowLower = row.name.toLowerCase();
+            // Exact match
+            if (rowLower === lower)
+                return row.code;
+            // Only match multi-word names where one is a prefix of another
+            // e.g. "Sara" matches "Sara Ahmadi" but NOT "Sara123" or "BatchPerson1" vs "BatchPerson10"
+            const rowParts = rowLower.split(/\s+/);
+            const nameParts = lower.split(/\s+/);
+            // Single name vs multi-word full name — only match 2-word full names (e.g. "Sara" → "Sara Ahmadi")
+            // Reject 3+ word names to avoid "Alice" matching "Alice Codex 110031"
+            if (nameParts.length === 1 && rowParts.length > 1) {
+                if (rowParts.length <= 2 && rowParts.includes(lower))
+                    return row.code;
+            }
+            // Multi-word vs single — only match when incoming name is 2 words
+            if (rowParts.length === 1 && nameParts.length > 1) {
+                if (nameParts.length <= 2 && nameParts.includes(rowLower))
+                    return row.code;
+            }
+        }
+    }
+    catch { /* best-effort */ }
+    return null;
+}
+/**
+ * Saves fingerprint data to SQLite row.
+ */
+function saveFingerprint(code, body, summary) {
+    try {
+        const fp = extractFingerprint(`${body}\n${summary}`);
+        const key = fingerprintKey(fp);
+        if (!key)
+            return;
+        const d = getDb();
+        d.prepare('UPDATE index_entries SET fingerprint = ? WHERE code = ?')
+            .run(JSON.stringify(fp), code);
+    }
+    catch { /* best-effort */ }
+}
+/**
+ * Logs a transparency merge event to stderr.
+ */
+function logMergeEvent(newName, existingName, existingCode) {
+    console.log(`[memory] Merged "${newName}" into existing "${existingName}" (${existingCode})`);
+}
+/**
+ * Phase 15 FIX 8: Invalidate project brain cache for any PLAN.PJ entries
+ * that are related to this entry via relationships.
+ */
+function invalidateRelatedProjectBrains(code) {
+    try {
+        const d = getDb();
+        const rows = d.prepare(`SELECT to_code AS brain_code FROM relationships WHERE from_code = ? AND to_code LIKE 'PLAN.PJ%'
+       UNION
+       SELECT from_code AS brain_code FROM relationships WHERE to_code = ? AND from_code LIKE 'PLAN.PJ%'`).all(code, code);
+        if (rows.length === 0)
+            return;
+        // Lazy import to avoid circular deps (project.ts imports write.ts via createEntry)
+        import('./project.js').then(({ invalidateProjectBrain }) => {
+            for (const row of rows) {
+                invalidateProjectBrain(row.brain_code, d);
+            }
+        }).catch(() => { });
+    }
+    catch { /* best-effort */ }
+}
 /**
  * FIX 3 — Atomic file write using a .tmp intermediate file.
  * Writes to filePath.tmp first, then atomically renames to filePath.
@@ -125,6 +265,8 @@ export function createEntry(input) {
     // Git version commit — fire-and-forget, never blocks write
     // BUG-2 fix: log errors to stderr so git commit failures are visible but non-blocking
     scheduleMemoryCommit(`${code}: ${input.name} [agent]`);
+    // Phase 15: update session cache
+    sessionCache.set(entry.code, entry);
     return entry;
 }
 /**
@@ -137,6 +279,43 @@ export function createEntry(input) {
  */
 export function upsertEntry(input) {
     const d = getDb();
+    // Phase 15 Stage 1: Fingerprint-based dedup for WHO entries
+    if (input.nb === 'WHO') {
+        const fpCode = findByFingerprint(input.body, input.summary, input.nb, input.type);
+        if (fpCode) {
+            const fpEntry = getEntryByCode(fpCode);
+            if (fpEntry && fpEntry.name !== input.name) {
+                logMergeEvent(input.name, fpEntry.name, fpCode);
+            }
+            // Fall through to normal upsert with the found code's name
+            // We update the body by appending new info
+            if (fpEntry && fs.existsSync(fpEntry.path)) {
+                const existingContent = fs.readFileSync(fpEntry.path, 'utf-8');
+                const appendedBody = existingContent.trimEnd() + '\n\n## Additional Info\n' + input.body;
+                atomicWriteFile(fpEntry.path, appendedBody);
+            }
+            saveFingerprint(fpCode, input.body, input.summary);
+            return { code: fpCode, created: false };
+        }
+    }
+    // Phase 15 Stage 2: Fuzzy name match for WHO entries
+    if (input.nb === 'WHO' && (input.type === 'CT' || input.type === 'ORG')) {
+        const fuzzyCode = findByFuzzyName(input.name, input.nb, input.type);
+        if (fuzzyCode) {
+            const fuzzyEntry = getEntryByCode(fuzzyCode);
+            if (fuzzyEntry && fuzzyEntry.name !== input.name) {
+                logMergeEvent(input.name, fuzzyEntry.name, fuzzyCode);
+                // Update the existing entry with new info appended
+                if (fs.existsSync(fuzzyEntry.path)) {
+                    const existingContent = fs.readFileSync(fuzzyEntry.path, 'utf-8');
+                    const appendedBody = existingContent.trimEnd() + '\n\n## Additional Info\n' + input.body;
+                    atomicWriteFile(fuzzyEntry.path, appendedBody);
+                }
+                saveFingerprint(fuzzyCode, input.body, input.summary);
+                return { code: fuzzyCode, created: false };
+            }
+        }
+    }
     const existing = d.prepare(`
     SELECT code FROM index_entries
     WHERE nb = ? AND type = ? AND LOWER(name) = LOWER(?)
@@ -240,9 +419,17 @@ export function upsertEntry(input) {
         }
         // Git version commit for update — fire-and-forget
         scheduleMemoryCommit(`${existing.code}: ${input.name} [agent]`);
+        // Phase 15 FIX 8: invalidate project brain cache for related PLAN.PJ entries
+        invalidateRelatedProjectBrains(existing.code);
         return { code: existing.code, created: false };
     }
     const created = createEntry(input);
+    // Phase 15: save fingerprint for WHO entries
+    if (input.nb === 'WHO') {
+        saveFingerprint(created.code, input.body, input.summary);
+    }
+    // Phase 15 FIX 8: invalidate project brain cache for related PLAN.PJ entries
+    invalidateRelatedProjectBrains(created.code);
     return { code: created.code, created: true };
 }
 export function updateEntry(code, updates) {
@@ -263,7 +450,10 @@ export function updateEntry(code, updates) {
             .replace(/^updated: .+$/m, `updated: ${updated}`);
         atomicWriteFile(entry.path, newContent);
     }
-    return { ...entry, status: newStatus, summary: newSummary, updated };
+    const updatedEntry = { ...entry, status: newStatus, summary: newSummary, updated };
+    // Phase 15: update session cache
+    sessionCache.set(code, updatedEntry);
+    return updatedEntry;
 }
 /**
  * Fire-and-forget embedding computation for stored chunks.

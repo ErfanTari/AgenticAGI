@@ -25,10 +25,12 @@ vi.mock('../../core/memory/embeddings.js', () => ({
 }));
 
 import { searchMemoryForUnits } from '../../core/memory/unit-search.js';
+import { sessionCache } from '../../core/memory/session-cache.js';
 
 describe('Phase 13: unit memory search', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionCache.clear();
     mocks.queryEntries.mockReturnValue([]);
     mocks.fetchByCode.mockReturnValue(null);
     mocks.getEntryByCode.mockReturnValue(undefined);

@@ -22,4 +22,5 @@ export declare function checkAMemLinker(): {
     codes: string[];
 };
 export declare function checkVisionAlignment(): Notification | null;
+export declare function checkNowTTL(): Promise<Notification | null>;
 export declare function runHeartbeat(): Promise<HeartbeatResult>;

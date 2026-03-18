@@ -70,7 +70,7 @@ export interface ResolvedMemory {
   relationships: Relationship[];
 }
 
-export type LLMHandler = (messages: Message[], options?: { responseSchema?: Record<string, unknown>; maxTokens?: number }) => Promise<string>;
+export type LLMHandler = (messages: Message[], options?: { responseSchema?: Record<string, unknown>; maxTokens?: number; temperature?: number }) => Promise<string>;
 
 export interface AgentResponse {
   reply: string;

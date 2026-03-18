@@ -5,6 +5,7 @@ import type { LLMHandler, Message } from './types.js';
 import { queryEntries } from './memory/index.js';
 import { upsertEntry } from './memory/write.js';
 import { transparency } from './transparency.js';
+import { localDateString } from './utils/date.js';
 
 export interface MeetingBriefing {
   prompt: string;
@@ -171,7 +172,7 @@ export async function processMeetingResponse(
       const { code } = upsertEntry({
         nb: 'NOW',
         type: 'LOG',
-        name: `Meeting Notes: ${new Date().toISOString().slice(0, 10)}`,
+        name: `Meeting Notes: ${localDateString()}`,
         status: 'active',
         summary: response.slice(0, 80),
         body: response,

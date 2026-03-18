@@ -1,5 +1,7 @@
 import { buildContext } from './context.js';
 import { executePlan, verifyExecution, buildUserReport } from './executor.js';
+import { localDateString } from './utils/date.js';
+import type { WorkingMemory } from './memory/working-memory.js';
 import { stripThinkingTags } from './llm.js';
 import { decomposeTask } from './planner.js';
 import { fetchByCode, hybridSearch, queryEntries, updateEntry, upsertEntry } from './memory/mod.js';
@@ -7,6 +9,7 @@ import { writeReflection } from './memory/episodic.js';
 import { addRelationship, getRelationshipsFrom } from './memory/relationships.js';
 import { getSkillDescriptions } from './skills/registry.js';
 import { runSkill } from './skills/runner.js';
+import { memoryAgent } from './memory/memory-agent.js';
 import type {
   DecomposedUnit,
   LLMHandler,
@@ -57,15 +60,39 @@ function parseDueDate(raw: string): string | undefined {
   const candidate = cleaned.match(/\d{4}/) ? cleaned : `${cleaned}, ${inferredYear}`;
   const parsed = new Date(candidate);
   if (Number.isNaN(parsed.getTime())) return undefined;
-  return parsed.toISOString().slice(0, 10);
+  // FIX-M2: Apply local timezone offset to avoid UTC drift
+  const offset = parsed.getTimezoneOffset();
+  const local = new Date(parsed.getTime() - offset * 60 * 1000);
+  return local.toISOString().slice(0, 10);
+}
+
+function inferRelationLabel(fromNb: string, toNb: string, toType: string, context: string): string {
+  // Person → Project
+  if (fromNb === 'WHO' && (toNb === 'WHAT' || toNb === 'PLAN')) {
+    if (/lead|leading|head|owns|created|started/i.test(context)) return 'owns';
+    if (/review|reviewing|audit/i.test(context)) return 'reviewed';
+    if (/design|designer/i.test(context)) return 'designs';
+    return 'works_on'; // default for person→project
+  }
+  // Person → Organization
+  if (fromNb === 'WHO' && toType === 'ORG') return 'works_for';
+  // Project → Project
+  if (fromNb === 'WHAT' && toNb === 'WHAT') return 'depends_on';
+  return 'refers';
 }
 
 function maybeAddRelationship(fromCode: string, toCode: string, note: string): void {
-  const existing = getRelationshipsFrom(fromCode, 'works_for');
-  if (existing.some(rel => rel.to_code === toCode)) return;
+  // Use inferRelationLabel for person→project relationships
+  const relation = inferRelationLabel('WHO', 'WHAT', 'PJ', note);
+  const existing = getRelationshipsFrom(fromCode, relation);
+  if (existing.some(rel => rel.to_code === toCode)) {
+    // Also check works_for for backward compat
+    const existingWorksFor = getRelationshipsFrom(fromCode, 'works_for');
+    if (existingWorksFor.some(rel => rel.to_code === toCode)) return;
+  }
   addRelationship({
     from_code: fromCode,
-    relation: 'works_for',
+    relation,
     to_code: toCode,
     note,
   });
@@ -406,7 +433,7 @@ async function writeCompletionMemory(
   if (matchingBrains.length > 0) {
     try {
       updateEntry(matchingBrains[0].code, {
-        summary: `${verification.verified ? 'Completed' : 'Updated'} on ${new Date().toISOString().slice(0, 10)} — ${plan.goal.slice(0, 80)}`,
+        summary: `${verification.verified ? 'Completed' : 'Updated'} on ${localDateString()} — ${plan.goal.slice(0, 80)}`,
       });
     } catch {
       // Project brain update is best-effort.
@@ -419,6 +446,7 @@ async function handleAgenticUnits(
   results: UnitMemoryResult[],
   llmHandler: LLMHandler,
   priorContext: ResolvedMemory | null = null,
+  workingMemory?: WorkingMemory,
 ): Promise<AgenticRouteResult> {
   const goals = buildGoals(units);
   const goalMessage = units.map(unit => unit.content).join('\n');
@@ -426,11 +454,13 @@ async function handleAgenticUnits(
     buildMemoryContext(units, results),
     buildResolvedContext('PRIOR QUERY CONTEXT', priorContext),
   ].filter(Boolean).join('\n\n');
+  // Phase 15 Conflict 5: pass projectCode so decomposeTask can use project brain cache
   const plan = await decomposeTask(goalMessage, {
     skills: getSkillDescriptions(),
     goals,
     memoryContext,
     decompositionSummary: buildDecompositionSummary(units),
+    projectCode: workingMemory?.projectCode ?? null,
   }, llmHandler);
 
   if (plan.needsConfirmation) {
@@ -445,9 +475,21 @@ async function handleAgenticUnits(
     };
   }
 
-  const execution = await executePlan(plan, llmHandler);
-  const verification = await verifyExecution(plan, execution, llmHandler);
+  const execution = await executePlan(plan, llmHandler, workingMemory);
+  // Skip LLM verification call when executor already escalated (e.g. hard abort, too many failures)
+  // FIX-H1: Short-circuit verification for escalated plans; use LLM verification for non-escalated
+  const verification = execution.escalated
+    ? { verified: false, confidence: 0, issues: [execution.escalationMessage ?? 'Execution escalated'], suggestion: undefined }
+    : await verifyExecution(plan, execution, llmHandler);
   writeCompletionMemory(plan, execution, verification, llmHandler).catch(() => {});
+  // FIX-5: If executor didn't enqueue task_complete (e.g. escalated path), enqueue it now
+  if (!execution.taskCompleteEnqueued) {
+    memoryAgent.enqueue({
+      type: 'task_complete',
+      workingMemory: workingMemory ?? undefined,
+      workingMemoryId: workingMemory?.taskId ?? null,
+    });
+  }
   const reply = stripThinkingTags(buildUserReport(plan, execution, verification)).trim();
 
   return {
@@ -463,6 +505,7 @@ export async function routeDecomposedUnits(
   results: UnitMemoryResult[],
   history: Message[],
   llmHandler: LLMHandler,
+  workingMemory?: WorkingMemory,
 ): Promise<RouteExecutionResult> {
   const conversationalUnits = units.filter(unit => unit.route === 'conversational');
   const queryUnits = units.filter(unit => unit.route === 'query');
@@ -492,6 +535,7 @@ export async function routeDecomposedUnits(
       results.filter(result => agenticUnits.some(unit => unit.id === result.unitId)),
       llmHandler,
       queryResult?.resolved ?? null,
+      workingMemory,
     )
     : Promise.resolve(null);
 

@@ -1,6 +1,7 @@
 import { applyRepairPasses, extractFirstJsonObject } from './structured.js';
 import { transparency } from './transparency.js';
 import type { DecompositionResult, DecomposedUnit, LLMHandler, Message, RouteKind } from './types.js';
+import type { ResolvedEntry } from './intake.js';
 
 const ROUTES: RouteKind[] = ['conversational', 'agentic', 'query'];
 
@@ -211,12 +212,19 @@ export function buildSingleUnitFallback(message: string): DecompositionResult {
 export async function decomposeMessage(
   message: string,
   llmHandler: LLMHandler,
+  resolvedContext?: ResolvedEntry[],
 ): Promise<DecompositionResult> {
   if (GREETING_ONLY.test(message)) {
     const fallback = buildSingleUnitFallback(message);
     transparency.emit({ type: 'decomposition', data: fallback });
     return fallback;
   }
+
+  const contextBlock = resolvedContext && resolvedContext.length > 0
+    ? `\n\nAlready resolved from memory:\n${resolvedContext.map(e =>
+        `- ${e.code}: ${e.summary}`
+      ).join('\n')}`
+    : '';
 
   const prompt: Message[] = [
     {
@@ -234,7 +242,7 @@ Rules:
 - Use "conversational" for discussion or questions expecting a response.
 - Use "agentic" for requests to perform actions or create/modify things.
 - Use "query" for requests to retrieve information from memory, history, or project context.
-- If the whole message is one unit, return one unit.`,
+- If the whole message is one unit, return one unit.${contextBlock}`,
     },
     { role: 'user', content: message },
   ];

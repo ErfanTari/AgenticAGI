@@ -12,6 +12,8 @@ import { processMessage, startAgent, stopAgent } from '../core/agent.js';
 import { getFallbackLLMProfile, getPrimaryLLMProfile, type LLMProfile, withLLMRuntime } from '../core/llm.js';
 import { initDatabase } from '../core/memory/mod.js';
 import { loadActivePlanEX, type PlanEXEntry } from '../core/memory/plan-ex.js';
+import { loadWorkingMemory } from '../core/memory/working-memory.js';
+import { memoryAgent } from '../core/memory/memory-agent.js';
 import { transparency, type TransparencyEvent } from '../core/transparency.js';
 import type { TaskMilestone, TaskPlan, TaskStep } from '../core/schemas.js';
 import type { Message } from '../core/types.js';
@@ -618,6 +620,24 @@ function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buffer) {
   bindSocket(connection);
   sendProviderStatus(connection);
 
+  // FIX-H2: Send resume notice if there is an active PLAN.EX + working memory
+  (async () => {
+    try {
+      const activePlan = loadActivePlanEX();
+      if (activePlan) {
+        const wm = activePlan.project_code ? await loadWorkingMemory(activePlan.project_code) : null;
+        const lastStep = wm?.stepLog.at(-1)?.summary ?? null;
+        sendJson(connection, {
+          type: 'agent_reply',
+          text: `Resuming plan: "${activePlan.task_name}"${lastStep ? ` — last step: ${lastStep}` : ''}`,
+          intent: 'resume_notice',
+        });
+      }
+    } catch {
+      // Resume notice is best-effort
+    }
+  })().catch(() => {});
+
   if (Date.now() - startupTime <= STARTUP_ACTIVE_PLAN_WINDOW_MS) {
     const activePlan = loadActivePlanEX();
     if (activePlan) {
@@ -678,18 +698,21 @@ function listenOnPort(port: number): Promise<number> {
 
     server.listen(port, UI_HOST, () => {
       const shutdown = () => {
-        for (const client of clients) {
-          try {
-            sendFrame(client.socket, Buffer.alloc(0), 0x8);
-            client.socket.destroy();
-          } catch {
-            // Best-effort shutdown.
+        // FIX-H2: Drain memory agent queue before shutdown
+        memoryAgent.drain().catch(() => {}).finally(() => {
+          for (const client of clients) {
+            try {
+              sendFrame(client.socket, Buffer.alloc(0), 0x8);
+              client.socket.destroy();
+            } catch {
+              // Best-effort shutdown.
+            }
           }
-        }
-        server.close(() => {
-          clearUiState();
-          stopAgent();
-          process.exit(0);
+          server.close(() => {
+            clearUiState();
+            stopAgent();
+            process.exit(0);
+          });
         });
       };
 

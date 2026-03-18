@@ -47,7 +47,9 @@ describe('Phase 11 P2: Execution Log + PLAN.EX', () => {
       ms: 10,
     });
 
-    const dateStr = new Date().toISOString().slice(0, 10);
+    // Use local date (matching localDateString() behavior in execution-log.ts)
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const logFile = path.join(PATHS.logs, `execution-${dateStr}.jsonl`);
     expect(fs.existsSync(logFile)).toBe(true);
 
@@ -78,7 +80,9 @@ describe('Phase 11 P2: Execution Log + PLAN.EX', () => {
 
   it('P2D: readExecutionLog returns written records', async () => {
     const { logExecution, readExecutionLog } = await import('../../core/memory/execution-log.js');
-    const dateStr = new Date().toISOString().slice(0, 10);
+    // Use local date (matching localDateString() behavior in execution-log.ts)
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     logExecution({
       ts: new Date().toISOString(),
@@ -207,7 +211,9 @@ describe('Phase 11 P2: Execution Log + PLAN.EX', () => {
       ms: 5,
     });
 
-    const dateStr = new Date().toISOString().slice(0, 10);
+    // Use local date (matching localDateString() behavior in execution-log.ts)
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const files = fs.readdirSync(PATHS.logs);
     expect(files).toContain(`execution-${dateStr}.jsonl`);
   });

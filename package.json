@@ -15,7 +15,10 @@
     "ui:open": "node scripts/ui-app-launcher.mjs open",
     "ui:start": "node scripts/ui-app-launcher.mjs start",
     "ui:status": "node scripts/ui-app-launcher.mjs status",
-    "ui:stop": "node scripts/ui-app-launcher.mjs stop"
+    "ui:stop": "node scripts/ui-app-launcher.mjs stop",
+    "stress:p15": "npx tsx scripts/stress-test-p15.ts",
+    "stress:p15:codex": "node scripts/stress-test-p15-codex.mjs",
+    "stress:critical": "npx tsx scripts/stress-test-p15.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",

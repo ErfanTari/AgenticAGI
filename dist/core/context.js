@@ -3,6 +3,7 @@ import { encode } from 'gpt-tokenizer';
 import { transparency } from './transparency.js';
 import { queryEntries } from './memory/index.js';
 import { fetchByCode } from './memory/fetch.js';
+import { sessionCache } from './memory/session-cache.js';
 const SYSTEM_PROMPT = `You are a personal AI agent with memory, skills, and reasoning capabilities.
 
 Your capabilities:
@@ -264,11 +265,18 @@ export async function buildContext(userMessage, resolved, history, skills, inten
     systemParts.push(formatResolved(resolved));
     systemParts.push(formatSkills(skills));
     // Inject active PLAN.CT constraints into every step's context
+    // Phase 15 Conflict 1: check session cache before SQLite for each constraint entry
     try {
         const constraints = queryEntries({ nb: 'PLAN', type: 'CT' }).filter(e => e.status === 'active');
         if (constraints.length > 0) {
+            const constraintLines = constraints.map(c => {
+                // Prefer session cache for summary (avoids redundant SQLite fetch)
+                const cached = sessionCache.getByCode(c.code);
+                const summary = (cached ?? c).summary;
+                return `- [${c.code}] ${c.name}: ${summary}`;
+            });
             systemParts.push('## Active Constraints\n' +
-                constraints.map(c => `- [${c.code}] ${c.name}: ${c.summary}`).join('\n') +
+                constraintLines.join('\n') +
                 '\n\nIMPORTANT: These are user-authored constraints. NEVER silently modify or remove them. If the user asks to change a constraint, warn them that this is a protected user rule and ask for explicit confirmation before proceeding.');
         }
     }

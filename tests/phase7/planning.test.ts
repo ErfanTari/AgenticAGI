@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { localDatePlusDays } from '../../core/utils/date.ts';
 import { classifyIntent } from '../../core/intent.js';
 import { processMessage } from '../../core/agent.js';
 import {
@@ -135,17 +136,13 @@ describe('Due date extraction', () => {
 
   it('P3D: "create a plan due tomorrow" resolves to tomorrow ISO date', () => {
     const c = classifyIntent('create a plan due tomorrow');
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const expected = tomorrow.toISOString().slice(0, 10);
+    const expected = localDatePlusDays(1);
     expect(c.due_date).toBe(expected);
   });
 
   it('P3D: "create a plan due by next week" resolves to +7 days', () => {
     const c = classifyIntent('create a plan due by next week');
-    const nextWeek = new Date();
-    nextWeek.setDate(nextWeek.getDate() + 7);
-    const expected = nextWeek.toISOString().slice(0, 10);
+    const expected = localDatePlusDays(7);
     expect(c.due_date).toBe(expected);
   });
 

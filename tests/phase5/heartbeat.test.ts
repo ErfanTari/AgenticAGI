@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { localDateString } from '../../core/utils/date.ts';
 import {
   initDatabase,
   closeDatabase,
@@ -76,7 +77,7 @@ describe('updateEntry', () => {
     const updated = updateEntry(entry.code, { status: 'done' });
     expect(updated.status).toBe('done');
     expect(updated.summary).toBe('A todo for testing');
-    expect(updated.updated).toBe(new Date().toISOString().slice(0, 10));
+    expect(updated.updated).toBe(localDateString());
 
     const fromDb = getEntryByCode(entry.code);
     expect(fromDb!.status).toBe('done');
@@ -117,7 +118,7 @@ describe('updateEntry', () => {
 
     const content = fs.readFileSync(entry.path, 'utf-8');
     expect(content).toContain('status: overdue');
-    expect(content).toContain(`updated: ${new Date().toISOString().slice(0, 10)}`);
+    expect(content).toContain(`updated: ${localDateString()}`);
   });
 
   it('throws for nonexistent code', () => {
@@ -136,7 +137,7 @@ describe('checkDeadlines', () => {
 
   it('returns notification for upcoming WHEN entries with due_date today', () => {
     const { cleanup } = freshDb();
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localDateString();
 
     createEntry({
       nb: 'WHEN', type: 'CA', name: 'Team Meeting',
@@ -348,7 +349,7 @@ describe('runHeartbeat', () => {
   it('returns HeartbeatResult with ran_at date', async () => {
     const { cleanup } = freshDb();
     const result = await runHeartbeat();
-    expect(result.ran_at).toBe(new Date().toISOString().slice(0, 10));
+    expect(result.ran_at).toBe(localDateString());
     expect(Array.isArray(result.notifications)).toBe(true);
     expect(Array.isArray(result.created)).toBe(true);
     cleanup();

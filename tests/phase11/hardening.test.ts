@@ -666,8 +666,9 @@ describe('Bug 12: logExecution creates logs directory on fresh install', () => {
     // Logs directory should now exist
     expect(fs.existsSync(PATHS.logs)).toBe(true);
 
-    // Log file should exist
-    const today = new Date().toISOString().slice(0, 10);
+    // Log file should exist (use local date to match localDateString() behavior)
+    const nowLocal = new Date();
+    const today = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`;
     const logFile = path.join(PATHS.logs, `execution-${today}.jsonl`);
     expect(fs.existsSync(logFile)).toBe(true);
 

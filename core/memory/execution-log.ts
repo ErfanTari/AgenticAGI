@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { PATHS } from '../../config/agent.config.js';
+import { localDateString } from '../utils/date.js';
 
 export interface ExecutionRecord {
   ts: string;
@@ -26,7 +27,7 @@ export interface ExecutionRecord {
 export function logExecution(record: ExecutionRecord): void {
   try {
     fs.mkdirSync(PATHS.logs, { recursive: true });
-    const dateStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const dateStr = localDateString(); // YYYY-MM-DD
     const logFile = path.join(PATHS.logs, `execution-${dateStr}.jsonl`);
     const line = JSON.stringify(record) + '\n';
     fs.appendFileSync(logFile, line, 'utf-8');
@@ -40,7 +41,7 @@ export function logExecution(record: ExecutionRecord): void {
  */
 export function readExecutionLog(dateStr?: string): ExecutionRecord[] {
   try {
-    const date = dateStr ?? new Date().toISOString().slice(0, 10);
+    const date = dateStr ?? localDateString();
     const logFile = path.join(PATHS.logs, `execution-${date}.jsonl`);
     if (!fs.existsSync(logFile)) return [];
 

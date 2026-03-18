@@ -1,5 +1,6 @@
 import type { MCPSkill, SkillResult } from '../types.js';
 import { upsertEntry } from '../../memory/write.js';
+import { memoryAgent } from '../../memory/memory-agent.js';
 
 /**
  * memory_write skill
@@ -91,6 +92,12 @@ export const memoryWriteMCPSkill: MCPSkill = {
       const result = upsertEntry({ nb, type, name, summary, body, status });
       const verb = result.created ? 'Created' : 'Updated';
       const suffix = result.created ? '' : ' (already existed)';
+      // FIX-C3: enqueue new_code so session cache is updated
+      memoryAgent.enqueue({
+        type: 'new_code',
+        code: result.code,
+        workingMemoryId: null,
+      });
       // output is the bare code so downstream steps can use {{step_result}} as a valid code
       // The human-readable message is available via the display field
       return {

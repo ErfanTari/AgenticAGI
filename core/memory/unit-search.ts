@@ -3,6 +3,7 @@ import { fetchByCode, getEntryByCode, queryEntries } from './mod.js';
 import { searchBM25 } from './fts.js';
 import { fetchEmbeddings, searchVectors } from './embeddings.js';
 import { transparency } from '../transparency.js';
+import { sessionCache } from './session-cache.js';
 import type {
   DecomposedUnit,
   RouteKind,
@@ -318,9 +319,58 @@ async function searchFallback(
   };
 }
 
-async function searchUnit(unit: DecomposedUnit): Promise<UnitMemoryResult> {
+async function searchUnit(unit: DecomposedUnit, alreadyResolved?: string[]): Promise<UnitMemoryResult> {
+  // Phase 15 Conflict 1: if alreadyResolved codes are provided and any match cached entries,
+  // serve from session cache and skip SQLite/BM25/vector for those entries.
+  if (alreadyResolved && alreadyResolved.length > 0) {
+    const cachedEntries: IndexEntry[] = [];
+    for (const code of alreadyResolved) {
+      const cached = sessionCache.getByCode(code);
+      if (cached) cachedEntries.push(cached);
+    }
+    if (cachedEntries.length > 0) {
+      const result: UnitMemoryResult = {
+        unitId: unit.id,
+        strategy: 'bm25',
+        confidence: 0.8,
+        entries: cachedEntries,
+        contents: loadContents(cachedEntries),
+      };
+      transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
+      return result;
+    }
+  }
+
+  // FIX-T3: Check session cache by person name BEFORE going to SQLite.
+  // This allows the second turn of a multi-turn conversation to get a cache hit
+  // when intake doesn't resolve the person (borderline confidence).
+  const personName = detectPersonName(unit.content);
+  if (personName) {
+    const cachedByName = sessionCache.getByName(personName);
+    if (cachedByName) {
+      // Call getByCode to emit session_cache_hit transparency event
+      const cachedEntry = sessionCache.getByCode(cachedByName.code);
+      if (cachedEntry) {
+        const result: UnitMemoryResult = {
+          unitId: unit.id,
+          strategy: 'person',
+          confidence: 0.8,
+          entries: [cachedEntry],
+          contents: loadContents([cachedEntry]),
+        };
+        transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
+        return result;
+      }
+    }
+  }
+
   const person = searchPerson(unit.content);
-  if (person && person.entries.length > 0) {
+  // Person signal takes priority: if confidence >= 0.7, return immediately without checking project
+  if (person && person.entries.length > 0 && person.confidence >= 0.7) {
+    // Seed the session cache for future turns (FIX-T3: enables cache hit on next turn)
+    for (const entry of person.entries) {
+      sessionCache.set(entry.code, entry);
+    }
     const result = { ...person, unitId: unit.id };
     transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
     return result;
@@ -329,6 +379,13 @@ async function searchUnit(unit: DecomposedUnit): Promise<UnitMemoryResult> {
   const project = searchProject(unit.content);
   if (project && project.entries.length > 0) {
     const result = { ...project, unitId: unit.id };
+    transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
+    return result;
+  }
+
+  // Person found but confidence < 0.7 — still use it if no project match
+  if (person && person.entries.length > 0) {
+    const result = { ...person, unitId: unit.id };
     transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
     return result;
   }
@@ -352,10 +409,13 @@ async function searchUnit(unit: DecomposedUnit): Promise<UnitMemoryResult> {
   return result;
 }
 
-export async function searchMemoryForUnits(units: DecomposedUnit[]): Promise<UnitMemoryResult[]> {
+export async function searchMemoryForUnits(
+  units: DecomposedUnit[],
+  alreadyResolvedCodes?: string[],
+): Promise<UnitMemoryResult[]> {
   return Promise.all(units.map(async unit => {
     try {
-      return await searchUnit(unit);
+      return await searchUnit(unit, alreadyResolvedCodes);
     } catch {
       const result: UnitMemoryResult = {
         unitId: unit.id,

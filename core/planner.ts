@@ -533,6 +533,7 @@ export interface PlannerContext {
   goals?: TaskGoal[];
   memoryContext?: string;
   decompositionSummary?: string;
+  projectCode?: string | null;
 }
 
 function derivePlanComplexity(stepCount: number): ComplexityLevel {
@@ -667,6 +668,21 @@ export async function decomposeTask(
   context: PlannerContext,
   llmHandler: LLMHandler,
 ): Promise<TaskPlan> {
+  // Phase 15 Conflict 5: use project brain cache when projectCode is available
+  let projectBrainContext = '';
+  if (context.projectCode) {
+    try {
+      const { getProjectBrain } = await import('./memory/project.js');
+      const { getDb } = await import('./memory/index.js');
+      const db = getDb();
+      projectBrainContext = await getProjectBrain(context.projectCode, db);
+      transparency.emit({ type: 'project_brain', data: { hit: true, projectCode: context.projectCode } });
+    } catch {
+      transparency.emit({ type: 'project_brain', data: { hit: false, projectCode: context.projectCode } });
+      // getProjectBrain failure is non-fatal — fall through to individual queries
+    }
+  }
+
   // Look for a relevant past procedure to use as starting point
   let procedurePreamble = '';
   try {
@@ -686,9 +702,14 @@ export async function decomposeTask(
     ? context.goals.map(goal => `- ${goal.id}: ${goal.description} [units: ${goal.sourceUnitIds.join(', ') || '—'}]`).join('\n')
     : '- goal_1: ' + message;
 
+  // Use project brain cache when available; otherwise fall back to memoryContext
+  const memorySection = projectBrainContext
+    ? `PROJECT BRAIN CONTEXT:\n${projectBrainContext}`
+    : (context.memoryContext ? `RELEVANT MEMORY CONTEXT:\n${context.memoryContext}` : '');
+
   const planningContextSections = [
     context.decompositionSummary ? `DECOMPOSED GOALS:\n${context.decompositionSummary}` : '',
-    context.memoryContext ? `RELEVANT MEMORY CONTEXT:\n${context.memoryContext}` : '',
+    memorySection,
     goalsText ? `TASK GOALS:\n${goalsText}` : '',
   ].filter(Boolean).join('\n\n');
 
@@ -819,6 +840,11 @@ implement_and_test input format:
 }
 This skill handles the retry loop internally, repairs both implementation and tests when needed, reuses existing files when present, and writes a HOW.PR entry on success.
 - NEVER use file_writer to "save" information unless user explicitly says "save to file" or names a file
+
+DEPENDENCY RULES:
+- memory_write steps are ALWAYS independent. Never add dependsOn for memory_write steps unless one write literally needs the output of another (e.g. step2 uses the code created by step1 as input via {{step1_result}}).
+- For compound messages that create multiple contacts and a project, all steps have dependsOn: [] — they run independently.
+- Only add dependsOn when a step's INPUT field contains a {{stepN_result}} template reference. If there is no template reference, dependsOn must be [].
 
 Rules:
 - Maximum 8 steps

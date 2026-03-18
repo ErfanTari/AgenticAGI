@@ -1,15 +1,19 @@
 import { createHash } from 'node:crypto';
 import type { LLMHandler, Message } from './types.js';
 import type { TaskMilestone, TaskPlan, TaskStep, VerificationResult } from './schemas.js';
+import type { WorkingMemory } from './memory/working-memory.js';
+import { updatePlan } from './memory/working-memory.js';
 import { VerificationResultSchema, verificationJsonSchema } from './schemas.js';
 import { runWithRetry } from './react.js';
 import { resolveTemplates } from './planner.js';
 import { transparency } from './transparency.js';
 import { upsertEntry } from './memory/write.js';
 import { logExecution } from './memory/execution-log.js';
-import { createPlanEX, loadActivePlanEX, savePlanEX, type PlanEXEntry } from './memory/plan-ex.js';
+import { createPlanEX, loadActivePlanEX, savePlanEX, updatePlanEX, type PlanEXEntry } from './memory/plan-ex.js';
+import { getDb } from './memory/index.js';
 import { addRelationship, getRelationshipsFrom } from './memory/relationships.js';
 import { writeEpisodicEvent } from './memory/episodic.js';
+import { memoryAgent } from './memory/memory-agent.js';
 
 // Flatten nested objects to primitives (fixes [object Object] issue)
 function flattenInput(input: Record<string, unknown>): Record<string, unknown> {
@@ -27,6 +31,71 @@ function flattenInput(input: Record<string, unknown>): Record<string, unknown> {
   }
 
   return flattened;
+}
+
+// --- Adaptive Execution — Phase 15, Section 3 ---
+
+export type FailureResponse = 'RETRY' | 'REVISE' | 'ESCALATE';
+
+export interface StepFailure {
+  stepId: string;
+  milestoneId?: string;
+  skill: string;
+  error: string;
+  attempt: number;
+}
+
+export interface SubGoalAttempt {
+  milestoneId: string;
+  retries: number;
+  revisions: number;
+}
+
+/**
+ * Given a failure and current working memory context, decides how to respond.
+ * RETRY  — same approach, minor variation. Max 2 retries per step.
+ * REVISE — change approach for this milestone. Max 3 revisions per milestone.
+ * ESCALATE — surface to user, pause execution.
+ */
+export function classifyFailureResponse(
+  failure: StepFailure,
+  _workingMemory: { goal: string } | null,
+  subGoalAttempts: Map<string, SubGoalAttempt>,
+): FailureResponse {
+  const attempt = subGoalAttempts.get(failure.stepId);
+  const milestoneAttempt = subGoalAttempts.get(failure.milestoneId ?? failure.stepId);
+
+  const retries = attempt?.retries ?? 0;
+  const revisions = milestoneAttempt?.revisions ?? 0;
+
+  // Hard limit: too many revisions → escalate
+  if (revisions >= 3) return 'ESCALATE';
+
+  // Hard limit: too many retries → try revision
+  if (retries >= 2) {
+    if (revisions < 3) return 'REVISE';
+    return 'ESCALATE';
+  }
+
+  // Classify failure type to decide response
+  const fc = classifyFailure(failure.error);
+
+  if (fc === 'SYNTAX_ERROR') {
+    // Syntax errors are usually fixable with a retry (minor variation)
+    return 'RETRY';
+  }
+
+  if (fc === 'STATE_ERROR') {
+    // State errors may need a different approach
+    return retries < 2 ? 'RETRY' : 'REVISE';
+  }
+
+  // CAPABILITY_ERROR — the skill genuinely can't do this
+  if (fc === 'CAPABILITY_ERROR') {
+    return 'REVISE';
+  }
+
+  return 'RETRY';
 }
 
 // --- Failure classification ---
@@ -71,6 +140,9 @@ export interface ExecutionResult {
   currentMilestoneId?: string;
   planExCode?: string;
   linkedCodes?: string[];
+  escalated?: boolean;
+  escalationMessage?: string;
+  taskCompleteEnqueued?: boolean;
 }
 
 export interface MilestoneExecutionResult {
@@ -93,6 +165,7 @@ interface ExecutionState {
   completed: CompletedStep[];
   failed: FailedStep[];
   startTime: number;
+  workingMemoryId: string | null;
 }
 
 function getPlanMilestones(plan: TaskPlan): TaskMilestone[] {
@@ -512,6 +585,23 @@ async function executeSingleStep(
       display: skillResult.display,
       retries: skillResult.retries ?? 0,
     });
+    // Phase 15: enqueue step_complete event (fire-and-forget)
+    const stepCodes = collectCodesFromText(skillResult.output);
+    memoryAgent.enqueue({
+      type: 'step_complete',
+      stepId: step.id,
+      result: skillResult.output.slice(0, 200),
+      codes: stepCodes,
+      workingMemoryId: state.workingMemoryId,
+    });
+    // FIX-C3: enqueue new_code for each code found in step output
+    for (const code of stepCodes) {
+      memoryAgent.enqueue({
+        type: 'new_code',
+        code,
+        workingMemoryId: state.workingMemoryId,
+      });
+    }
     if (step.storeResultAs) {
       state.results.set(step.storeResultAs, skillResult.output);
       if (step.storeResultAs.endsWith('_result')) {
@@ -544,16 +634,20 @@ async function executeSingleStep(
 export async function executePlan(
   plan: TaskPlan,
   llmHandler: LLMHandler,
+  workingMemory?: WorkingMemory,
 ): Promise<ExecutionResult> {
+  const wm = workingMemory ?? null;
   let milestones = getPlanMilestones(plan);
   const state: ExecutionState = {
     results: new Map<string, string>(),
     completed: [],
     failed: [],
     startTime: Date.now(),
+    workingMemoryId: wm?.taskId ?? null,
   };
   const milestoneResults: MilestoneExecutionResult[] = [];
   const completedMilestones: string[] = [];
+  const subGoalAttempts = new Map<string, SubGoalAttempt>();
 
   const initialPlanEx = buildInitialPlanEX(plan, milestones);
   let planExCode: string | undefined;
@@ -575,17 +669,25 @@ export async function executePlan(
     const completedStart = state.completed.length;
     const failedStart = state.failed.length;
 
+    let milestoneEscalated = false;
+    let milestoneRevised = false;
+    let milestoneAbortReason: string | undefined;
     for (const step of milestone.steps) {
-      const abortReason = await executeSingleStep(plan, step, state, llmHandler);
-      if (abortReason) {
-        const milestoneResult: MilestoneExecutionResult = {
+      let abortReason = await executeSingleStep(plan, step, state, llmHandler);
+
+      // FIX 4: Adaptive loop — RETRY → REVISE → ESCALATE instead of immediate abort
+      // Exception: hard-abort conditions (HIGH_RISK_LOW_CONFIDENCE, timeouts) bypass the loop
+      const isHardAbort = abortReason === 'HIGH_RISK_LOW_CONFIDENCE' || (abortReason?.includes('timeout') ?? false);
+      if (abortReason && isHardAbort) {
+        milestoneEscalated = true;
+        milestoneAbortReason = abortReason;
+        milestoneResults.push({
           milestoneId: milestone.id,
           title: milestone.title,
           success: false,
           completedStepIds: state.completed.slice(completedStart).map(item => item.stepId),
           failedStepIds: state.failed.slice(failedStart).map(item => item.stepId),
-        };
-        milestoneResults.push(milestoneResult);
+        });
         transparency.emit({
           type: 'milestone_result',
           data: { id: milestone.id, title: milestone.title, success: false, index: milestoneIndex + 1, total: milestones.length },
@@ -599,14 +701,9 @@ export async function executePlan(
             next_milestone_id: milestone.id,
             next_action: milestone.title,
             checkpoint_ts: new Date().toISOString(),
-            last_failures: {
-              ...planEx.last_failures,
-              [milestone.id]: abortReason,
-            },
+            last_failures: { ...planEx.last_failures, [milestone.id]: abortReason },
           });
-        } catch {
-          // PLAN.EX persistence is best-effort.
-        }
+        } catch { /* best-effort */ }
         return {
           success: false,
           completed: state.completed,
@@ -617,11 +714,137 @@ export async function executePlan(
           currentMilestoneId: milestone.id,
           planExCode: planEx.code,
           linkedCodes: collectLinkedCodes(state.completed),
+          escalated: true,
+          escalationMessage: abortReason,
         };
+      }
+
+      if (abortReason) {
+        // Find the last failure for this step
+        const failedForStep = state.failed.filter(f => f.stepId === step.id);
+        const lastFailed = failedForStep[failedForStep.length - 1];
+        const failure: StepFailure = {
+          stepId: step.id,
+          milestoneId: milestone.id,
+          skill: step.skill,
+          error: lastFailed?.error ?? abortReason,
+          attempt: (subGoalAttempts.get(step.id)?.retries ?? 0) + 1,
+        };
+
+        const response = classifyFailureResponse(failure, wm ? { goal: wm.goal } : null, subGoalAttempts);
+
+        if (response === 'RETRY') {
+          // Increment retry counter
+          const existing = subGoalAttempts.get(step.id) ?? { milestoneId: milestone.id, retries: 0, revisions: 0 };
+          subGoalAttempts.set(step.id, { ...existing, retries: existing.retries + 1 });
+
+          // Remove the last failed entry for this step so it can be retried
+          for (let i = state.failed.length - 1; i >= 0; i--) {
+            if (state.failed[i].stepId === step.id) {
+              state.failed.splice(i, 1);
+              break;
+            }
+          }
+
+          // Re-run the step
+          abortReason = await executeSingleStep(plan, step, state, llmHandler);
+
+          if (!abortReason) continue; // Retry succeeded — proceed to next step
+          // Retry also failed — fall through to check remaining options
+        }
+
+        if (response === 'REVISE' || (response === 'RETRY' && abortReason)) {
+          // Increment revision counter for this milestone
+          const milestoneAttempt = subGoalAttempts.get(milestone.id) ?? { milestoneId: milestone.id, retries: 0, revisions: 0 };
+          subGoalAttempts.set(milestone.id, { ...milestoneAttempt, revisions: milestoneAttempt.revisions + 1 });
+
+          // Revise remaining milestones given the failure context
+          milestones = await reviseRemainingMilestones(milestones, completedMilestones, milestoneIndex, llmHandler);
+
+          // Update working memory plan with revised milestones
+          if (wm) {
+            await updatePlan(wm, milestones);
+          }
+
+          // Log milestone as failed-but-revised, continue to next milestone
+          const milestoneResult: MilestoneExecutionResult = {
+            milestoneId: milestone.id,
+            title: milestone.title,
+            success: false,
+            completedStepIds: state.completed.slice(completedStart).map(item => item.stepId),
+            failedStepIds: state.failed.slice(failedStart).map(item => item.stepId),
+          };
+          milestoneResults.push(milestoneResult);
+          transparency.emit({
+            type: 'milestone_result',
+            data: { id: milestone.id, title: milestone.title, success: false, index: milestoneIndex + 1, total: milestones.length },
+          });
+          milestoneRevised = true;
+          break; // Break out of step loop — skip to next milestone
+        }
+
+        if (response === 'ESCALATE' || abortReason) {
+          // ESCALATE: mark planEx as paused, return with escalated flag
+          milestoneEscalated = true;
+          milestoneAbortReason = abortReason ?? lastFailed?.error ?? 'Escalated after too many failures';
+
+          const milestoneResult: MilestoneExecutionResult = {
+            milestoneId: milestone.id,
+            title: milestone.title,
+            success: false,
+            completedStepIds: state.completed.slice(completedStart).map(item => item.stepId),
+            failedStepIds: state.failed.slice(failedStart).map(item => item.stepId),
+          };
+          milestoneResults.push(milestoneResult);
+          transparency.emit({
+            type: 'milestone_result',
+            data: { id: milestone.id, title: milestone.title, success: false, index: milestoneIndex + 1, total: milestones.length },
+          });
+          try {
+            savePlanEX({
+              ...planEx,
+              status: 'paused',
+              abort_reason: milestoneAbortReason,
+              current_milestone: milestoneIndex,
+              next_milestone_id: milestone.id,
+              next_action: milestone.title,
+              checkpoint_ts: new Date().toISOString(),
+              last_failures: {
+                ...planEx.last_failures,
+                [milestone.id]: milestoneAbortReason,
+              },
+            });
+          } catch {
+            // PLAN.EX persistence is best-effort.
+          }
+          return {
+            success: false,
+            completed: state.completed,
+            failed: state.failed,
+            abortReason: milestoneAbortReason,
+            milestoneResults,
+            completedMilestones,
+            currentMilestoneId: milestone.id,
+            planExCode: planEx.code,
+            linkedCodes: collectLinkedCodes(state.completed),
+            escalated: true,
+            escalationMessage: milestoneAbortReason,
+          };
+        }
       }
     }
 
+    if (milestoneEscalated || milestoneRevised) continue; // Skip milestone completion logic
+
     completedMilestones.push(milestone.id);
+    // Phase 15: enqueue milestone_complete event (fire-and-forget)
+    memoryAgent.enqueue({
+      type: 'milestone_complete',
+      milestoneId: milestone.id,
+      summary: milestone.title,
+      workingMemoryId: wm?.taskId ?? null,
+      planExCode: planEx.code || undefined,
+    });
     const completedInMilestone = state.completed.slice(completedStart);
     const cycle = await writeMilestoneMemoryCycle(
       plan,
@@ -667,6 +890,28 @@ export async function executePlan(
     // PLAN.EX persistence is best-effort.
   }
 
+  // Phase 15 FIX 3: enqueue task_complete event (fire-and-forget)
+  memoryAgent.enqueue({
+    type: 'task_complete',
+    workingMemory: wm ?? undefined,
+    workingMemoryId: wm?.taskId ?? null,
+  });
+
+  // FIX-4: Safety — ensure PLAN.EX is in terminal state if it was created
+  if (planEx.code) {
+    try {
+      const db = getDb();
+      const currentPlanEx = db.prepare(
+        "SELECT status FROM index_entries WHERE code = ?"
+      ).get(planEx.code) as { status: string } | undefined;
+      if (currentPlanEx && !['complete', 'failed', 'paused'].includes(currentPlanEx.status)) {
+        updatePlanEX(planEx.code, {
+          status: state.failed.length === 0 ? 'complete' : 'failed',
+        });
+      }
+    } catch { /* non-fatal */ }
+  }
+
   return {
     success: state.failed.length === 0,
     completed: state.completed,
@@ -676,6 +921,7 @@ export async function executePlan(
     currentMilestoneId: milestones.at(-1)?.id,
     planExCode: planEx.code,
     linkedCodes: collectLinkedCodes(state.completed),
+    taskCompleteEnqueued: true,
   };
 }
 
@@ -749,6 +995,11 @@ export function buildUserReport(
   // Header
   lines.push(`## ${verification.verified ? 'Done' : 'Warning'}: ${plan.goal}`);
   lines.push('');
+
+  if (!verification.verified) {
+    lines.push('**Note:** Could not fully complete this task as planned.');
+    lines.push('');
+  }
 
   // Primary: find content_writer output (the main content to show user)
   const contentStep = result.completed.find(s => s.skill === 'content_writer');

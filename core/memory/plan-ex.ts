@@ -8,6 +8,8 @@ import { getDb } from './index.js';
 import { fetchByCode } from './fetch.js';
 import { transparency } from '../transparency.js';
 import type { IndexEntry } from './types.js';
+import { localDateString } from '../utils/date.js';
+import { sessionCache } from './session-cache.js';
 
 export type PlanEXStatus = 'active' | 'in_progress' | 'paused' | 'complete' | 'failed';
 
@@ -92,7 +94,7 @@ export function updatePlanEX(code: string, updates: Partial<PlanEXEntry>): void 
   const status = updates.status ?? currentData.status ?? (existing.status as PlanEXStatus) ?? 'active';
   const merged: Partial<PlanEXEntry> = { ...currentData, ...updates, status };
   const body = JSON.stringify(merged, null, 2);
-  const now = new Date().toISOString().slice(0, 10);
+  const now = localDateString();
 
   db.prepare('UPDATE index_entries SET updated = ?, status = ? WHERE code = ?').run(now, status, code);
 
@@ -111,10 +113,48 @@ export function updatePlanEX(code: string, updates: Partial<PlanEXEntry>): void 
       }
     }
   }
+
+  // FIX-C5: Invalidate session cache so getEntryByCode returns fresh data
+  sessionCache.set(code, { ...existing, status, updated: now } as IndexEntry);
 }
 
 export function loadActivePlanEX(): PlanEXEntry | null {
   const db = getDb();
+
+  // FIX-4: Auto-close stale PLAN.EX entries older than 24 hours
+  try {
+    const staleEntries = db.prepare(`
+      SELECT code FROM index_entries
+      WHERE type = 'EX'
+        AND status IN ('active', 'in_progress')
+        AND datetime(updated) < datetime('now', '-24 hours')
+    `).all() as { code: string }[];
+    for (const stale of staleEntries) {
+      try {
+        db.prepare(`
+          UPDATE index_entries
+          SET status = 'failed',
+              summary = summary || ' [auto-closed: exceeded 24h active window]'
+          WHERE code = ?
+        `).run(stale.code);
+        // Also update the markdown file frontmatter
+        const existing = db.prepare('SELECT * FROM index_entries WHERE code = ?').get(stale.code) as IndexEntry | undefined;
+        if (existing?.path && fs.existsSync(existing.path)) {
+          const md = fs.readFileSync(existing.path, 'utf-8');
+          const headerEnd = md.indexOf('\n---\n');
+          if (headerEnd >= 0) {
+            const now = localDateString();
+            const header = md.slice(0, headerEnd + 5)
+              .replace(/^status: .+$/m, 'status: failed')
+              .replace(/^updated: .+$/m, `updated: ${now}`);
+            const rest = md.slice(headerEnd + 5);
+            fs.writeFileSync(existing.path, header + rest, 'utf-8');
+          }
+        }
+      } catch { /* non-fatal per entry */ }
+    }
+  } catch { /* cleanup is best-effort */ }
+
   const entries = db.prepare(
     "SELECT * FROM index_entries WHERE nb = 'PLAN' AND type = 'EX' AND status IN ('active', 'in_progress', 'paused')",
   ).all() as IndexEntry[];

@@ -264,6 +264,103 @@ export function checkVisionAlignment(): Notification | null {
   };
 }
 
+// --- Phase 15: NOW Notebook TTL ---
+
+/**
+ * Default TTL values for NOW notebook entries.
+ * Entries past TTL are archived (after compression for LOG entries).
+ */
+const NOW_TTL: Record<string, number> = {
+  'NOW.TD': 30,  // completed todos — 30 days
+  'NOW.LOG': 14, // log entries — 14 days (compress first)
+  'NOW.RP': 60,  // reports — 60 days
+};
+
+export async function checkNowTTL(): Promise<Notification | null> {
+  const d = getDb();
+  const archived: IndexEntry[] = [];
+  const todayStr = localDateString();
+
+  for (const [typeKey, ttlDays] of Object.entries(NOW_TTL)) {
+    const [nb, type] = typeKey.split('.');
+
+    try {
+      // Build a cutoff date using localDatePlusDays(-ttlDays)
+      const cutoff = localDatePlusDays(-ttlDays);
+
+      let entries: IndexEntry[] = [];
+
+      if (type === 'TD') {
+        // Only archive completed todos
+        entries = d.prepare(`
+          SELECT * FROM index_entries
+          WHERE nb = ? AND type = ? AND status = 'closed'
+          AND updated < ?
+        `).all(nb, type, cutoff) as IndexEntry[];
+      } else if (type === 'LOG') {
+        // Archive log entries past TTL (compress into weekly summary first — best-effort)
+        entries = d.prepare(`
+          SELECT * FROM index_entries
+          WHERE nb = ? AND type = ? AND status = 'active'
+          AND updated < ?
+        `).all(nb, type, cutoff) as IndexEntry[];
+
+        // Compress logs into a weekly summary if there are enough
+        if (entries.length >= 7) {
+          const compressSummary = `Weekly log summary: ${entries.length} log entries from ${entries[0]?.updated ?? cutoff} to ${entries[entries.length - 1]?.updated ?? todayStr}`;
+          try {
+            createEntry({
+              nb: 'NOW',
+              type: 'RP',
+              name: `Log Summary — Week of ${cutoff}`,
+              status: 'active',
+              summary: compressSummary.slice(0, 100),
+              body: entries.map(e => `- ${e.updated}: ${e.name} — ${e.summary ?? ''}`).join('\n'),
+            });
+          } catch { /* non-fatal */ }
+        }
+      } else if (type === 'RP') {
+        // Archive old reports
+        entries = d.prepare(`
+          SELECT * FROM index_entries
+          WHERE nb = ? AND type = ? AND status = 'active'
+          AND updated < ?
+        `).all(nb, type, cutoff) as IndexEntry[];
+      }
+
+      // Check ttl_days column override if present
+      const overriddenEntries = d.prepare(`
+        SELECT * FROM index_entries
+        WHERE nb = ? AND type = ? AND status != 'archived' AND ttl_days IS NOT NULL
+        AND DATE(updated, '+' || ttl_days || ' days') < ?
+      `).all(nb, type, todayStr) as IndexEntry[];
+
+      const deduped = new Map<string, IndexEntry>();
+      for (const e of entries) deduped.set(e.code, e);
+      for (const e of overriddenEntries) deduped.set(e.code, e);
+      const allToArchive = [...deduped.values()];
+
+      for (const entry of allToArchive) {
+        try {
+          d.prepare('UPDATE index_entries SET status = ? WHERE code = ?')
+            .run('archived', entry.code);
+          archived.push(entry);
+        } catch { /* best-effort */ }
+      }
+    } catch (err) {
+      console.warn(`[heartbeat] TTL check for ${typeKey} failed:`, err);
+    }
+  }
+
+  if (archived.length === 0) return null;
+
+  return {
+    type: 'stale_project' as Notification['type'], // reuse existing type
+    entries: archived,
+    message: `${archived.length} NOW entries archived by TTL`,
+  };
+}
+
 // --- Main heartbeat ---
 
 /**
@@ -353,6 +450,7 @@ export async function runHeartbeat(): Promise<HeartbeatResult> {
     checkStaleProjects,
     checkVisionAlignment,
     checkStalePlanPJ,
+    checkNowTTL,
   ];
 
   for (const check of checks) {

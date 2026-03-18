@@ -33,18 +33,8 @@ export declare function withLLMRuntime<T>(runtime: LLMRuntimeOverride, fn: () =>
 /**
  * Strip model reasoning/thinking artifacts from LLM responses.
  * Applied to EVERY response before it touches any downstream logic.
- *
- * FIX H: Only strip unambiguous reasoning artifacts:
- * - <think>...</think> blocks
- * - <thought>...</thought> blocks
- * - <|im_start|>...<|im_end|> tokens
- * - Orphaned <think> or <thought> without closing tag
- *
- * Does NOT strip based on content patterns like:
- * - **Constraint Checklist, **Mental Sandbox, **Analyze
- * - "The user..." / "Thinking Process:" line removal
  */
-export declare function stripThinkingTags(raw: string): string;
+export declare function stripThinkingTags(text: string): string;
 /**
  * Call LLM with automatic fallback.
  *

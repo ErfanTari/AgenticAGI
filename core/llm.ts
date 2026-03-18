@@ -110,45 +110,65 @@ export function withLLMRuntime<T>(
 /**
  * Strip model reasoning/thinking artifacts from LLM responses.
  * Applied to EVERY response before it touches any downstream logic.
- *
- * FIX H: Only strip unambiguous reasoning artifacts:
- * - <think>...</think> blocks
- * - <thought>...</thought> blocks
- * - <|im_start|>...<|im_end|> tokens
- * - Orphaned <think> or <thought> without closing tag
- *
- * Does NOT strip based on content patterns like:
- * - **Constraint Checklist, **Mental Sandbox, **Analyze
- * - "The user..." / "Thinking Process:" line removal
  */
-export function stripThinkingTags(raw: string): string {
-  let cleaned = raw;
+export function stripThinkingTags(text: string): string {
+  if (!text) return text;
+  let result = text;
 
-  // 1. Remove complete <think>...</think> blocks
-  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  // 1. Explicit reasoning block tags (all models)
+  result = result.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  result = result.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
+  result = result.replace(/<\|im_start\|>[\s\S]*?<\|im_end\|>/g, '');
+  // Orphaned opening tags
+  result = result.replace(/<think>[\s\S]*/gi, '');
+  result = result.replace(/<thought>[\s\S]*/gi, '');
 
-  // 2. Remove complete <thought>...</thought> blocks
-  cleaned = cleaned.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
+  // 2. Qwen starred analysis blocks
+  result = result.replace(
+    /^\*\*(Analyze|Consider|Think|Break down|Determine|Plan|Understand)\b[^*]*\*\*:?[\s\S]*?(?=\n\n|\n##|\n\*\*(?!Analyze|Consider|Think|Break|Determine|Plan|Understand)|\n[A-Z])/gm,
+    ''
+  );
 
-  // 3. Remove orphaned think/thought closing tags
-  cleaned = cleaned.replace(/<\/think>/gi, '');
-  cleaned = cleaned.replace(/<\/thought>/gi, '');
+  // 3. Qwen numbered analysis steps
+  result = result.replace(
+    /^(\d+\.\s+\*\*(Analyze|Consider|Think|Break|Determine|Plan|Understand)[^*]*\*\*:?[\s\S]*?\n\n)+/gm,
+    ''
+  );
 
-  // 4. Remove orphaned think/thought opening tags (no closing tag = entire rest is reasoning)
-  // Only strip if the tag appears at start of response or after whitespace
-  cleaned = cleaned.replace(/<think>/gi, '');
-  cleaned = cleaned.replace(/<thought>/gi, '');
+  // 4. Gemini "Thinking Process:" block
+  result = result.replace(
+    /^Thinking Process:[\s\S]*?(?=\n\n(?!\d)|\n##|\nHere|\nThe (?:answer|solution|result)|\nBased on)/m,
+    ''
+  );
 
-  // 5. Remove LM Studio special tokens <|im_start|>...<|im_end|>
-  cleaned = cleaned.replace(/<\|im_start\|>[\s\S]*?<\|im_end\|>/g, '');
-  cleaned = cleaned.replace(/<\|im_start\|>/g, '');
-  cleaned = cleaned.replace(/<\|im_end\|>/g, '');
+  // 5. "Let me analyze/think/break down..." preamble lines
+  result = result.replace(
+    /^(Let me (analyze|think about|break down|consider|work through|figure out)[^\n]*\n)+/gim,
+    ''
+  );
+
+  // 6. Tool call markup leaking into replies
+  result = result.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '');
+  result = result.replace(/<tool_response>[\s\S]*?<\/tool_response>/g, '');
+  result = result.replace(/\{"type"\s*:\s*"tool_call"[\s\S]*?\}\s*/g, '');
+
+  // 7. Known Qwen extended thinking artifacts
+  result = result.replace(/^\*\*Constraint Checklist[\s\S]*?(?=\n\n|\n##)/gm, '');
+  result = result.replace(/^\*\*Mental Sandbox[\s\S]*?(?=\n\n|\n##)/gm, '');
+  result = result.replace(/^Confidence Score:\s*\d[\s\S]*?(?=\n\n|\n##)/gm, '');
+
+  // 8. Safety: if result starts with a numbered list of reasoning steps
+  const reasoningStart = /^(\d+\.\s+[A-Z][^\n]*\n)+/;
+  if (reasoningStart.test(result.trim()) && result.length > 300) {
+    const afterReasoning = result.replace(reasoningStart, '').trim();
+    if (afterReasoning.length > 50) result = afterReasoning;
+  }
 
   // Safety rule: if stripping left empty/whitespace and original was non-empty, return original
-  const stripped = cleaned.trim();
-  if (stripped.length === 0 && raw.trim().length > 0) {
+  const stripped = result.trim();
+  if (stripped.length === 0 && text.trim().length > 0) {
     console.warn('[llm] stripThinkingTags: result was empty after stripping — returning original response');
-    return raw.trim();
+    return text.trim();
   }
 
   return stripped;
@@ -206,14 +226,20 @@ async function callOpenAICompatibleEndpoint(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
+  // Clone messages to avoid mutating the original array
+  const workingMessages = messages.map(m => ({ ...m }));
+
   const requestBody: Record<string, unknown> = {
     model,
-    messages,
+    messages: workingMessages,
     max_tokens: options?.maxTokens ?? defaultMaxTokens,
     temperature,
   };
 
-  if (options?.responseSchema) {
+  // Only send response_format to non-primary (cloud/fallback) providers.
+  // For the primary local model, inject schema as a prompt instruction instead.
+  const isPrimary = label === 'primary' || label === 'local-primary';
+  if (options?.responseSchema && !isPrimary) {
     requestBody.response_format = {
       type: 'json_schema',
       json_schema: {
@@ -222,6 +248,15 @@ async function callOpenAICompatibleEndpoint(
         schema: options.responseSchema,
       },
     };
+  } else if (options?.responseSchema && isPrimary) {
+    // For local models: inject schema as instruction in system prompt
+    const schemaInstruction = `\nRespond ONLY with valid JSON matching this schema:\n${JSON.stringify(options.responseSchema, null, 2)}\nNo other text.`;
+    const systemMsg = workingMessages.find(m => m.role === 'system');
+    if (systemMsg) {
+      systemMsg.content += schemaInstruction;
+    } else {
+      workingMessages.unshift({ role: 'system', content: schemaInstruction });
+    }
   }
 
   const response = await fetch(endpoint, {
@@ -230,6 +265,42 @@ async function callOpenAICompatibleEndpoint(
     body: JSON.stringify(requestBody),
     signal,
   });
+
+  // Retry-on-400: if 400 AND we sent response_format, retry without it
+  if (response.status === 400 && options?.responseSchema && !isPrimary) {
+    const retryBody: Record<string, unknown> = {
+      model,
+      messages: workingMessages,
+      max_tokens: options?.maxTokens ?? defaultMaxTokens,
+      temperature,
+    };
+    // Inject schema as prompt instruction instead
+    const schemaInstruction = `\nRespond ONLY with valid JSON matching this schema:\n${JSON.stringify(options.responseSchema, null, 2)}\nNo other text.`;
+    const systemMsg = workingMessages.find(m => m.role === 'system');
+    if (systemMsg) {
+      systemMsg.content += schemaInstruction;
+    } else {
+      workingMessages.unshift({ role: 'system', content: schemaInstruction });
+    }
+    retryBody.messages = workingMessages;
+    const retryResponse = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(retryBody),
+      signal,
+    });
+    if (!retryResponse.ok) {
+      throw new Error(`${label}: ${retryResponse.status} ${retryResponse.statusText}`);
+    }
+    const retryData = await retryResponse.json() as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const retryContent = retryData.choices?.[0]?.message?.content;
+    if (!retryContent) {
+      throw new Error(`${label}: empty response content`);
+    }
+    return retryContent;
+  }
 
   if (!response.ok) {
     throw new Error(`${label}: ${response.status} ${response.statusText}`);

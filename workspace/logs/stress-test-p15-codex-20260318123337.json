@@ -1,0 +1,495 @@
+{
+  "runId": "20260318123337",
+  "startedAt": "2026-03-18T12:39:58.719Z",
+  "runtime": {
+    "primaryModel": "qwen/qwen3.5-35b-a3b",
+    "primaryEndpoint": "http://10.40.20.174:1234/v1/chat/completions",
+    "localOnly": true,
+    "fallbackModel": null
+  },
+  "database": {
+    "mode": "live",
+    "dbPath": "/Users/erfantari/Claude_Code/Projects/AgenticAGI/index/memory.sqlite",
+    "sandboxRoot": null,
+    "archivedDuplicates": []
+  },
+  "preflight": {
+    "reply": "Thinking Process:\n\n1.  **Analyze the Request:** The user",
+    "providerLine": "[llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 1082ms",
+    "logs": [
+      "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 1082ms"
+    ]
+  },
+  "results": [
+    {
+      "id": "T1",
+      "name": "Thinking strip",
+      "passed": true,
+      "issues": [],
+      "checks": [
+        {
+          "label": "No thinking leak in user reply",
+          "pass": true
+        },
+        {
+          "label": "Response is substantive (> 80 chars)",
+          "pass": true
+        },
+        {
+          "label": "At least one LLM request prompt observed",
+          "pass": true
+        }
+      ],
+      "replyPreview": "# How Hash Maps Work Internally A **hash map** (also called a hash table) is a data structure that provides O(1) average-case time complexity for insert, delete, and lookup operations. Here's how it works internally: ## Core Components ###…",
+      "intent": "memory_query",
+      "promptPreviews": [
+        "You are a message intake classifier. Analyze the message and return ONLY a JSON object. Return this structure: { \"summary\": \"one-sentence summary of what the message is about\", \"person\": { \"name\": \"person name if mentioned or implied\", \"co…",
+        "You decompose one user message into semantic intent units. Return ONLY JSON with this shape: {\"units\":[{\"route\":\"conversational|agentic|query\",\"content\":\"exact original meaning for that unit\"}]}. Rules: - Preserve meaning exactly. - Do not…",
+        "You are a personal AI agent with memory, skills, and reasoning capabilities. Your capabilities: - Memory system: WHO, WHAT, WHEN, HOW, WHY, NOW, PLAN notebooks - Skills: web_search, calculator, file_reader, file_writer, run_bash, web_fetch…"
+      ],
+      "eventTypes": [
+        "llm_request",
+        "llm_raw",
+        "llm_stripped",
+        "intake",
+        "decomposition",
+        "session_cache_miss",
+        "session_cache_store",
+        "unit_memory_search",
+        "context_built"
+      ],
+      "eventSamples": [
+        "[llm_request] system=\"You are a message intake classifier. Analyze the message and return ONLY a JSON object. Return this structure: { \"summary\": \"one-sentence s…\" messages=2",
+        "[llm_raw] ms=6360 raw=\"Thinking Process: 1. **Analyze the Request:** * Input: \"Explain how a hash map works internally. Be thorough.\" * Task: Classify the message…\"",
+        "[llm_stripped] \"Thinking Process: 2. **Evaluate the Message:** * Content: The user is asking for an explanation of a technical concept (hash map internals)…\"",
+        "[intake] {\"summary\":\"Explain how a hash map works internally. Be thorough.\",\"signals\":{\"summary\":\"Explain how a hash map works internally. Be thorough.\",\"personSignal\":null,\"projectSignal\"…",
+        "[intake] {\"summary\":\"Explain how a hash map works internally. Be thorough.\",\"signals\":{\"summary\":\"Explain how a hash map works internally. Be thorough.\",\"personSignal\":null,\"projectSignal\"…",
+        "[llm_request] system=\"You decompose one user message into semantic intent units. Return ONLY JSON with this shape: {\"units\":[{\"route\":\"conversational|agentic|que…\" messages=2",
+        "[llm_raw] ms=14366 raw=\"Thinking Process: 1. **Analyze the Request:** * Input: \"Explain how a hash map works internally. Be thorough.\" * Task: Decompose into seman…\"",
+        "[llm_stripped] \"Thinking Process: 1. **Analyze the Request:** * Input: \"Explain how a hash map works internally. Be thorough.\" * Task: Decompose into seman…\"",
+        "[decomposition] {\"units\":[{\"id\":\"unit_1\",\"route\":\"conversational\",\"content\":\"Explain how a hash map works internally. Be thorough.\",\"order\":0}]}",
+        "[session_cache_miss] {\"code\":\"WHAT.PJ-000075\"}",
+        "[session_cache_store] {\"code\":\"WHAT.PJ-000075\"}",
+        "[session_cache_miss] {\"code\":\"HOW.PR-000001\"}"
+      ],
+      "logTail": [
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 6360ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 14366ms",
+        "[log] [embeddings] Using LLM-based embeddings from local model",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 15179ms"
+      ]
+    },
+    {
+      "id": "T2",
+      "name": "Compound message: all writes execute",
+      "passed": true,
+      "issues": [],
+      "checks": [
+        {
+          "label": "Created WHO entry for Alice Codex 123337",
+          "pass": true
+        },
+        {
+          "label": "Created WHO entry for Bob Codex 123337",
+          "pass": true
+        },
+        {
+          "label": "Created project entry for CodexStressProject123337",
+          "pass": true
+        },
+        {
+          "label": "No thinking leak in user reply",
+          "pass": true
+        }
+      ],
+      "replyPreview": "Created: Alice Codex 123337 (WHO.CT-000090), Bob Codex 123337 (WHO.CT-000091), CodexStressProject123337 (PLAN.PJ-000006).",
+      "intent": "memory_write",
+      "promptPreviews": [],
+      "eventTypes": [
+        "session_cache_store",
+        "project_brain_invalidated"
+      ],
+      "eventSamples": [
+        "[session_cache_store] {\"code\":\"WHO.CT-000090\"}",
+        "[session_cache_store] {\"code\":\"WHO.CT-000091\"}",
+        "[session_cache_store] {\"code\":\"PLAN.PJ-000006\"}",
+        "[project_brain_invalidated] {\"projectCode\":\"PLAN.PJ-000006\"}",
+        "[project_brain_invalidated] {\"projectCode\":\"PLAN.PJ-000006\"}",
+        "[project_brain_invalidated] {\"projectCode\":\"PLAN.PJ-000006\"}",
+        "[project_brain_invalidated] {\"projectCode\":\"PLAN.PJ-000006\"}"
+      ],
+      "logTail": [],
+      "observations": [
+        "aliceCount=1",
+        "bobCount=1",
+        "projectCount=1"
+      ],
+      "history": [
+        {
+          "role": "user",
+          "content": "Save Alice Codex 123337 as a contact and Bob Codex 123337 as a contact and create a project called CodexStressProject123337."
+        },
+        {
+          "role": "assistant",
+          "content": "Created: Alice Codex 123337 (WHO.CT-000090), Bob Codex 123337 (WHO.CT-000091), CodexStressProject123337 (PLAN.PJ-000006)."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "name": "Session cache on second mention",
+      "passed": true,
+      "issues": [],
+      "checks": [
+        {
+          "label": "Cache events fired on first mention",
+          "pass": true
+        },
+        {
+          "label": "Cache HIT observed on second mention",
+          "pass": true
+        },
+        {
+          "label": "Second mention did not rely only on cache store",
+          "pass": true
+        }
+      ],
+      "replyPreview": "Based on my memory records, I can tell you that **Alice Codex 123337** is stored as a contact in my system. Let me retrieve the full details for you: [WHO.CT-000090] Alice Codex 123337 (active): Contact: Alice Codex 123337 This entry shows…",
+      "intent": "memory_query",
+      "promptPreviews": [
+        "You are a message intake classifier. Analyze the message and return ONLY a JSON object. Return this structure: { \"summary\": \"one-sentence summary of what the message is about\", \"person\": { \"name\": \"person name if mentioned or implied\", \"co…",
+        "You decompose one user message into semantic intent units. Return ONLY JSON with this shape: {\"units\":[{\"route\":\"conversational|agentic|query\",\"content\":\"exact original meaning for that unit\"}]}. Rules: - Preserve meaning exactly. - Do not…",
+        "You are a personal AI agent with memory, skills, and reasoning capabilities. Your capabilities: - Memory system: WHO, WHAT, WHEN, HOW, WHY, NOW, PLAN notebooks - Skills: web_search, calculator, file_reader, file_writer, run_bash, web_fetch…"
+      ],
+      "eventTypes": [
+        "llm_request",
+        "llm_raw",
+        "llm_stripped",
+        "intake",
+        "decomposition",
+        "session_cache_hit",
+        "unit_memory_search",
+        "session_cache_miss",
+        "session_cache_store",
+        "context_built"
+      ],
+      "eventSamples": [
+        "[llm_request] system=\"You are a message intake classifier. Analyze the message and return ONLY a JSON object. Return this structure: { \"summary\": \"one-sentence s…\" messages=2",
+        "[llm_raw] ms=6474 raw=\"Thinking Process: 1. **Analyze the Request:** * Input: \"What can you tell me about Alice Codex 123337?\" * Task: Classify the message into a…\"",
+        "[llm_stripped] \"Thinking Process: 3. **Evaluate Fields:** * `summary`: Needs to be a one-sentence summary. -> \"The user is asking for information about an …\"",
+        "[intake] {\"summary\":\"What can you tell me about Alice Codex 123337?\",\"signals\":{\"summary\":\"What can you tell me about Alice Codex 123337?\",\"personSignal\":null,\"projectSignal\":null,\"timeSig…",
+        "[intake] {\"summary\":\"What can you tell me about Alice Codex 123337?\",\"signals\":{\"summary\":\"What can you tell me about Alice Codex 123337?\",\"personSignal\":null,\"projectSignal\":null,\"timeSig…",
+        "[llm_request] system=\"You decompose one user message into semantic intent units. Return ONLY JSON with this shape: {\"units\":[{\"route\":\"conversational|agentic|que…\" messages=2",
+        "[llm_raw] ms=14800 raw=\"Thinking Process: 1. **Analyze the Request:** * Input: \"What can you tell me about Alice Codex 123337?\" * Task: Decompose into semantic int…\"",
+        "[llm_stripped] \"Thinking Process: 1. **Analyze the Request:** * Input: \"What can you tell me about Alice Codex 123337?\" * Task: Decompose into semantic int…\"",
+        "[decomposition] {\"units\":[{\"id\":\"unit_1\",\"route\":\"query\",\"content\":\"What can you tell me about Alice Codex 123337?\",\"order\":0}]}",
+        "[session_cache_hit] {\"code\":\"WHO.CT-000081\"}",
+        "[session_cache_hit] {\"code\":\"WHO.CT-000081\"}",
+        "[unit_memory_search] {\"unit\":{\"id\":\"unit_1\",\"route\":\"query\",\"content\":\"What can you tell me about Alice Codex 123337?\",\"order\":0},\"result\":{\"unitId\":\"unit_1\",\"strategy\":\"person\",\"confidence\":0.8,\"entr…"
+      ],
+      "logTail": [
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 6474ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 14800ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 9369ms"
+      ]
+    },
+    {
+      "id": "T4",
+      "name": "WHO dedup by fingerprint across formats",
+      "passed": true,
+      "issues": [],
+      "checks": [
+        {
+          "label": "At most one WHO entry exists for the Charlie fingerprint",
+          "pass": true
+        },
+        {
+          "label": "No thinking leak in user reply",
+          "pass": true
+        }
+      ],
+      "replyPreview": "Updated WHO.CT-000080 — Charlie C. (WHO.CT)",
+      "intent": "memory_write",
+      "promptPreviews": [
+        "You are a message intake classifier. Analyze the message and return ONLY a JSON object. Return this structure: { \"summary\": \"one-sentence summary of what the message is about\", \"person\": { \"name\": \"person name if mentioned or implied\", \"co…",
+        "You decompose one user message into semantic intent units. Return ONLY JSON with this shape: {\"units\":[{\"route\":\"conversational|agentic|query\",\"content\":\"exact original meaning for that unit\"}]}. Rules: - Preserve meaning exactly. - Do not…",
+        "You are a memory writing assistant. Extract structured data from the user's request and return ONLY valid JSON. Return a JSON object with these fields: { \"nb\": \"WHO|WHAT|WHEN|HOW|WHY|NOW|PLAN\", \"type\": \"(see valid types below)\", \"name\": \"e…",
+        "Extract metadata from this memory entry. Return JSON: {\"facts\": [\"fact1\"], \"confidence\": 0.0-1.0, \"importance_score\": 0.0-1.0} importance_score rules: - 0.9: critical/urgent/deadline/must-do - 0.7-0.8: important, high-priority, key informa…"
+      ],
+      "eventTypes": [
+        "llm_request",
+        "llm_raw",
+        "llm_stripped",
+        "intake",
+        "decomposition"
+      ],
+      "eventSamples": [
+        "[llm_request] system=\"You are a message intake classifier. Analyze the message and return ONLY a JSON object. Return this structure: { \"summary\": \"one-sentence s…\" messages=2",
+        "[llm_raw] ms=3005 raw=\"{\"facts\": [\"Charlie's email address is charlie.123337@example.com\"], \"confidence\": 0.95, \"importance_score\": 0.5}\"",
+        "[llm_stripped] \"{\"facts\": [\"Charlie's email address is charlie.123337@example.com\"], \"confidence\": 0.95, \"importance_score\": 0.5}\"",
+        "[llm_raw] ms=7652 raw=\"Thinking Process: 1. **Analyze the Request:** * Input: A user message (\"Save Charlie C. as a contact with email charlie.123337@example.com.…\"",
+        "[llm_stripped] \"Thinking Process: 3. **Evaluate Fields:** * `summary`: Needs to be a one-sentence summary. \"The user is requesting to save a new contact en…\"",
+        "[intake] {\"summary\":\"Save Charlie C. as a contact with email charlie.123337@example.com.\",\"signals\":{\"summary\":\"Save Charlie C. as a contact with email charlie.123337@example.com.\",\"person…",
+        "[intake] {\"summary\":\"Save Charlie C. as a contact with email charlie.123337@example.com.\",\"signals\":{\"summary\":\"Save Charlie C. as a contact with email charlie.123337@example.com.\",\"person…",
+        "[llm_request] system=\"You decompose one user message into semantic intent units. Return ONLY JSON with this shape: {\"units\":[{\"route\":\"conversational|agentic|que…\" messages=2",
+        "[llm_raw] ms=14825 raw=\"Thinking Process: 1. **Analyze the Request:** * Input: \"Save Charlie C. as a contact with email charlie.123337@example.com.\" * Task: Decomp…\"",
+        "[llm_stripped] \"Thinking Process: 3. **Drafting the Unit:** * Route: \"agentic\" * Content: \"Save Charlie C. as a contact with email charlie.123337@example.c…\"",
+        "[decomposition] {\"units\":[{\"id\":\"unit_1\",\"route\":\"conversational\",\"content\":\"Save Charlie C. as a contact with email charlie.123337@example.com.\",\"order\":0}]}",
+        "[llm_request] system=\"You are a memory writing assistant. Extract structured data from the user's request and return ONLY valid JSON. Return a JSON object with t…\" messages=2"
+      ],
+      "logTail": [
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 3005ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 7652ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 14825ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 3010ms",
+        "[log] [memory] Merged \"Charlie C.\" into existing \"Charlie Codex 111736\" (WHO.CT-000080)"
+      ]
+    },
+    {
+      "id": "T5",
+      "name": "Memory write completeness after task",
+      "passed": true,
+      "issues": [],
+      "checks": [
+        {
+          "label": "WHEN.EV count increased",
+          "pass": true
+        },
+        {
+          "label": "WHEN.RF count increased",
+          "pass": true
+        },
+        {
+          "label": "Recent WHEN.EV mentions the task artifact",
+          "pass": true
+        },
+        {
+          "label": "Recent WHEN.RF mentions the task artifact",
+          "pass": true
+        }
+      ],
+      "replyPreview": "I'll create the file for you using the file_writer skill.",
+      "intent": "skill",
+      "promptPreviews": [
+        "You are a personal AI agent with memory, skills, and reasoning capabilities. Your capabilities: - Memory system: WHO, WHAT, WHEN, HOW, WHY, NOW, PLAN notebooks - Skills: web_search, calculator, file_reader, file_writer, run_bash, web_fetch…"
+      ],
+      "eventTypes": [
+        "session_cache_store",
+        "session_cache_hit",
+        "session_cache_miss",
+        "context_built",
+        "llm_request",
+        "llm_raw",
+        "llm_stripped"
+      ],
+      "eventSamples": [
+        "[session_cache_store] {\"code\":\"WHEN.EV-000173\"}",
+        "[session_cache_store] {\"code\":\"PLAN.EX-000042\"}",
+        "[session_cache_hit] {\"code\":\"WHO.CT-000001\"}",
+        "[session_cache_miss] {\"code\":\"PLAN.CT-000001\"}",
+        "[context_built] {\"tokens\":559,\"sections\":[\"system\",\"skill_output\",\"user_message\"]}",
+        "[session_cache_store] {\"code\":\"WHEN.RF-000060\"}",
+        "[llm_request] system=\"You are a personal AI agent with memory, skills, and reasoning capabilities. Your capabilities: - Memory system: WHO, WHAT, WHEN, HOW, WHY,…\" messages=2",
+        "[llm_raw] ms=3556 raw=\"{ \"facts\": [ \"Charlie C.'s email address is charlie.123337@example.com\" ], \"confidence\": 0.95, \"importance_score\": 0.6 }\"",
+        "[llm_stripped] \"{ \"facts\": [ \"Charlie C.'s email address is charlie.123337@example.com\" ], \"confidence\": 0.95, \"importance_score\": 0.6 }\"",
+        "[llm_raw] ms=4614 raw=\"<think>The user wants me to create a file with specific content. I should use the file_writer skill for this task as it's designed for writ…\"",
+        "[llm_stripped] \"I'll create the file for you using the file_writer skill.\""
+      ],
+      "logTail": [
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 3556ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 4614ms"
+      ],
+      "observations": [
+        "evBefore=75 evAfter=76",
+        "rfBefore=36 rfAfter=37",
+        "matchingEV=WHEN.EV-000173",
+        "matchingRF=WHEN.RF-000060"
+      ]
+    },
+    {
+      "id": "T6",
+      "name": "PLAN.EX terminal state does not accumulate",
+      "passed": true,
+      "issues": [],
+      "checks": [
+        {
+          "label": "Global active PLAN.EX count did not grow",
+          "pass": true
+        },
+        {
+          "label": "Matching PLAN.EX row reached a terminal state",
+          "pass": true
+        },
+        {
+          "label": "No matching PLAN.EX row remained active",
+          "pass": true
+        }
+      ],
+      "replyPreview": "I'll create that file for you now. ```bash echo \"done 123337\" > workspace/terminal-p15-codex-123337.txt ```",
+      "intent": "skill",
+      "promptPreviews": [
+        "You are a personal AI agent with memory, skills, and reasoning capabilities. Your capabilities: - Memory system: WHO, WHAT, WHEN, HOW, WHY, NOW, PLAN notebooks - Skills: web_search, calculator, file_reader, file_writer, run_bash, web_fetch…"
+      ],
+      "eventTypes": [
+        "session_cache_store",
+        "session_cache_miss",
+        "context_built",
+        "llm_request",
+        "llm_raw",
+        "llm_stripped"
+      ],
+      "eventSamples": [
+        "[session_cache_store] {\"code\":\"WHEN.EV-000174\"}",
+        "[session_cache_store] {\"code\":\"PLAN.EX-000043\"}",
+        "[session_cache_miss] {\"code\":\"PLAN.CT-000001\"}",
+        "[context_built] {\"tokens\":554,\"sections\":[\"system\",\"skill_output\",\"user_message\"]}",
+        "[session_cache_store] {\"code\":\"WHEN.RF-000061\"}",
+        "[llm_request] system=\"You are a personal AI agent with memory, skills, and reasoning capabilities. Your capabilities: - Memory system: WHO, WHAT, WHEN, HOW, WHY,…\" messages=2",
+        "[llm_raw] ms=2509 raw=\"<think>The user is asking me to create a file with specific content. I need to use the file_writer skill for this task, as it's meant for w…\"",
+        "[llm_stripped] \"I'll create that file for you now. ```bash echo \"done 123337\" > workspace/terminal-p15-codex-123337.txt ```\""
+      ],
+      "logTail": [
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 2509ms"
+      ],
+      "observations": [
+        "activeBefore=0 activeAfter=0",
+        "matchingPlanEx=PLAN.EX-000043:complete"
+      ]
+    },
+    {
+      "id": "T7",
+      "name": "Adaptive execution handles failure without raw collapse",
+      "passed": true,
+      "issues": [],
+      "checks": [
+        {
+          "label": "No thinking leak in user reply",
+          "pass": true
+        },
+        {
+          "label": "Task produced an artifact or surfaced graceful adaptive handling",
+          "pass": true
+        },
+        {
+          "label": "Observed adaptive evidence if artifact was not created",
+          "pass": true
+        }
+      ],
+      "replyPreview": "## Warning: Create a Node.js Express server with GET /ok endpoint and include tests **Note:** Could not fully complete this task as planned. const app = express(); const PORT = process.env.PORT || 3000; app.get('/ok', (req, res) => { res.j…",
+      "intent": "planned_workflow",
+      "promptPreviews": [
+        "You are a message intake classifier. Analyze the message and return ONLY a JSON object. Return this structure: { \"summary\": \"one-sentence summary of what the message is about\", \"person\": { \"name\": \"person name if mentioned or implied\", \"co…",
+        "You decompose one user message into semantic intent units. Return ONLY JSON with this shape: {\"units\":[{\"route\":\"conversational|agentic|query\",\"content\":\"exact original meaning for that unit\"}]}. Rules: - Preserve meaning exactly. - Do not…",
+        "You are a task planner. Decompose the user's request into goals, milestones, and steps. Each step uses one skill. Available skills: calculator: Calculate mathematical expressions. Use for any arithmetic, percentages, conversions. file_read…",
+        "You are a content generation assistant. Output ONLY plain text. No markdown. No HTML. No preamble. No headers, no bullets, just prose. Do NOT include any analysis, planning, task breakdown, reasoning steps, or meta-commentary. Start direct…",
+        "You are a plan revision assistant. Given completed milestones and remaining milestones, determine if the remaining milestones are still valid. Return ONLY a JSON object: {\"revised\": false} if no changes needed, OR {\"revised\": true, \"milest…"
+      ],
+      "eventTypes": [
+        "llm_request",
+        "llm_raw",
+        "llm_stripped",
+        "intake",
+        "decomposition",
+        "session_cache_miss",
+        "session_cache_store",
+        "unit_memory_search",
+        "working_memory_created",
+        "plan",
+        "session_cache_hit",
+        "milestone_start",
+        "step_start",
+        "step_result",
+        "working_memory_loaded",
+        "milestone_memory_cycle",
+        "milestone_result",
+        "failure_classified",
+        "working_memory_archived"
+      ],
+      "eventSamples": [
+        "[llm_request] system=\"You are a message intake classifier. Analyze the message and return ONLY a JSON object. Return this structure: { \"summary\": \"one-sentence s…\" messages=2",
+        "[llm_raw] ms=6605 raw=\"Thinking Process: 1. **Analyze the Request:** * Input: \"Create a Node.js server using Express at workspace/express-test-p15-codex-123337/se…\"",
+        "[llm_stripped] \"Thinking Process: 2. **Evaluate Fields:** * `summary`: What is this about? It's a request to create a Node.js server with Express, define a…\"",
+        "[intake] {\"summary\":\"Create a Node.js server using Express at workspace/express-test-p15-codex-123337/server.js with GET \",\"signals\":{\"summary\":\"Create a Node.js server using Express at wo…",
+        "[intake] {\"summary\":\"Create a Node.js server using Express at workspace/express-test-p15-codex-123337/server.js with GET \",\"signals\":{\"summary\":\"Create a Node.js server using Express at wo…",
+        "[llm_request] system=\"You decompose one user message into semantic intent units. Return ONLY JSON with this shape: {\"units\":[{\"route\":\"conversational|agentic|que…\" messages=2",
+        "[llm_raw] ms=11161 raw=\"<think>The user is asking me to decompose their message into semantic intent units for routing purposes. Let me analyze this request: The u…\"",
+        "[llm_stripped] \"{ \"units\": [ { \"route\": \"agentic\", \"content\": \"Create a Node.js server using Express at workspace/express-test-p15-codex-123337/server.js w…\"",
+        "[decomposition] {\"units\":[{\"id\":\"unit_1\",\"route\":\"agentic\",\"content\":\"Create a Node.js server using Express at workspace/express-test-p15-codex-123337/server.js with GET /ok returning {ok:true}\",…",
+        "[session_cache_miss] {\"code\":\"WHEN.EV-000154\"}",
+        "[session_cache_store] {\"code\":\"WHEN.EV-000154\"}",
+        "[session_cache_miss] {\"code\":\"WHEN.EV-000158\"}"
+      ],
+      "logTail": [
+        "[log] [planner] Sanitized length: 2821",
+        "[log] [planner] Sanitized (last 200 chars): st-p15-codex-123337 && node server.test.js\"},\"dependsOn\":[\"step3\"],\"optional\":true,\"confidence_score\":0.9,\"risk_level\":\"MED\"}]}],\"complexity\":\"LOW\",\"needsConfirmation\":false,\"estima…",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 19345ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 12665ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 19779ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 19445ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 19410ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 5292ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 5068ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 4911ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 6008ms",
+        "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 10323ms"
+      ]
+    },
+    {
+      "id": "T8",
+      "name": "Recent WHEN.EV / WHEN.RF entries have no thinking leak",
+      "passed": true,
+      "issues": [],
+      "checks": [
+        {
+          "label": "Found relevant recent episodic/reflection entries for this run",
+          "pass": true
+        },
+        {
+          "label": "No thinking leak in matching entries",
+          "pass": true
+        }
+      ],
+      "replyPreview": "Checked 4 matching WHEN rows",
+      "intent": "audit",
+      "promptPreviews": [],
+      "eventTypes": [],
+      "eventSamples": [
+        "WHEN.RF-000061 Task \"Skill: file_writer — Create a file workspace/terminal-p15-codex-123337. [2026-03-18T12:36]\" co",
+        "WHEN.EV-000174 success — Skill: file_writer — Create a file workspace/terminal-p15-co",
+        "WHEN.RF-000060 Task \"Skill: file_writer — Create a file called workspace/hello-p15-codex-123 [2026-03-18T12:36]\" co",
+        "WHEN.EV-000173 success — Skill: file_writer — Create a file called workspace/hello-p1"
+      ],
+      "logTail": []
+    }
+  ],
+  "followUp": {
+    "name": "Follow-up probe: person/project relationship",
+    "passed": true,
+    "issues": [],
+    "replyPreview": "I need to check my memory system for information about Alice Codex 123337 and the project CodexStressProject123337, as well as any relationships between them. Let me query the memory entries.",
+    "observations": [
+      "alice=WHO.CT-000090:Alice Codex 123337",
+      "project=PLAN.PJ-000006:CodexStressProject123337",
+      "relationships=WHO.CT-000090-works_on->PLAN.PJ-000006"
+    ],
+    "eventSamples": [
+      "[llm_request] system=\"You are a message intake classifier. Analyze the message and return ONLY a JSON object. Return this structure: { \"summary\": \"one-sentence s…\" messages=2",
+      "[llm_raw] ms=11953 raw=\"Thinking Process: 1. **Analyze the Request:** * Role: Reflective agent. * Input: Completed task event (Task: Create a Node.js server using …\"",
+      "[llm_stripped] \"Thinking Process: 3. **Drafting the Reflection:** * *What went well:* The server was successfully created at the specified workspace\"",
+      "[session_cache_store] {\"code\":\"WHEN.RF-000062\"}",
+      "[llm_raw] ms=10765 raw=\"Thinking Process: 1. **Analyze the Request:** * Role: Reflective agent. * Input: A completed task event (Task: Create a Node.js Express ser…\"",
+      "[llm_stripped] \"Thinking Process: 2. **Analyze the Input Data:** * Task: Create a Node.js Express server with GET /ok endpoint and include tests. * Outcome…\"",
+      "[session_cache_store] {\"code\":\"WHEN.RF-000063\"}",
+      "[llm_raw] ms=11532 raw=\"Thinking Process: 1. **Analyze the Request:** * Input: A user message (\"What role does Alice Codex 123337 have on project CodexStressProjec…\"",
+      "[llm_stripped] \"Thinking Process: 3. **Determine JSON Fields:** * `summary`: Needs to be a one-sentence summary. -> \"The user is inquiring about the role o…\"",
+      "[intake] {\"summary\":\"What role does Alice Codex 123337 have on project CodexStressProject123337?\",\"signals\":{\"summary\":\"What role does Alice Codex 123337 have on project CodexStressProject…"
+    ],
+    "logTail": [
+      "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 11953ms",
+      "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 10765ms",
+      "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 11532ms",
+      "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 15038ms",
+      "[log] [llm] Provider: codex-local-primary (qwen/qwen3.5-35b-a3b) — 4603ms"
+    ]
+  }
+}

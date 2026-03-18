@@ -7,6 +7,7 @@ import type { SimpleGit } from 'simple-git';
 import { PATHS } from '../../config/agent.config.js';
 import { getDb, insertEntry } from './index.js';
 import { indexContent } from './fts.js';
+import { localDateString } from '../utils/date.js';
 
 export interface VersionHistory {
   hash: string;
@@ -276,7 +277,7 @@ export async function rollbackEntry(code: string, commitHash: string): Promise<b
           ).run(
             meta.summary ?? '',
             meta.status ?? 'active',
-            new Date().toISOString().slice(0, 10),
+            localDateString(),
             fullPath,
             originalCode,
           );
@@ -288,7 +289,7 @@ export async function rollbackEntry(code: string, commitHash: string): Promise<b
             type: meta.type,
             name: meta.name,
             status: meta.status ?? 'active',
-            updated: new Date().toISOString().slice(0, 10),
+            updated: localDateString(),
             summary: meta.summary ?? '',
             path: fullPath,
             due_date: meta.due_date ?? null,

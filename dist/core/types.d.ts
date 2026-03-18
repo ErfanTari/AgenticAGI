@@ -44,6 +44,7 @@ export interface ResolvedMemory {
 export type LLMHandler = (messages: Message[], options?: {
     responseSchema?: Record<string, unknown>;
     maxTokens?: number;
+    temperature?: number;
 }) => Promise<string>;
 export interface AgentResponse {
     reply: string;
