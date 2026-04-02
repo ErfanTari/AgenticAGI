@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   buildContext: vi.fn(),
   decomposeTask: vi.fn(),
+  assessComplexity: vi.fn(),
   executePlan: vi.fn(),
   verifyExecution: vi.fn(),
   buildUserReport: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock('../../core/context.js', () => ({
 
 vi.mock('../../core/planner.js', () => ({
   decomposeTask: mocks.decomposeTask,
+  assessComplexity: mocks.assessComplexity,
 }));
 
 vi.mock('../../core/executor.js', () => ({
@@ -66,6 +68,8 @@ describe('Phase 13: route dispatcher', () => {
       { role: 'user', content: 'context user' },
     ]);
     mocks.getSkillDescriptions.mockReturnValue('file_writer: write files');
+    // Phase 16: always return HIGH so tests use the existing decomposeTask+executePlan path
+    mocks.assessComplexity.mockResolvedValue({ level: 'HIGH', reason: 'test', estimatedSteps: 4 });
     mocks.decomposeTask.mockResolvedValue({
       goal: 'Build app',
       steps: [{ id: 'step1', description: 'Write file', skill: 'file_writer', input: { path: 'app.ts' }, dependsOn: [] }],

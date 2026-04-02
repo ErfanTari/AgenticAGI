@@ -3,14 +3,16 @@ import { executePlan, verifyExecution, buildUserReport } from './executor.js';
 import { localDateString } from './utils/date.js';
 import type { WorkingMemory } from './memory/working-memory.js';
 import { stripThinkingTags } from './llm.js';
-import { decomposeTask } from './planner.js';
+import { decomposeTask, assessComplexity } from './planner.js';
 import { fetchByCode, hybridSearch, queryEntries, updateEntry, upsertEntry } from './memory/mod.js';
 import { writeReflection } from './memory/episodic.js';
 import { addRelationship, getRelationshipsFrom } from './memory/relationships.js';
 import { getSkillDescriptions } from './skills/registry.js';
 import { runSkill } from './skills/runner.js';
 import { memoryAgent } from './memory/memory-agent.js';
+import { runQueryLoop } from './query-loop.js';
 import type {
+  Classification,
   DecomposedUnit,
   LLMHandler,
   Message,
@@ -448,8 +450,35 @@ async function handleAgenticUnits(
   priorContext: ResolvedMemory | null = null,
   workingMemory?: WorkingMemory,
 ): Promise<AgenticRouteResult> {
-  const goals = buildGoals(units);
   const goalMessage = units.map(unit => unit.content).join('\n');
+  const minOrder = Math.min(...units.map(unit => unit.order));
+
+  // Phase 16 — Complexity routing
+  // LOW/MEDIUM → QueryLoop (model decides steps iteratively)
+  // HIGH/MAX   → existing decomposeTask + executePlan pipeline
+  const complexityClassification: Classification = { intent: 'planned_workflow', codes: [] };
+  const complexity = await assessComplexity(goalMessage, complexityClassification, llmHandler);
+
+  if (complexity.level === 'LOW' || complexity.level === 'MEDIUM') {
+    const loopResult = await runQueryLoop(goalMessage, llmHandler, workingMemory);
+    // Build a minimal stub plan so the return type is satisfied
+    const stubPlan: TaskPlan = {
+      goal: goalMessage,
+      steps: [{ id: 'ql_1', skill: 'query_loop', input: {}, description: goalMessage, dependsOn: [], optional: false, confidence_score: 1.0, risk_level: 'LOW' as const }],
+      milestones: [],
+      goals: buildGoals(units),
+      complexity: complexity.level,
+      needsConfirmation: false,
+      createdAt: new Date().toISOString(),
+    };
+    return {
+      parts: [{ order: minOrder, route: 'agentic', reply: loopResult.reply }],
+      plan: stubPlan,
+    };
+  }
+
+  // HIGH/MAX — full milestone planner + executor
+  const goals = buildGoals(units);
   const memoryContext = [
     buildMemoryContext(units, results),
     buildResolvedContext('PRIOR QUERY CONTEXT', priorContext),
@@ -470,7 +499,7 @@ async function handleAgenticUnits(
       ...milestoneLines,
     ].join('\n');
     return {
-      parts: [{ order: Math.min(...units.map(unit => unit.order)), route: 'agentic', reply }],
+      parts: [{ order: minOrder, route: 'agentic', reply }],
       plan,
     };
   }
@@ -493,7 +522,7 @@ async function handleAgenticUnits(
   const reply = stripThinkingTags(buildUserReport(plan, execution, verification)).trim();
 
   return {
-    parts: [{ order: Math.min(...units.map(unit => unit.order)), route: 'agentic', reply }],
+    parts: [{ order: minOrder, route: 'agentic', reply }],
     plan,
     execution,
     verification,

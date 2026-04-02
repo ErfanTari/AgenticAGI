@@ -9,6 +9,8 @@ export interface HeartbeatResult {
     notifications: Notification[];
     created: IndexEntry[];
 }
+/** Call this whenever the agent processes a message. */
+export declare function recordActivity(): void;
 export declare function startHeartbeat(): void;
 export declare function stopHeartbeat(): void;
 export declare function checkDeadlines(): Notification | null;
@@ -23,4 +25,11 @@ export declare function checkAMemLinker(): {
 };
 export declare function checkVisionAlignment(): Notification | null;
 export declare function checkNowTTL(): Promise<Notification | null>;
+/**
+ * Phase 16 — AutoDream
+ * When the agent has been idle for >10 minutes, reads today's WHEN.EV entries
+ * and refreshes the pointer index with any coded references found in their content.
+ * This keeps MEMORY.md up-to-date with recently referenced codes without a full scan.
+ */
+export declare function checkAutoDream(): Promise<Notification | null>;
 export declare function runHeartbeat(): Promise<HeartbeatResult>;

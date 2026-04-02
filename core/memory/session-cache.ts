@@ -7,6 +7,8 @@
  */
 import type { IndexEntry } from './types.js';
 import { transparency } from '../transparency.js';
+import { upsertPointerEntry } from './pointer-index.js';
+import { localDateString } from '../utils/date.js';
 
 class SessionCache {
   private entries: Map<string, IndexEntry> = new Map();
@@ -19,6 +21,15 @@ class SessionCache {
     }
     // FIX-H3: Emit session_cache_store transparency event
     transparency.emit({ type: 'session_cache_store', data: { code } });
+    // Phase 16: update pointer index for always-loaded MEMORY.md
+    if (entry.name && /^[A-Z]+\.[A-Z]+-\d{6,}$/.test(code)) {
+      upsertPointerEntry({
+        code,
+        name: entry.name,
+        summary: entry.summary ?? '',
+        lastActive: localDateString(),
+      });
+    }
   }
 
   getByCode(code: string): IndexEntry | null {

@@ -7,6 +7,16 @@ import { decomposeMessage } from '../../core/decomposition.js';
 import { processMessage } from '../../core/agent.js';
 import { _resetGitInstance } from '../../core/memory/versioning.js';
 
+// Phase 16: stub assessComplexity to always return HIGH so these tests
+// continue to exercise the decomposeTask+executePlan pipeline.
+vi.mock('../../core/planner.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../core/planner.js')>();
+  return {
+    ...actual,
+    assessComplexity: vi.fn().mockResolvedValue({ level: 'HIGH', reason: 'test-stub', estimatedSteps: 4 }),
+  };
+});
+
 describe('Phase 13: decomposition', () => {
   let tmpDir: string;
   let origDb: string;

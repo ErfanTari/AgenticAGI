@@ -19,6 +19,15 @@ export declare function upsertEntry(input: CreateEntryInput): {
     code: string;
     created: boolean;
 };
+/**
+ * Phase 16 — upsertEntryWithRetry
+ * Wraps upsertEntry with up to 3 attempts. On UNIQUE constraint violation (concurrent write),
+ * waits 50ms before retry. Other errors are rethrown after max attempts.
+ */
+export declare function upsertEntryWithRetry(input: CreateEntryInput, maxAttempts?: number): Promise<{
+    code: string;
+    created: boolean;
+}>;
 export declare function updateEntry(code: string, updates: {
     status?: string;
     summary?: string;

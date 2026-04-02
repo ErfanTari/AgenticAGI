@@ -8,7 +8,7 @@ import { routeDecomposedUnits } from './router.js';
 import { searchMemoryForUnits } from './memory/unit-search.js';
 import { runWithRetry } from './react.js';
 import { addRelationship, fetchByCode, getEntryByCode, hybridSearch, upsertEntry, } from './memory/mod.js';
-import { startHeartbeat, stopHeartbeat } from './heartbeat.js';
+import { startHeartbeat, stopHeartbeat, recordActivity } from './heartbeat.js';
 import { getDb } from './memory/index.js';
 import { classifyFailure } from './executor.js';
 import { memoryAgent } from './memory/memory-agent.js';
@@ -1007,6 +1007,7 @@ async function handleCompatibilityExecution(message, history, classification, fi
 }
 export async function processMessage(message, history, options) {
     isProcessingMessage = true;
+    recordActivity(); // Phase 16: track last activity for AutoDream idle detection
     let decomposition = null;
     try {
         const findingsPrefix = await buildFindingsPrefix();

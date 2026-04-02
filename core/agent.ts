@@ -15,7 +15,7 @@ import {
   hybridSearch,
   upsertEntry,
 } from './memory/mod.js';
-import { startHeartbeat, stopHeartbeat } from './heartbeat.js';
+import { startHeartbeat, stopHeartbeat, recordActivity } from './heartbeat.js';
 import { getDb } from './memory/index.js';
 import { classifyFailure } from './executor.js';
 import { memoryAgent } from './memory/memory-agent.js';
@@ -1108,6 +1108,7 @@ export async function processMessage(
   options?: { llmHandler?: LLMHandler },
 ): Promise<AgentResponse> {
   isProcessingMessage = true;
+  recordActivity(); // Phase 16: track last activity for AutoDream idle detection
   let decomposition: DecompositionResult | null = null;
   try {
     const findingsPrefix = await buildFindingsPrefix();

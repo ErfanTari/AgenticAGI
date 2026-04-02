@@ -13,11 +13,21 @@
  *
  * Run individually: pnpm vitest run tests/phase9/test1-persian-poetry.test.ts
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { initDatabase, closeDatabase } from '../../core/memory/mod.js';
 import { processMessage } from '../../core/agent.js';
 import type { LLMHandler, Message } from '../../core/types.js';
 import fs from 'node:fs';
+
+// Phase 16: stub assessComplexity so this test continues to exercise
+// the decomposeTask+executePlan pipeline.
+vi.mock('../../core/planner.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../core/planner.js')>();
+  return {
+    ...actual,
+    assessComplexity: vi.fn().mockResolvedValue({ level: 'HIGH', reason: 'test-stub', estimatedSteps: 5 }),
+  };
+});
 import path from 'node:path';
 import os from 'node:os';
 import { PATHS } from '../../config/agent.config.js';

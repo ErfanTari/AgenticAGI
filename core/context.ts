@@ -60,6 +60,11 @@ const WARNING_THRESHOLD = Math.floor(MAX_TOKENS * 0.8); // 80% = 1200 tokens
 const SUMMARY_THRESHOLD = 6; // When history has > 6 turns (12 messages), summarize old turns
 const KEEP_RECENT = 3; // Keep last 3 turns (6 messages) verbatim
 
+// Phase 16 — Compaction circuit breaker
+const COMPACTION_MAX_FAILURES = 3;
+let _compactionFailures = 0;
+export function _resetCompactionCircuit(): void { _compactionFailures = 0; }
+
 // --- fetchOwnerPersona with 60-second TTL cache (Bug 9 fix) ---
 
 interface PersonaCache {
@@ -387,7 +392,7 @@ export async function buildContext(
   // Context compaction at 70% of token budget (P5)
   // Pinned messages (content starting with [PINNED]) are immune to compaction
   let tokens = estimateTokens(messages);
-  if (tokens > MAX_TOKENS * 0.7 && llmHandler && history.length > 4) {
+  if (tokens > MAX_TOKENS * 0.7 && llmHandler && history.length > 4 && _compactionFailures < COMPACTION_MAX_FAILURES) {
     // Compact non-pinned history
     const nonPinned = recentHistory.filter(m => !m.content.startsWith('[PINNED]'));
     const pinned = recentHistory.filter(m => m.content.startsWith('[PINNED]'));
@@ -416,7 +421,15 @@ export async function buildContext(
         const afterTokens = estimateTokens(messages);
         transparency.emit({ type: 'context_compacted', data: { before: tokens, after: afterTokens } });
         tokens = afterTokens;
-      } catch { /* compaction failed — continue without */ }
+        _compactionFailures = 0; // reset on success
+      } catch (err) {
+        _compactionFailures++;
+        if (_compactionFailures >= COMPACTION_MAX_FAILURES) {
+          console.warn(`[context] Compaction circuit open after ${_compactionFailures} consecutive failures — skipping compaction`);
+        } else {
+          console.warn(`[context] Compaction failed (${_compactionFailures}/${COMPACTION_MAX_FAILURES}):`, err);
+        }
+      }
     }
   }
 

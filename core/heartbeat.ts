@@ -7,6 +7,7 @@ import { simpleGit } from 'simple-git';
 import { PATHS } from '../config/agent.config.js';
 import { createEntry, updateEntry } from './memory/write.js';
 import { isProcessingMessage } from './agent.js';
+import { upsertPointerEntry } from './memory/pointer-index.js';
 
 export interface Notification {
   type: 'upcoming_event' | 'overdue_todo' | 'stale_question' | 'stale_plan' | 'stale_project' | 'vision_drift' | 'stale_project_brain';
@@ -18,6 +19,16 @@ export interface HeartbeatResult {
   ran_at: string;
   notifications: Notification[];
   created: IndexEntry[];
+}
+
+// --- Phase 16: Activity tracking for AutoDream ---
+
+const AUTO_DREAM_IDLE_MS = 10 * 60 * 1000; // 10 minutes
+let _lastActivityAt = Date.now();
+
+/** Call this whenever the agent processes a message. */
+export function recordActivity(): void {
+  _lastActivityAt = Date.now();
 }
 
 // --- FIX 1: Timer ---
@@ -425,6 +436,66 @@ function upsertHeartbeatAlert(
   });
 }
 
+/**
+ * Phase 16 — AutoDream
+ * When the agent has been idle for >10 minutes, reads today's WHEN.EV entries
+ * and refreshes the pointer index with any coded references found in their content.
+ * This keeps MEMORY.md up-to-date with recently referenced codes without a full scan.
+ */
+export async function checkAutoDream(): Promise<Notification | null> {
+  const idleMs = Date.now() - _lastActivityAt;
+  if (idleMs < AUTO_DREAM_IDLE_MS) return null;
+
+  try {
+    const d = getDb();
+    const todayStr = localDateString();
+
+    // Read today's episodic events (WHEN.EV)
+    const events = d.prepare(
+      `SELECT code, name, summary, path FROM index_entries
+       WHERE nb = 'WHEN' AND type = 'EV' AND updated >= ? AND status != 'archived'
+       ORDER BY updated DESC LIMIT 20`
+    ).all(todayStr) as Array<{ code: string; name: string; summary: string; path: string }>;
+
+    if (events.length === 0) return null;
+
+    let consolidated = 0;
+    for (const ev of events) {
+      // Extract codes referenced in the event body
+      let body = '';
+      try {
+        if (ev.path && fs.existsSync(ev.path)) {
+          body = fs.readFileSync(ev.path, 'utf-8');
+        }
+      } catch { /* best-effort */ }
+
+      const codePattern = /\b([A-Z]+\.[A-Z]+-\d{6,})\b/g;
+      const content = `${ev.summary} ${body}`;
+      let match: RegExpExecArray | null;
+      while ((match = codePattern.exec(content)) !== null) {
+        const refCode = match[1];
+        try {
+          const refRow = d.prepare(
+            'SELECT code, name, summary FROM index_entries WHERE code = ? AND status != \'archived\' LIMIT 1'
+          ).get(refCode) as { code: string; name: string; summary: string } | undefined;
+          if (refRow) {
+            upsertPointerEntry({ code: refRow.code, name: refRow.name, summary: refRow.summary ?? '', lastActive: todayStr });
+            consolidated++;
+          }
+        } catch { /* best-effort */ }
+      }
+    }
+
+    if (consolidated > 0) {
+      console.log(`[heartbeat] AutoDream: refreshed ${consolidated} pointer entries from today's events`);
+    }
+  } catch (err) {
+    console.warn('[heartbeat] AutoDream failed:', err);
+  }
+
+  return null; // AutoDream never produces a user-facing notification
+}
+
 export async function runHeartbeat(): Promise<HeartbeatResult> {
   // Guard: skip all checks if DB is not initialized
   try {
@@ -451,6 +522,7 @@ export async function runHeartbeat(): Promise<HeartbeatResult> {
     checkVisionAlignment,
     checkStalePlanPJ,
     checkNowTTL,
+    checkAutoDream, // Phase 16
   ];
 
   for (const check of checks) {

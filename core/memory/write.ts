@@ -10,6 +10,7 @@ import { storeChunks, fetchEmbeddings } from './embeddings.js';
 import { scheduleMemoryCommit } from './versioning.js';
 import { localDateString } from '../utils/date.js';
 import { sessionCache } from './session-cache.js';
+import { upsertPointerEntry } from './pointer-index.js';
 
 // --- Phase 15: Identity Fingerprint Extraction ---
 
@@ -348,6 +349,7 @@ export function upsertEntry(
         atomicWriteFile(fpEntry.path, appendedBody);
       }
       saveFingerprint(fpCode, input.body, input.summary);
+      upsertPointerEntry({ code: fpCode, name: fpEntry?.name ?? input.name, summary: input.summary ?? '', lastActive: localDateString() });
       return { code: fpCode, created: false };
     }
   }
@@ -366,6 +368,7 @@ export function upsertEntry(
           atomicWriteFile(fuzzyEntry.path, appendedBody);
         }
         saveFingerprint(fuzzyCode, input.body, input.summary);
+        upsertPointerEntry({ code: fuzzyCode, name: fuzzyEntry?.name ?? input.name, summary: input.summary ?? '', lastActive: localDateString() });
         return { code: fuzzyCode, created: false };
       }
     }
@@ -428,6 +431,7 @@ export function upsertEntry(
         indexContent(existing.code, input.nb, `${input.name} ${input.summary ?? ''} ${input.body ?? ''}`);
       } catch { /* non-fatal */ }
       scheduleMemoryCommit(`${existing.code}: ${input.name} [agent]`);
+      upsertPointerEntry({ code: existing.code, name: input.name, summary: input.summary ?? '', lastActive: localDateString() });
       return { code: existing.code, created: false };
     }
 
@@ -499,6 +503,9 @@ export function upsertEntry(
     // Phase 15 FIX 8: invalidate project brain cache for related PLAN.PJ entries
     invalidateRelatedProjectBrains(existing.code);
 
+    // Phase 16: update pointer index
+    upsertPointerEntry({ code: existing.code, name: input.name, summary: input.summary ?? '', lastActive: localDateString() });
+
     return { code: existing.code, created: false };
   }
 
@@ -509,7 +516,36 @@ export function upsertEntry(
   }
   // Phase 15 FIX 8: invalidate project brain cache for related PLAN.PJ entries
   invalidateRelatedProjectBrains(created.code);
+  // Phase 16: update pointer index
+  upsertPointerEntry({ code: created.code, name: input.name, summary: input.summary ?? '', lastActive: localDateString() });
   return { code: created.code, created: true };
+}
+
+/**
+ * Phase 16 — upsertEntryWithRetry
+ * Wraps upsertEntry with up to 3 attempts. On UNIQUE constraint violation (concurrent write),
+ * waits 50ms before retry. Other errors are rethrown after max attempts.
+ */
+export async function upsertEntryWithRetry(
+  input: CreateEntryInput,
+  maxAttempts = 3,
+): Promise<{ code: string; created: boolean }> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return upsertEntry(input);
+    } catch (err: unknown) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('UNIQUE constraint')) {
+        // Concurrent write — wait briefly then retry
+        await new Promise(r => setTimeout(r, 50));
+      } else {
+        throw err; // non-retryable
+      }
+    }
+  }
+  throw lastErr;
 }
 
 export function updateEntry(code: string, updates: { status?: string; summary?: string }): IndexEntry {

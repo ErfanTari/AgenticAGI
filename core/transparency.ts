@@ -42,7 +42,13 @@ export type TransparencyEvent =
   | { type: 'project_brain_hit'; data: { projectCode: string } }
   | { type: 'project_brain_miss'; data: { projectCode: string } }
   | { type: 'project_brain_rebuilt'; data: { projectCode: string } }
-  | { type: 'project_brain_invalidated'; data: { projectCode: string } };
+  | { type: 'project_brain_invalidated'; data: { projectCode: string } }
+  // Phase 16 — QueryLoop events
+  | { type: 'query_loop_start'; data: { goal: string } }
+  | { type: 'query_loop_iteration'; data: { iteration: number; reply: string } }
+  | { type: 'query_loop_skill_call'; data: { skill: string; input: Record<string, unknown> } }
+  | { type: 'query_loop_skill_result'; data: { skill: string; success: boolean; error?: string } }
+  | { type: 'query_loop_end'; data: { reason: string; iterations: number } };
 
 type TransparencyHandler = (event: TransparencyEvent) => void;
 

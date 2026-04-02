@@ -2,6 +2,16 @@ import { describe, it, expect, vi } from 'vitest';
 import { processMessage } from '../../core/agent.js';
 import type { LLMHandler, Message } from '../../core/types.js';
 
+// Phase 16: stub assessComplexity so these tests continue to exercise
+// the decomposeTask+executePlan pipeline (the queryLoop path tests are in phase16/).
+vi.mock('../../core/planner.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../core/planner.js')>();
+  return {
+    ...actual,
+    assessComplexity: vi.fn().mockResolvedValue({ level: 'HIGH', reason: 'test-stub', estimatedSteps: 4 }),
+  };
+});
+
 // Mock the database to avoid SQLite dependency in pipeline tests
 vi.mock('../../core/memory/index.js', () => ({
   getDb: () => ({
