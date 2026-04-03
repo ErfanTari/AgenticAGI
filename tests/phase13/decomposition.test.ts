@@ -17,6 +17,11 @@ vi.mock('../../core/planner.js', async (importOriginal) => {
   };
 });
 
+// Mock skill runner so plan execution doesn't hit disk or network in these tests.
+vi.mock('../../core/skills/runner.js', () => ({
+  runSkill: vi.fn(async (name: string) => ({ success: true, output: `${name} done`, error: undefined })),
+}));
+
 describe('Phase 13: decomposition', () => {
   let tmpDir: string;
   let origDb: string;
@@ -255,7 +260,8 @@ describe('Phase 13: decomposition', () => {
     );
 
     expect(result.intent).toBe('planned_workflow');
-    expect(result.reply).toContain('Confirmation required before executing this plan.');
+    // Non-destructive workspace writes no longer gate on confirmation
+    expect(result.reply).not.toContain('Confirmation required before executing this plan.');
   });
 
   it('does not let a compound message collapse back into legacy memory_write execution', async () => {
@@ -352,7 +358,8 @@ describe('Phase 13: decomposition', () => {
     );
 
     expect(result.intent).toBe('planned_workflow');
-    expect(result.reply).toContain('Confirmation required before executing this plan.');
+    // Non-destructive file writes no longer gate on confirmation
+    expect(result.reply).not.toContain('Confirmation required before executing this plan.');
     expect(result.reply).toContain('Existing Project');
     expect(result.reply).not.toContain('Created WHAT.PJ');
   });

@@ -180,3 +180,117 @@ describe('Phase 16: upsertEntryWithRetry', () => {
     expect(typeof write.upsertEntryWithRetry).toBe('function');
   });
 });
+
+// ─── Inline JSON tool-call formats ───────────────────────────────────────────
+// Local models (Gemma, Qwen) emit tool calls as inline JSON text rather than
+// structured tool_use blocks. The queryLoop must detect and execute all variants.
+
+describe('Phase 16: QueryLoop — inline JSON tool-call formats', () => {
+  it('executes {"action","input"} format (canonical protocol)', async () => {
+    const { runQueryLoop } = await import('../../core/query-loop.js');
+
+    let callCount = 0;
+    const mockLLM = async () => {
+      callCount++;
+      if (callCount === 1) return '{"action": "calculator", "input": {"expression": "3+3"}}';
+      return 'The answer is 6.';
+    };
+
+    const result = await runQueryLoop('What is 3+3?', mockLLM as never);
+    expect(result.stoppedBecause).toBe('no_action');
+    expect(result.skillsUsed).toContain('calculator');
+    expect(result.reply).toBe('The answer is 6.');
+  });
+
+  it('executes {"tool","parameters"} format (LM Studio variant)', async () => {
+    const { runQueryLoop } = await import('../../core/query-loop.js');
+
+    let callCount = 0;
+    const mockLLM = async () => {
+      callCount++;
+      if (callCount === 1) return '{"tool": "calculator", "parameters": {"expression": "5+5"}}';
+      return 'The answer is 10.';
+    };
+
+    const result = await runQueryLoop('What is 5+5?', mockLLM as never);
+    expect(result.stoppedBecause).toBe('no_action');
+    expect(result.skillsUsed).toContain('calculator');
+    expect(result.reply).toBe('The answer is 10.');
+  });
+
+  it('executes {"skill","input"} format', async () => {
+    const { runQueryLoop } = await import('../../core/query-loop.js');
+
+    let callCount = 0;
+    const mockLLM = async () => {
+      callCount++;
+      if (callCount === 1) return '{"skill": "calculator", "input": {"expression": "7+1"}}';
+      return 'The answer is 8.';
+    };
+
+    const result = await runQueryLoop('What is 7+1?', mockLLM as never);
+    expect(result.stoppedBecause).toBe('no_action');
+    expect(result.skillsUsed).toContain('calculator');
+    expect(result.reply).toBe('The answer is 8.');
+  });
+
+  it('handles entire response being a bare JSON tool call (no surrounding text)', async () => {
+    const { runQueryLoop } = await import('../../core/query-loop.js');
+
+    let callCount = 0;
+    const mockLLM = async () => {
+      callCount++;
+      // Entire response is the JSON — no preamble, no trailing text
+      if (callCount === 1) return '{"tool": "calculator", "parameters": {"expression": "9*9"}}';
+      return 'The result is 81.';
+    };
+
+    const result = await runQueryLoop('What is 9*9?', mockLLM as never);
+    expect(result.stoppedBecause).toBe('no_action');
+    expect(result.skillsUsed).toContain('calculator');
+    expect(result.iterations).toBe(2);
+  });
+
+  it('does not treat a plain JSON object without skill keys as a tool call', async () => {
+    const { runQueryLoop } = await import('../../core/query-loop.js');
+
+    // A JSON object that has no action/tool/skill key → treated as completion text
+    const mockLLM = async () => '{"result": "done", "status": "ok"}';
+
+    const result = await runQueryLoop('Status check', mockLLM as never);
+    expect(result.stoppedBecause).toBe('no_action');
+    expect(result.skillsUsed.length).toBe(0);
+    expect(result.iterations).toBe(1);
+  });
+
+  it('extracts tool call from prose+JSON mixed response', async () => {
+    const { runQueryLoop } = await import('../../core/query-loop.js');
+
+    let callCount = 0;
+    const mockLLM = async () => {
+      callCount++;
+      if (callCount === 1) return 'I will calculate that for you.\n{"action": "calculator", "input": {"expression": "4+4"}}';
+      return 'The answer is 8.';
+    };
+
+    const result = await runQueryLoop('What is 4+4?', mockLLM as never);
+    expect(result.stoppedBecause).toBe('no_action');
+    expect(result.skillsUsed).toContain('calculator');
+    expect(result.iterations).toBe(2);
+  });
+
+  it('extracts tool call when prose and JSON separated by blank lines', async () => {
+    const { runQueryLoop } = await import('../../core/query-loop.js');
+
+    let callCount = 0;
+    const mockLLM = async () => {
+      callCount++;
+      if (callCount === 1) return 'Sure, I can do that.\n\n{"tool": "calculator", "parameters": {"expression": "6*6"}}';
+      return 'The answer is 36.';
+    };
+
+    const result = await runQueryLoop('What is 6*6?', mockLLM as never);
+    expect(result.stoppedBecause).toBe('no_action');
+    expect(result.skillsUsed).toContain('calculator');
+  });
+});

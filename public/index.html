@@ -314,6 +314,40 @@
       color: var(--red);
     }
 
+    .event-route-decision .event-name {
+      color: var(--cyan);
+    }
+
+    .thinking-panel .panel-head {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      row-gap: 2px;
+    }
+
+    .thinking-panel .panel-head .subtle {
+      flex: 1;
+      margin-top: 0;
+    }
+
+    #copy-log-btn {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.5);
+      font-family: monospace;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    #copy-log-btn:hover {
+      border-color: rgba(255,255,255,0.5);
+      color: rgba(255,255,255,0.8);
+    }
+
     .chat-panel {
       min-height: 0;
       display: grid;
@@ -638,6 +672,7 @@
         <button id="localPrimaryButton" type="button">local</button>
         <button id="cloudPrimaryButton" type="button">cloud</button>
       </div>
+      <button id="localModelButton" type="button" title="Switch local model">[model]</button>
       <button id="toggleThinking" type="button">[T]</button>
       <button id="toggleTheme" type="button">dark</button>
     </div>
@@ -648,6 +683,7 @@
       <div class="panel-head">
         <div class="label">Thinking</div>
         <div class="subtle">Live transparency stream</div>
+        <button id="copy-log-btn" onclick="copyTransparencyLog()">[copy]</button>
       </div>
       <div id="thinkingStream" class="thinking-stream"></div>
     </aside>
@@ -699,9 +735,15 @@
       providerSummary: document.getElementById('providerSummary'),
       localPrimaryButton: document.getElementById('localPrimaryButton'),
       cloudPrimaryButton: document.getElementById('cloudPrimaryButton'),
+      localModelButton: document.getElementById('localModelButton'),
       toggleThinking: document.getElementById('toggleThinking'),
       toggleTheme: document.getElementById('toggleTheme')
     };
+
+    const LOCAL_MODELS = [
+      { id: 'google/gemma-4-26b-a4b', label: 'gemma' },
+      { id: 'qwen/qwen3.5-35b-a3b',   label: 'qwen'  },
+    ];
 
     const theme = localStorage.getItem('zaraban-theme') || 'dark';
     setTheme(theme);
@@ -725,6 +767,14 @@
 
     elements.cloudPrimaryButton.addEventListener('click', () => {
       sendProviderMode('cloud');
+    });
+
+    elements.localModelButton.addEventListener('click', () => {
+      // Cycle to next local model
+      const current = state.provider ? state.provider.primaryLabel : '';
+      const idx = LOCAL_MODELS.findIndex(m => current.includes(m.label) || current === m.id);
+      const next = LOCAL_MODELS[(idx + 1) % LOCAL_MODELS.length];
+      sendLocalModel(next.id);
     });
 
     elements.chatInput.addEventListener('input', () => {
@@ -825,6 +875,12 @@
       elements.localPrimaryButton.classList.toggle('active', activeMode === 'local');
       elements.cloudPrimaryButton.classList.toggle('active', activeMode === 'cloud');
 
+      // Update local model toggle button
+      const primaryLabel = provider ? provider.primaryLabel : '';
+      const knownModel = LOCAL_MODELS.find(m => primaryLabel.includes(m.label) || primaryLabel === m.id);
+      elements.localModelButton.textContent = '[' + (knownModel ? knownModel.label : 'model') + ']';
+      elements.localModelButton.disabled = disabled || activeMode !== 'local';
+
       if (!provider) {
         elements.providerSummary.textContent = 'provider unavailable';
         return;
@@ -840,6 +896,11 @@
       if (!state.connected || !state.socket) return;
       localStorage.setItem('zaraban-provider-mode', mode);
       state.socket.send(JSON.stringify({ type: 'set_provider_mode', mode }));
+    }
+
+    function sendLocalModel(modelId) {
+      if (!state.connected || !state.socket) return;
+      state.socket.send(JSON.stringify({ type: 'set_local_model', model: modelId }));
     }
 
     function appendMessage(role, text, options = {}) {
@@ -1045,45 +1106,95 @@
       elements.thinkingStream.scrollTop = elements.thinkingStream.scrollHeight;
     }
 
+    function copyTransparencyLog() {
+      const events = Array.from(
+        document.querySelectorAll('.event-row')
+      ).map(el => {
+        const timeEl = el.querySelector('.event-time');
+        const nameEl = el.querySelector('.event-name');
+        const previewEl = el.querySelector('.event-preview');
+        const time = timeEl ? timeEl.textContent.trim() : '';
+        const name = nameEl ? nameEl.textContent.trim() : '';
+        const content = previewEl ? previewEl.textContent.trim() : '';
+        return '[' + time + '] ' + name + '\n  ' + content.replace(/\n/g, '\n  ');
+      }).join('\n\n');
+
+      const header = 'Zaraban Transparency Log — ' + new Date().toLocaleString() + '\n' + '='.repeat(60) + '\n\n';
+
+      navigator.clipboard.writeText(header + events).then(() => {
+        const btn = document.getElementById('copy-log-btn');
+        if (btn) {
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = '[copy]'; }, 1500);
+        }
+      }).catch(() => {});
+    }
+
     function eventThemeClass(event, payload) {
       if (event.startsWith('llm_')) return 'event-llm';
       if (event === 'plan' || event.startsWith('milestone_')) return 'event-plan';
       if (event.startsWith('step_')) return payload && payload.result && payload.result.success === false ? 'event-step failed' : 'event-step';
       if (event === 'memory_write') return 'event-memory';
       if (event === 'decomposition' || event === 'intent' || event === 'unit_memory_search') return 'event-route';
+      if (event === 'route') return 'event-route-decision';
       return '';
     }
 
     function eventPreview(event, payload) {
-      if (event === 'llm_raw') {
-        const preview = (payload.raw || '').replace(/\s+/g, ' ').trim();
-        return shortText(preview, 300) + (payload.ms ? '  (' + payload.ms + 'ms)' : '');
+      if (event === 'llm_raw' || event === 'llm_stripped') {
+        const text = (payload.text || payload.raw || payload.content || '').trim();
+        const preview = shortText(text, 300);
+        const suffix = text.length > 300 ? '…' : '';
+        const ms = payload.ms || payload.elapsed ? '  (' + (payload.ms || payload.elapsed) + 'ms)' : '';
+        return preview + suffix + ms;
       }
       if (event === 'llm_request') {
         return (payload.messages ? payload.messages.length : 0) + ' messages';
       }
       if (event === 'decomposition' && Array.isArray(payload.units)) {
-        return payload.units.map(unit => '[' + unit.route + '] ' + unit.content).join(' | ');
+        return payload.units.map(unit => '[' + unit.route + '] ' + unit.content).join('\n');
       }
-      if (event === 'plan' && Array.isArray(payload.milestones)) {
-        return payload.milestones.map((milestone, index) => 'M' + (index + 1) + '. ' + milestone.title).join(' -> ');
+      if (event === 'plan') {
+        const milestones = Array.isArray(payload.milestones) ? payload.milestones : (payload.plan && Array.isArray(payload.plan.milestones) ? payload.plan.milestones : []);
+        const goal = (payload.goal || (payload.plan && payload.plan.goal) || '').slice(0, 80);
+        if (milestones.length > 0) {
+          return goal + '\n' + milestones.map((m, i) => '  M' + (i + 1) + '. ' + (m.title || m.description || '')).join('\n');
+        }
+        return goal;
       }
       if (event === 'step_start' && payload.step) {
-        return payload.step.skill + '  ' + shortText(payload.step.description, 90);
+        return '▶ [' + payload.step.skill + ']  ' + shortText(payload.step.description, 80);
       }
       if (event === 'step_result' && payload.step) {
-        const marker = payload.result && payload.result.success ? 'OK' : 'FAIL';
-        return marker + '  ' + (payload.ms || 0) + 'ms';
+        const icon = payload.result && payload.result.success !== false ? '✓' : '✗';
+        return icon + ' [' + (payload.step.skill || '?') + ']  ' + (payload.ms || 0) + 'ms';
       }
       if (event === 'memory_write') {
-        return payload.code + '  ' + payload.name;
+        return '💾 ' + (payload.code || '') + '  ' + (payload.name || '');
       }
       if (event === 'unit_memory_search' && payload.unit) {
         return payload.unit.route + '  ' + payload.result.strategy + '  conf=' + payload.result.confidence;
       }
       if (event === 'milestone_start' || event === 'milestone_result') {
-        return payload.title || payload.id;
+        const icon = event === 'milestone_result' ? (payload.success !== false ? '✓' : '✗') + ' ' : '';
+        return icon + (payload.title || payload.id || '');
       }
+      if (event === 'route') {
+        return (payload.path === 'query_loop' ? '⚡ QueryLoop' : '🗺 Planner') +
+          '  [' + (payload.level || '') + ']  ' + (payload.reason || '');
+      }
+      if (event === 'working_memory_created') return '🧠 Created: ' + shortText(payload.goal || '', 60);
+      if (event === 'working_memory_updated') return '🧠 Updated (' + (payload.type || 'step') + ')';
+      if (event === 'working_memory_archived') return '🧠 Archived';
+      if (event === 'session_cache_hit') return '⚡ Cache hit: ' + (payload.code || '');
+      if (event === 'session_cache_miss') return '○ Cache miss: ' + (payload.code || '');
+      if (event === 'project_brain' || event === 'project_brain_hit') return '🧩 Brain: ' + (payload.projectCode || '');
+      if (event === 'query_loop_start') return '⟳ Goal: ' + shortText(payload.goal || '', 80);
+      if (event === 'query_loop_iteration') return '⟳ Iter ' + (payload.iteration || '') + ': ' + shortText(payload.reply || '', 100);
+      if (event === 'query_loop_narration') return '💬 ' + shortText(payload.narration || '', 120);
+      if (event === 'query_loop_skill_call') return '▶ [' + (payload.skill || '') + '] ' + shortText(JSON.stringify(payload.input || {}), 60);
+      if (event === 'query_loop_skill_result') return (payload.success !== false ? '✓' : '✗') + ' [' + (payload.skill || '') + ']' + (payload.error ? '  ' + payload.error : '');
+      if (event === 'query_loop_end') return '⟳ Done (' + (payload.reason || '') + ') after ' + (payload.iterations || '') + ' iters';
       return shortText(JSON.stringify(payload), 180);
     }
 

@@ -80,6 +80,13 @@ export function stripThinkingTags(text) {
     // Orphaned opening tags
     result = result.replace(/<think>[\s\S]*/gi, '');
     result = result.replace(/<thought>[\s\S]*/gi, '');
+    // 1b. Gemma 4 thinking format: <|channel>thought\n[reasoning]<channel|>
+    result = result.replace(/<\|channel>thought\n[\s\S]*?<channel\|>/g, '');
+    result = result.replace(/<\|channel>thought[\s\S]*?<channel\|>/g, '');
+    result = result.replace(/<\|channel>thought[\s\S]*/g, ''); // orphaned open tag
+    // 1c. Gemma 4 underscore variant: <|channel>_thought\n[reasoning]<channel|>
+    result = result.replace(/<\|channel>_thought[\s\S]*?<channel\|>/g, '');
+    result = result.replace(/<\|channel>_thought[\s\S]*/g, ''); // orphaned open tag
     // 2. Qwen starred analysis blocks
     result = result.replace(/^\*\*(Analyze|Consider|Think|Break down|Determine|Plan|Understand)\b[^*]*\*\*:?[\s\S]*?(?=\n\n|\n##|\n\*\*(?!Analyze|Consider|Think|Break|Determine|Plan|Understand)|\n[A-Z])/gm, '');
     // 3. Qwen numbered analysis steps

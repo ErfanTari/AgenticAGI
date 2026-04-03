@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Persian Calculator</title>
+    <style>
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .calculator {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            width: 300px;
+        }
+
+        .display {
+            background-color: #222;
+            color: #fff;
+            font-size: 2rem;
+            padding: 15px;
+            text-align: left; /* Keep numbers aligned for calculation */
+            border-radius: 8px;
+            margin-bottom: 15px;
+            direction: ltr; /* Force LTR for math logic display */
+        }
+
+        .buttons {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        button {
+            padding: 20px;
+            font-size: 1.5rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .btn-number {
+            background-color: #eee;
+            color: #333;
+        }
+
+        .btn-operator {
+            background-color: #ff9f43;
+            color: white;
+        }
+
+        .btn-equal {
+            background-color: #2ecc71;
+            color: white;
+            grid-column: span 2;
+        }
+
+        .btn-clear {
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+
+<div class="calculator">
+    <div class="display" id="display">0</div>
+    <div class="buttons">
+        <button class="btn-clear" onclick="clearDisplay()">C</button>
+        <button class="btn-operator" onclick="appendOperator('/')">÷</button>
+        <button class="btn-operator" onclick="appendOperator('*')">×</button>
+        <button class="btn-operator" onclick="deleteLast()">⌫</button>
+
+        <button class="btn-number" onclick="appendNumber('7')">۷</button>
+        <button class="btn-number" onclick="appendNumber('8')">۸</button>
+        <button class="btn-number" onclick="appendNumber('9')">۹</button>
+        <button class="btn-operator" onclick="appendOperator('-')">−</button>
+
+        <button class="btn-number" onclick="appendNumber('4')">۴</button>
+        <button class="btn-number" onclick="appendNumber('5')">۵</button>
+        <button class="btn-number" onclick="appendNumber('6')">۶</button>
+        <button class="btn-operator" onclick="appendOperator('+')">+</button>
+
+        <button class="btn-number" onclick="appendNumber('1')">۱</button>
+        <button class="btn-number" onclick="appendNumber('2')">۲</button>
+        <button class="btn-number" onclick="appendNumber('3')">۳</button>
+        <button class="btn-number" onclick="appendNumber('.')">.</button>
+
+        <button class="btn-number" onclick="appendNumber('0')">۰</button>
+        <button class="btn-equal" onclick="calculate()">=</button>
+    </div>
+</div>
+
+<script>
+    const display = document.getElementById('display');
+    let currentInput = '';
+
+    function appendNumber(number) {
+        if (currentInput === '0' || currentInput === '') {
+            currentInput = number;
+        } else {
+            // Prevent multiple decimals
+            if (number === '.' && currentInput.includes('.')) return;
+            currentInput += number;
+        }
+        updateDisplay();
+    }
+
+    function appendOperator(operator) {
+        const lastChar = currentInput.slice(-1);
+        if ('+-*/'.includes(lastChar)) {
+            // Replace the operator if one is already there
+            currentInput = currentInput.slice(0, -1) + operator;
+        } else {
+            currentInput += operator;
+        }
+        updateDisplay();
+    }
+
+    function clearDisplay() {
+        currentInput = '';
+        display.innerText = '0';
+    }
+
+    function deleteLast() {
+        currentInput = currentInput.slice(0, -1);
+        if (currentInput === '') {
+            display.innerText = '0';
+        } else {
+            updateDisplay();
+        }
+    }
+
+    function calculate() {
+        try {
+            // Convert Persian digits to English for calculation logic
+            const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+            
+            let expression = currentInput;
+
+            // Replace Persian digits with English equivalents for eval()
+            expression = expression.replace(/[۰-۹]/g, d => persianDigits.indexOf(d));
+            
+            const result = eval(expression);
+            
+            // Convert result back to Persian if it's a number
+            let resultString = String(result);
+            if (!isNaN(result)) {
+                resultString = resultString.replace(/\d/g, d => persianDigits[d]);
+            }
+
+            display.innerText = resultString;
+            currentInput = resultString; // Keep the Persian string for further operations
+        } catch (error) {
+            display.innerText = 'Error';
+            setTimeout(() => clearDisplay(), 1500);
+        }
+    }
+
+    function updateDisplay() {
+        // Convert English digits in input to Persian for visual display
+        const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+        let displayString = currentInput.replace(/\d/g, d => persianDigits[d]);
+        
+        // Also convert operators for visual consistency (optional but nice)
+        displayString = displayString.replace(/×/g, '×').replace(/÷/g, '÷');
+
+        if(displayString === '') {
+            display.innerText = '0';
+        } else {
+            display.innerText = displayString;
+        }
+    }
+</script>
+
+</body>
+</html>

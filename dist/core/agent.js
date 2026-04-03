@@ -5,6 +5,8 @@ import { callLLM, stripThinkingTags } from './llm.js';
 import { getSkillsForIntent } from './skills/registry.js';
 import { decomposeMessage, isLikelyCompoundMessage } from './decomposition.js';
 import { routeDecomposedUnits } from './router.js';
+import { assessComplexity } from './planner.js';
+import { runQueryLoop } from './query-loop.js';
 import { searchMemoryForUnits } from './memory/unit-search.js';
 import { runWithRetry } from './react.js';
 import { addRelationship, fetchByCode, getEntryByCode, hybridSearch, upsertEntry, } from './memory/mod.js';
@@ -1048,6 +1050,32 @@ export async function processMessage(message, history, options) {
                 const earlyResult = await handleCompatibilityExecution(message, history, earlySkillClassification, findingsPrefix, handler);
                 if (earlyResult)
                     return earlyResult;
+            }
+        }
+        // FIX 4: Quick complexity pre-check for non-compound, clearly-agentic messages.
+        // LOW/MEDIUM → skip intake+decomposition, go directly to queryLoop (saves ~15s).
+        // HIGH/MAX   → fall through to full intake+decomposition pipeline.
+        // Excluded: greetings, memory entity ops, explicit skill patterns, memory query patterns.
+        if (!isLikelyCompoundMessage(message) &&
+            !isCompoundEntityCreation(message) &&
+            !GREETING_ONLY.test(message.trim()) &&
+            buildSkillCompatibilityClassification(message) === null &&
+            buildMemoryWriteCompatibilityClassification(message) === null &&
+            buildQueryCompatibilityClassification(message) === null) {
+            try {
+                const quickComplexity = await assessComplexity(message, { intent: 'planned_workflow', codes: [] }, handler);
+                if (quickComplexity.level === 'LOW' || quickComplexity.level === 'MEDIUM') {
+                    transparency.emit({ type: 'route', data: { level: quickComplexity.level, reason: quickComplexity.reason, path: 'query_loop' } });
+                    const loopResult = await runQueryLoop(message, handler, undefined, history);
+                    return {
+                        reply: findingsPrefix + loopResult.reply,
+                        intent: 'planned_workflow',
+                        resolved: null,
+                    };
+                }
+            }
+            catch {
+                // Pre-check is advisory — fall through to normal flow on any error
             }
         }
         // Phase 15: Run intake classification before decomposition

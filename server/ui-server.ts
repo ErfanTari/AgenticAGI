@@ -7,7 +7,7 @@ import type { IncomingMessage } from 'node:http';
 import { createServer, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 
-import { LLM_CONFIG } from '../config/agent.config.js';
+import { LLM_CONFIG, PLANNER_CONFIG, EXECUTOR_CONFIG } from '../config/agent.config.js';
 import { processMessage, startAgent, stopAgent } from '../core/agent.js';
 import { getFallbackLLMProfile, getPrimaryLLMProfile, type LLMProfile, withLLMRuntime } from '../core/llm.js';
 import { initDatabase } from '../core/memory/mod.js';
@@ -21,6 +21,7 @@ import type { Message } from '../core/types.js';
 type ClientMessage =
   | { type: 'chat'; text: string }
   | { type: 'set_provider_mode'; mode: ProviderMode }
+  | { type: 'set_local_model'; model: string }
   | { type: 'ping' };
 
 type ProviderMode = 'local' | 'cloud';
@@ -454,6 +455,68 @@ function handleTransparencyEvent(connection: ClientConnection, event: Transparen
       milestoneId: event.data.id,
       status,
     });
+    return;
+  }
+
+  // ── QueryLoop synthetic plan diagram ─────────────────────────────────────────
+
+  if (event.type === 'query_loop_start') {
+    lastPlanSnapshot = {
+      goal: event.data.goal,
+      complexity: 'LOW',
+      createdAt: new Date().toISOString(),
+      milestones: [{
+        id: 'query_loop',
+        title: 'QueryLoop',
+        description: event.data.goal,
+        completionCriteria: 'Complete when model emits plain-text response.',
+        status: 'running',
+        steps: [],
+      }],
+    };
+    sendJson(connection, { type: 'plan_update', plan: lastPlanSnapshot });
+    return;
+  }
+
+  if (event.type === 'query_loop_skill_call') {
+    if (lastPlanSnapshot?.milestones[0]) {
+      const stepId = 'ql_step_' + (lastPlanSnapshot.milestones[0].steps.length + 1);
+      lastPlanSnapshot.milestones[0].steps.push({
+        id: stepId,
+        description: JSON.stringify(event.data.input).slice(0, 80),
+        skill: event.data.skill,
+        status: 'running',
+      });
+      sendJson(connection, { type: 'plan_update', plan: lastPlanSnapshot });
+    }
+    return;
+  }
+
+  if (event.type === 'query_loop_skill_result') {
+    if (lastPlanSnapshot?.milestones[0]?.steps.length) {
+      const steps = lastPlanSnapshot.milestones[0].steps;
+      const lastStep = steps[steps.length - 1];
+      lastStep.status = event.data.success ? 'done' : 'failed';
+      sendJson(connection, {
+        type: 'step_update',
+        stepId: lastStep.id,
+        status: lastStep.status,
+      });
+    }
+    return;
+  }
+
+  if (event.type === 'query_loop_end') {
+    if (lastPlanSnapshot?.milestones[0]) {
+      const reason = event.data.reason;
+      const status: NodeStatus = (reason === 'no_action' || reason === 'goal_complete') ? 'done' : 'failed';
+      lastPlanSnapshot.milestones[0].status = status;
+      sendJson(connection, {
+        type: 'milestone_update',
+        milestoneId: 'query_loop',
+        status,
+      });
+    }
   }
 }
 
@@ -521,6 +584,23 @@ function handleClientMessage(connection: ClientConnection, raw: string) {
     }
     connection.providerMode = parsed.mode;
     sendProviderStatus(connection);
+    return;
+  }
+
+  if (parsed.type === 'set_local_model') {
+    const model = parsed.model.trim();
+    if (!model) {
+      sendJson(connection, { type: 'error', message: 'Model name cannot be empty.' });
+      return;
+    }
+    // Mutate live configs — LM Studio loads the model on next API call
+    LLM_CONFIG.model = model;
+    PLANNER_CONFIG.model = model;
+    EXECUTOR_CONFIG.model = model;
+    // Update snapshot so provider_status reflects the new model name
+    if (localPrimaryProfile) localPrimaryProfile.model = model;
+    for (const c of clients) sendProviderStatus(c);
+    console.log('[ui] Local model switched to:', model);
     return;
   }
 

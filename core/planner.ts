@@ -656,9 +656,7 @@ function normalizePlanPayload(
     milestones,
     steps: flattenedSteps,
     complexity,
-    needsConfirmation: typeof raw.needsConfirmation === 'boolean'
-      ? raw.needsConfirmation
-      : shouldRequireConfirmation(flattenedSteps),
+    needsConfirmation: shouldRequireConfirmation(flattenedSteps),
     estimatedDuration: typeof raw.estimatedDuration === 'string' ? raw.estimatedDuration : undefined,
   };
 }

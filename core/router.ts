@@ -1,5 +1,6 @@
 import { buildContext } from './context.js';
 import { executePlan, verifyExecution, buildUserReport } from './executor.js';
+import { transparency } from './transparency.js';
 import { localDateString } from './utils/date.js';
 import type { WorkingMemory } from './memory/working-memory.js';
 import { stripThinkingTags } from './llm.js';
@@ -449,6 +450,7 @@ async function handleAgenticUnits(
   llmHandler: LLMHandler,
   priorContext: ResolvedMemory | null = null,
   workingMemory?: WorkingMemory,
+  history?: Message[],
 ): Promise<AgenticRouteResult> {
   const goalMessage = units.map(unit => unit.content).join('\n');
   const minOrder = Math.min(...units.map(unit => unit.order));
@@ -458,9 +460,10 @@ async function handleAgenticUnits(
   // HIGH/MAX   → existing decomposeTask + executePlan pipeline
   const complexityClassification: Classification = { intent: 'planned_workflow', codes: [] };
   const complexity = await assessComplexity(goalMessage, complexityClassification, llmHandler);
+  transparency.emit({ type: 'route', data: { level: complexity.level, reason: complexity.reason, path: complexity.level === 'LOW' || complexity.level === 'MEDIUM' ? 'query_loop' : 'planner' } });
 
   if (complexity.level === 'LOW' || complexity.level === 'MEDIUM') {
-    const loopResult = await runQueryLoop(goalMessage, llmHandler, workingMemory);
+    const loopResult = await runQueryLoop(goalMessage, llmHandler, workingMemory, history);
     // Build a minimal stub plan so the return type is satisfied
     const stubPlan: TaskPlan = {
       goal: goalMessage,
@@ -565,6 +568,7 @@ export async function routeDecomposedUnits(
       llmHandler,
       queryResult?.resolved ?? null,
       workingMemory,
+      history,
     )
     : Promise.resolve(null);
 

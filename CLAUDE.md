@@ -1472,3 +1472,250 @@ Do not let implementation drift from it silently.*
 - Assistant identity questions such as "what should I refer to you as" are `general` and must not trigger relationship detection
 - HOW notebook routing is narrowed to stored procedures and workflow-style implementation questions, avoiding false `memory_query` matches for generic world how-to prompts
 - Synthesis prompts like "write a weekly status report based on everything you know" route to `synthesis_query` instead of being swallowed by broad write patterns
+
+---
+
+## Phase 13 — Decomposition-First Routing (COMPLETE)
+
+Phase 13 replaces the top-level intent classifier as the primary router with a decomposition-first pipeline. 758 tests pass. Build clean.
+
+### Architecture Change
+
+`processMessage()` no longer begins with `classifyIntent()`. Every message goes through semantic decomposition first:
+
+```
+1. Fast-path bypasses (unchanged):
+   /log → NOW.LOG write
+   /meeting → Meeting Mode
+   Direct code fetch (e.g. WHO.CT-000001) → code_fetch
+
+2. Decompose message into ordered semantic units
+   route ∈ { conversational | agentic | query }
+
+3. Search memory for every unit in parallel (unit-scoped BM25/vector)
+
+4. Route by unit type:
+   conversational → batched LLM response with history + memory context
+   query          → direct retrieval + hybrid fallback (no LLM if results found)
+   agentic        → goals/milestones planner + executePlan pipeline
+
+5. Merge route outputs in original unit order
+```
+
+### New Module: `core/decomposition.ts`
+
+- `decomposeMessage(text, llm)` — calls LLM with structured decomposition prompt, returns `DecomposedMessage { units }`
+- Retry with stricter "This message is compound." prompt when first pass under-splits a multi-sentence message
+- Heuristic repair pass: sentence-level route inference as fallback when both LLM passes fail
+- `/log` and `/meeting` commands bypass decomposition entirely
+
+### New Module: `core/router.ts`
+
+- `routeDecomposedUnits(units, results, history, llm, workingMemory?)` — dispatches each unit type to the appropriate handler
+- `handleConversationalUnits` — single batched LLM call with full history + memory context
+- `handleQueryUnits` — direct retrieval; if confidence = 0 → `hybridSearch` fallback (no LLM)
+- `handleAgenticUnits` — `decomposeTask` + `executePlan` pipeline; prior query results injected as planning context
+- Conversational facts auto-persisted after reply: project starts, person roles, project/person relationships
+
+### New Module: `core/memory/unit-search.ts`
+
+- `searchMemoryForUnits(units, db)` — parallel BM25/vector search scoped per unit's signals (person → WHO, project → WHAT, time → WHEN, etc.)
+- Returns `UnitMemoryResult[]` with strategy, confidence, entries, and full text content
+
+### Bugs Fixed (Phase 13 Transition)
+
+- Completed PLAN.EX entries now always persist terminal status — no more false "Continue?" prompts
+- Compound messages no longer collapse to a single legacy compatibility path
+- Under-split messages retry decomposition then use heuristic sentence-level repair
+- Query units that precede agentic work inject their resolved entries into the planner instead of being treated as goals
+- Signal-based memory search now falls through to BM25/vector when direct hits are empty
+
+### Test Results
+
+- 758/758 tests pass (new tests: `tests/phase13/decomposition.test.ts`, `tests/phase13/router.test.ts`)
+- Build: zero TypeScript errors
+- Tag: `phase-13-complete`
+
+---
+
+## Phase 14 — Memory Agent + Working Memory (COMPLETE)
+
+Phase 14 adds background memory writes via a non-blocking agent queue and a per-task working memory object that tracks execution state across milestones.
+
+### `core/memory/memory-agent.ts`
+
+- `MemoryAgent` — singleton queue processor; drains one task at a time off a FIFO queue; never throws to callers
+- Task types: `task_complete` (writes WHEN.EV + WHEN.RF + HOW.PR), `conversational_facts` (upserts project/person/relationship entries from conversational units), `update_project_brain` (refreshes PLAN.PJ summary)
+- `memoryAgent.enqueue(task)` — non-blocking; callers fire-and-forget
+- `working_memory_created`, `working_memory_updated`, `working_memory_archived` transparency events
+
+### `core/memory/working-memory.ts`
+
+- `WorkingMemory` — tracks `taskId`, `projectCode`, `milestonesCompleted`, `filesWritten`, `codesCreated`, `sessionStarted`
+- Created at the start of every agentic route in `router.ts`
+- Updated after each milestone result in `executor.ts`
+- Archived (via memory agent) after plan completion
+
+### Changes to Existing Files
+
+- `core/router.ts` — creates `WorkingMemory` before `handleAgenticUnits`, passes it through to `executePlan`; enqueues `task_complete` after execution; enqueues `conversational_facts` after conversational reply
+- `core/executor.ts` — calls `workingMemory.recordMilestone()` and `workingMemory.recordStep()` after each milestone; passes `workingMemory` to skills that need it
+- `core/agent.ts` — starts/stops `memoryAgent` alongside heartbeat
+
+### Test Results
+
+- Tests pass with new phase14 test file
+- Build: zero TypeScript errors
+
+---
+
+## Phase 15 — Stress Tests + Stability Sprint (COMPLETE)
+
+Phase 15 adds a comprehensive stress test suite covering edge cases and validates the full pipeline under adversarial conditions.
+
+### Stress Test Suite (`pnpm stress:p15:codex`)
+
+8 scenarios covering:
+1. Empty/whitespace message handling
+2. Very long message (>4000 chars) without crashing
+3. Concurrent `processMessage` calls (race conditions)
+4. Memory write + immediate read consistency
+5. Plan with all steps failing gracefully
+6. Circuit breaker trips and recovers
+7. Compound message with 4 semantic units routes correctly
+8. Follow-up context preserved across turns
+
+All 8 scenarios pass consistently across 3 consecutive runs.
+
+### Stability Fixes Applied
+
+- `core/memory/write.ts` — `upsertEntryWithRetry` wraps `upsertEntry` with 3 attempts + 50ms backoff on UNIQUE constraint violation
+- `core/context.ts` — compaction circuit breaker: module-level failure counter, opens at 3 failures, resets on success; `_resetCompactionCircuit()` exported for tests
+- `core/memory/versioning.ts` — generation counter invalidates in-flight git commits on `_resetGitInstance()`; `_drainGitCommits()` exported for cleanup
+- `core/memory/session-cache.ts` — pointer index updated on every `set()` for valid code patterns
+
+### Cleanup Sprint (Run Before Phase 15 Tag)
+
+- Deleted: `core/intent-llm.ts`, `writeEpisodicMemory()` from executor, `isComplexTask()` from planner
+- Deleted: `SUMMARY_INTENTS` from context.ts, `relationship_write` branch from intent.ts
+- Fixed: ESM shutdown flush in versioning.ts (was `require()`, now ESM import)
+- Fixed: UTC date bug — `new Date().toISOString().split('T')[0]` replaced with `localDateString()` throughout
+- Deleted: 43 orphaned test-artifact memory files
+- Moved `typescript` from devDependencies → dependencies (runtime use in ui-bootstrap.mjs)
+- ARCHITECTURE.md write-order corrected (file-first, not SQLite-first)
+- Added `core/utils/date.ts` — shared `localDateString()` / `localDatePlusDays()` helpers
+
+### Test Results
+
+- 758/758 unit tests pass
+- `pnpm stress:p15:codex` → 8/8 + Follow-up: 3 consecutive runs all pass
+- Build: zero TypeScript errors
+- Tag: `phase-15-stress-validated`
+
+---
+
+## Phase 16 — QueryLoop, Pointer Index, Circuit Breakers, AutoDream (COMPLETE)
+
+Phase 16 adds a while-loop execution engine for simple tasks, a thin always-loaded memory index, compaction circuit protection, and background memory consolidation. 770 tests pass.
+
+### Section 1: QueryLoop (`core/query-loop.ts`)
+
+`runQueryLoop(goal, llmHandler, workingMemory?, history?)` — execution engine for LOW/MEDIUM complexity agentic units:
+
+- `while(true)` loop: call LLM → extract first JSON with `"action"` key → execute skill → inject result → repeat
+- Circuit breaker: `Map<skillName:inputHash → failures>`, trips at 3 consecutive identical failures
+- MAX_ITERATIONS: 20 per run
+- Goal block (`GOAL / COMPLETION CONDITION / ITERATION`) reinjected after each tool result
+- When model emits plain text (no JSON action) → `stoppedBecause: 'no_action'` → returns that text as reply
+- History injection: last 6 non-system turns prepended before goal block
+- CRITICAL WORKSPACE RULE in system prompt: model must use `file_writer` skill — never write file content in text reply
+- Transparency events: `query_loop_start`, `query_loop_iteration`, `query_loop_skill_call`, `query_loop_skill_result`, `query_loop_end`
+
+### Section 2: Pointer Index (`core/memory/pointer-index.ts`)
+
+- `upsertPointerEntry(entry)` — writes/updates a single line in `memory/MEMORY.md`
+- `loadPointerIndex()` — returns the full MEMORY.md string (always-loaded in queryLoop system prompt)
+- MAX_ENTRIES = 200 with LRU eviction (oldest lines removed when limit hit)
+- Atomic writes via tmp file + rename — never throws
+- Line format: `WHO.CT-000001: Sara Ahmadi — lead designer`
+- Wired into: `write.ts` (all `upsertEntry` return paths), `session-cache.ts` (every `set()` with valid code), `heartbeat.ts` (AutoDream refresh)
+
+### Section 3: Complexity Routing (`core/router.ts`)
+
+`handleAgenticUnits()` now calls `assessComplexity()` first:
+- LOW / MEDIUM → `runQueryLoop` (iterative, model-driven)
+- HIGH / MAX → existing `decomposeTask` + `executePlan` pipeline
+- `[route]` transparency event emitted after every complexity assessment
+
+### Section 4: Compaction Circuit Breaker (`core/context.ts`)
+
+- Module-level `_compactionFailures` counter; opens at 3 failures; resets on success
+- Compaction only runs when `tokens > MAX_TOKENS * 0.7` AND circuit is closed
+- `_resetCompactionCircuit()` exported for test isolation
+
+### Section 5: AutoDream + Activity Tracking (`core/heartbeat.ts`)
+
+- `recordActivity()` — exported, called from `agent.ts` on every `processMessage`; updates `_lastActivityAt`
+- `checkAutoDream()` — fires when idle > 10 minutes; reads today's WHEN.EV entries; extracts code references; calls `upsertPointerEntry` for each → refreshes MEMORY.md without an LLM call
+- `AUTO_DREAM_IDLE_MS = 10 * 60 * 1000`
+
+### Section 6: `upsertEntryWithRetry` (`core/memory/write.ts`)
+
+- 3 attempts, 50ms backoff on UNIQUE constraint violation
+- Used internally; prevents concurrent write races from surfacing as unhandled errors
+
+### Phase 16 Usability Sprint
+
+Four bugs found in live use, all fixed:
+
+1. **Confirmation gate** (`core/planner.ts`): `parsePlan()` was trusting LLM's `"needsConfirmation": true`. LLMs over-eagerly set this. Fix: always compute via `shouldRequireConfirmation()` (only triggers for destructive ops / external side effects / risky overwrites) — never trust LLM's value.
+
+2. **History not passed to queryLoop**: `handleAgenticUnits()` and `runQueryLoop()` now accept `history?: Message[]`. Last 6 non-system turns injected before the goal block.
+
+3. **CRITICAL WORKSPACE RULE** added to queryLoop system prompt: prevents model from writing HTML/code directly into text reply instead of calling `file_writer`.
+
+4. **`[route]` transparency event**: emitted after every complexity assessment showing level, reason, and path taken.
+
+### Test Results
+
+- 770/770 tests pass (12 new Phase 16 tests in `tests/phase16/p16-query-loop.test.ts`)
+- Build: zero TypeScript errors
+- Tags: `phase-16-complete`, `phase-16-usability`
+
+---
+
+## Quick Tasks Sprint — Gemma 4 + Transparency UI (COMPLETE)
+
+### Task 1: Primary Model Switch to Gemma 4 26B A4B
+
+- `.env`: All 3 model entries (`LLM_MODEL`, `PLANNER_MODEL`, `EXECUTOR_MODEL`) updated from `qwen/qwen3.5-35b-a3b` to `google/gemma-4-26b-a4b`
+- `core/llm.ts` — `stripThinkingTags()` extended with Gemma 4 thinking tag patterns:
+  - `<|channel>thought\n...<channel|>` (complete block)
+  - `<|channel>thought...<channel|>` (malformed variant)
+  - `<|channel>thought...` (orphaned open tag — no closing tag)
+
+### Task 2: Transparency Panel Readability Fixes (`public/index.html`)
+
+- Fixed `eventPreview()` for `llm_raw`/`llm_stripped`: removed `.replace(/\s+/g, ' ')` whitespace collapse — text now preserves newlines (`.event-preview` already has `white-space: pre-wrap`)
+- Added formatted previews for all event types:
+  - `plan` → goal + milestone list with M1/M2/M3 labels
+  - `step_start` / `step_result` → `▶ [skill]` / `✓|✗ [skill] Nms` format
+  - `route` → `⚡ QueryLoop` or `🗺 Planner` + level + reason
+  - `query_loop_*` → iteration count, skill name, success/fail icons
+  - `working_memory_*` → clean one-line status
+  - `session_cache_*` → cache hit/miss with code
+  - `project_brain` → project code display
+- Added `route` event theme class → cyan highlight
+- Scoped `.thinking-panel .panel-head` flex layout to not affect other panels
+
+### Task 3: Copy Button for Transparency Panel
+
+- `[copy]` button added to thinking panel header
+- `copyTransparencyLog()` collects all `.event-row` elements, formats with timestamps and event names, copies with `Zaraban Transparency Log` header to clipboard
+- Shows "Copied!" for 1.5 seconds then reverts to `[copy]`
+- CSS: monospace style, subtle border, hover highlight — matches existing panel aesthetic
+
+### Test Results
+
+- 769/770 tests pass (1 pre-existing flaky `sleep 35` timeout — unrelated)
+- Build: zero TypeScript errors

@@ -50,8 +50,14 @@ interface ToolCall {
 // ─── JSON Extraction ──────────────────────────────────────────────────────────
 
 /**
- * Extracts the first JSON object that has an "action" key from model output.
- * Returns null if no such object is found.
+ * Extracts the first JSON object that looks like a tool call from model output.
+ *
+ * Supported formats (local models emit any of these):
+ *   {"action": "skill_name", "input": {...}}          ← preferred protocol
+ *   {"tool": "skill_name", "parameters": {...}}        ← common LM Studio variant
+ *   {"skill": "skill_name", "input": {...}}            ← another common variant
+ *
+ * Returns null if no recognisable tool-call object is found.
  */
 function extractToolCall(text: string): ToolCall | null {
   let depth = 0;
@@ -75,12 +81,21 @@ function extractToolCall(text: string): ToolCall | null {
         const candidate = text.slice(start, i + 1);
         try {
           const parsed = JSON.parse(candidate) as Record<string, unknown>;
-          if (typeof parsed.action === 'string') {
-            const input = (parsed.input && typeof parsed.input === 'object' && !Array.isArray(parsed.input))
-              ? parsed.input as Record<string, unknown>
+
+          // Normalise across all supported key variants
+          const actionName =
+            typeof parsed.action === 'string' ? parsed.action :
+            typeof parsed.tool   === 'string' ? parsed.tool :
+            typeof parsed.skill  === 'string' ? parsed.skill :
+            null;
+
+          if (actionName !== null) {
+            const rawInput = parsed.input ?? parsed.parameters;
+            const input = (rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput))
+              ? rawInput as Record<string, unknown>
               : {};
             const thought = typeof parsed.thought === 'string' ? parsed.thought : undefined;
-            return { action: parsed.action, input, thought };
+            return { action: actionName, input, thought };
           }
         } catch { /* not valid JSON — continue scanning */ }
         start = -1;
@@ -122,6 +137,12 @@ function buildSystemPrompt(goal: string, pointerIndex: string): string {
   return [
     'You are an autonomous AI agent with memory and skills.',
     '',
+    '## CRITICAL WORKSPACE RULE',
+    'NEVER write file content in your text reply.',
+    'ALL file creation MUST use the file_writer skill with the correct path.',
+    'If the user asked to save/create/write a file, ALWAYS use file_writer — even for small files.',
+    'Only respond with plain text when summarizing completed results, NOT when the goal is to create a file.',
+    '',
     '## How to act',
     'Each turn, decide whether to use a skill or complete the task.',
     'To use a skill, respond with ONLY a JSON object (no other text):',
@@ -147,13 +168,18 @@ export async function runQueryLoop(
   goal: string,
   llmHandler: LLMHandler,
   _workingMemory?: WorkingMemory,
+  history?: Message[],
 ): Promise<QueryLoopResult> {
   const pointerIndex = loadPointerIndex();
   const systemPrompt = buildSystemPrompt(goal, pointerIndex);
 
+  // Inject conversation history (skip system messages from prior turns) then the goal block
+  const priorTurns = (history ?? []).filter(m => m.role !== 'system').slice(-6);
+
   // Messages accumulate tool results across iterations
   const messages: Message[] = [
     { role: 'system', content: systemPrompt },
+    ...priorTurns,
     { role: 'user', content: buildGoalBlock(goal, 1) },
   ];
 
@@ -175,6 +201,17 @@ export async function runQueryLoop(
 
     // Try to extract a tool call
     const toolCall = extractToolCall(reply);
+
+    // Emit narration if model prefixed the JSON with prose
+    if (toolCall) {
+      const firstBrace = reply.indexOf('{');
+      if (firstBrace > 0) {
+        const narration = reply.slice(0, firstBrace).trim();
+        if (narration) {
+          transparency.emit({ type: 'query_loop_narration', data: { narration, iteration } });
+        }
+      }
+    }
 
     if (!toolCall) {
       // No JSON action — model declared completion

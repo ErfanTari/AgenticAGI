@@ -76,6 +76,10 @@ function isPortfolioPrompt(prompt: string): boolean {
   return /\bportfolio\b/i.test(prompt);
 }
 
+function expectsLargeContent(prompt: string): boolean {
+  return /\b(html|css|javascript|js|complete|full|single.?file|website|web ?page|portfolio)\b/i.test(prompt);
+}
+
 interface MemoryEntrySnapshot {
   code?: string;
   nb?: string;
@@ -409,7 +413,9 @@ const contentWriterSkill: MCPSkill = {
       : inferFormat(prompt);
 
     const style = String(input.style ?? '').trim();
-    const maxTokens = parseMaxTokens(input.maxTokens);
+    const baseTokens = parseMaxTokens(input.maxTokens);
+    // Large content (HTML/CSS/JS/full-file): boost to 4000 so thinking models have room for output
+    const maxTokens = (baseTokens === 2000 && expectsLargeContent(prompt)) ? 4000 : baseTokens;
     const boundedPrompt = prompt.length > 10000
       ? prompt.slice(0, 10000) + '\n\n[input truncated for generation budget]'
       : prompt;
@@ -517,7 +523,7 @@ const contentWriterSkill: MCPSkill = {
             { role: 'assistant', content: output },
             { role: 'user', content: 'Your previous response was not a valid HTML document. Return only the final HTML5 document now.' },
           ];
-          const repaired = stripFormatting(await callLLM(repairMessages, { maxTokens }));
+          const repaired = stripFormatting(await callLLM(repairMessages, { maxTokens: Math.max(maxTokens, 500) }));
           const repairedHtml = extractHtmlDocument(repaired);
           if (repairedHtml) {
             output = repairedHtml;
