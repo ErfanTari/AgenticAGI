@@ -2505,3 +2505,99 @@ User message
 - 1180/1180 total tests pass (1153 → 1180, +27 new, zero regressions)
 - Build: zero TypeScript errors
 - Tag: `phase-20-simplify`
+
+---
+
+## Phase 20b — Intent-Aware Gate Fix (COMPLETE)
+
+20 tests in `tests/phase20b/intent-gate.test.ts`. Build clean. Tag: `phase-20b-intent-gate`.
+
+### The Bug
+
+"Write a Tetris game" was trapped by the pre-fetch gate. Name search matched "workspace" against
+15+ entries (in real usage, 126+). The retrieval-only prompt told the LLM to use ONLY those entries.
+The LLM refused to write the game: "Not found in memory. Cannot proceed."
+
+### FIX 1 — Command detection (`core/memory/quick-resolve.ts`)
+
+- `isCommandIntent(message)` detects command verbs (write, create, build, run, fix, etc.)
+- Commands bypass the name-search gate entirely — return `{ resolved: false }` → fall through to full pipeline
+- Code lookup **still works** for commands (e.g., "update WHO.CT-000076" resolves the code)
+- `QuickResolveResult.isCommand` flag: true if original message was a command
+
+**Pattern matching:**
+- Direct commands: `^(write|create|build|make|run|...)\b`
+- Polite commands: `^(can you|please|would you|...)\s+(write|create|...)\b`
+
+### FIX 2 — Context cap (`core/memory/quick-resolve.ts`)
+
+- Name search (Strategy 4) skips terms that match **>10 entries**
+- Prevents broad terms like "workspace" from flooding the context (126 entries → 0 results)
+- Listings (Strategy 3) are **NOT affected** — type_scan can return many entries by design
+- Loop continues to next term if current term is too broad: `if (byName.length > 10) { continue; }`
+
+### FIX 3 — Intent-aware synthesis prompt (`core/agent.ts`)
+
+Two different prompts based on message intent:
+
+**For commands** (isCommand=true):
+```
+Use memory as BACKGROUND CONTEXT. Then EXECUTE the request using your full capabilities.
+Do not refuse because the task is "not in memory" — memory is context, not a constraint.
+```
+
+**For queries** (isCommand=false):
+```
+Answer based on the retrieved data. Be concise and direct.
+Do not claim entries are missing — everything relevant has been retrieved.
+```
+
+**Modification commands** (update/delete/rename with codes):
+- Detected via pattern: `/^(?:update|change|modify|edit|rename|delete|remove|move|merge)\b/i`
+- Fall through to full pipeline (not handled via single-LLM synthesis path)
+- Reason: These need skill access (memory_write, etc.), not just LLM generation
+
+### Pipeline After This Fix
+
+```text
+User: "write a Tetris game"
+  → isCommandIntent: true
+  → quickResolve returns EMPTY (command bypasses gate)
+  → full pipeline: decomposition → planner → executor
+  → Tetris game gets written ✓
+
+User: "who is Zaraban"
+  → isCommandIntent: false
+  → quickResolve: identity question resolves
+  → synthesis LLM call with retrieval prompt
+  → answer in <2s ✓
+
+User: "update WHO.CT-000076"
+  → isCommandIntent: true
+  → quickResolve: code lookup resolves, isCommand=true
+  → modification verb detected → fall through to full pipeline
+  → planner routes to memory_write skill ✓
+```
+
+### Modified Files
+
+1. `core/memory/quick-resolve.ts`:
+   - Added `isCommandIntent()` function
+   - Modified `quickResolve()`:
+     - Check `isCommandIntent` at start
+     - Code lookup still fires, propagates `isCommand` flag
+     - Skip remaining strategies if isCommand is true
+     - Cap name search at 10 results per term
+   - Updated `QuickResolveResult` type with optional `isCommand` field
+
+2. `core/agent.ts`:
+   - Intent-aware synthesis prompt (command vs query)
+   - Modification command detection + full pipeline fall-through
+   - Both code-lookup and name-search strategies respect intent flag
+
+### Test Results
+
+- 20/20 new tests pass (10 isCommandIntent, 5 command bypass, 3 context cap, 2 regression)
+- 1200/1200 total tests pass (1180 → 1200, +20 new, zero new regressions)
+- Build: zero TypeScript errors
+- Tag: `phase-20b-intent-gate`

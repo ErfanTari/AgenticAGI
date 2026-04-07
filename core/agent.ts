@@ -1307,10 +1307,24 @@ export async function processMessage(
         ).join('\n');
       }
 
-      // Single LLM call with resolved memory — skip decomposition entirely
-      const systemPrompt = `You are Zaraban, a personal AI assistant with persistent memory.
+      // Phase 20b: Intent-aware synthesis prompt
+      // Commands get permission to act; queries get retrieval-only guidance
+      const isCommand = quickResult.isCommand === true;
+
+      const systemPrompt = isCommand
+        ? `You are Zaraban, a personal AI assistant with persistent memory and full coding/creation capabilities.
+The user is requesting an ACTION. Your memory system found entries that may provide useful context.
+Use the context below as BACKGROUND INFORMATION (preferences, existing project details, style).
+Then EXECUTE the user's request using your full knowledge and skills.
+Do not refuse because the task is "not in memory" — memory is context, not a constraint.
+
+## Background Context (${resolvedEntries.length} entries)
+
+${memoryContext}`
+        : `You are Zaraban, a personal AI assistant with persistent memory.
 The user asked a question and your memory system already found the relevant entries.
-Answer using ONLY the retrieved data below. Be concise and direct. Do not invent information.
+Answer based on the retrieved data below. Be concise and direct.
+Do not claim entries are missing — everything relevant has already been retrieved.
 
 ## Retrieved Memory (${quickResult.strategy}, ${quickResult.entries.length} entries)
 
@@ -1319,23 +1333,31 @@ ${memoryContext}
 ## Grounding Rule
 The memory entries provided above are confirmed to exist in the database. You MUST NOT claim that any of these entries do not exist, are missing, or could not be found. Base your answer on the content of these entries.`;
 
-      const contextMessages: Message[] = [
-        { role: 'system', content: systemPrompt },
-        ...history.slice(-6),
-        { role: 'user', content: message },
-      ];
+      // Phase 20b: Modification commands need the full pipeline, not the synthesis path
+      const MODIFICATION_VERBS = /^(?:update|change|modify|edit|rename|delete|remove|move|merge)\b/i;
+      const needsFullPipeline = isCommand && MODIFICATION_VERBS.test(message.trim());
 
-      try {
-        const llmReply = await handler(contextMessages, { disableThinking: true });
-        const cleanedReply = cleanReply(llmReply);
-        return {
-          reply: findingsPrefix + cleanedReply,
-          intent: 'memory_query',
-          resolved: null,
-        };
-      } catch (error) {
-        // LLM call failed — fall through to normal pipeline
+      if (!needsFullPipeline) {
+        // Use the synthesis path for queries and simple read-only actions
+        const contextMessages: Message[] = [
+          { role: 'system', content: systemPrompt },
+          ...history.slice(-6),
+          { role: 'user', content: message },
+        ];
+
+        try {
+          const llmReply = await handler(contextMessages, { disableThinking: true });
+          const cleanedReply = cleanReply(llmReply);
+          return {
+            reply: findingsPrefix + cleanedReply,
+            intent: 'memory_query',
+            resolved: null,
+          };
+        } catch (error) {
+          // LLM call failed — fall through to normal pipeline
+        }
       }
+      // else: modification commands fall through to full pipeline
     }
     // ── End quick-resolve ──
 

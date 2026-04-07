@@ -25,6 +25,8 @@ export interface QuickResolveResult {
   strategy: 'code_lookup' | 'name_search' | 'type_scan' | 'none';
   /** Full markdown body for each entry (parallel array with entries). Populated only when entries.length <= 5. */
   bodies: string[];
+  /** True if the original message was a command that needs action, not just retrieval. Phase 20b. */
+  isCommand?: boolean;
 }
 
 /**
@@ -190,6 +192,29 @@ export function detectListingQuery(message: string): { nb: string; type: string 
 }
 
 /**
+ * Detects if the message is a command/action request that should NOT be trapped
+ * by the retrieval gate. Commands need the full agentic pipeline (decomposition →
+ * planner → executor), not the retrieval-only synthesis path.
+ *
+ * Phase 20b fix: prevents "write a Tetris game" from being trapped by name search.
+ */
+export function isCommandIntent(message: string): boolean {
+  const trimmed = message.trim();
+
+  // Command verbs at start of message
+  const COMMAND_PATTERN = /^(write|create|build|make|run|implement|code|develop|design|generate|deploy|install|set\s?up|configure|fix|debug|refactor|delete|remove|update|change|modify|edit|rename|move|copy|merge|split|convert|transform|migrate|add|insert|append|replace|send|post|publish|upload|download|execute|launch|start|stop|restart|compile|test|benchmark|optimize|analyze)\b/i;
+
+  if (COMMAND_PATTERN.test(trimmed)) return true;
+
+  // Polite commands: "can you write/create...", "please write/create..."
+  const POLITE_COMMAND = /^(?:can you|could you|would you|please|I want you to|I need you to|go ahead and)\s+(write|create|build|make|run|implement|code|develop|generate|fix|debug|update|change|delete|remove|add|send|execute)\b/i;
+
+  if (POLITE_COMMAND.test(trimmed)) return true;
+
+  return false;
+}
+
+/**
  * Attempts to resolve a user message deterministically without any LLM call.
  *
  * Strategy priority:
@@ -197,15 +222,20 @@ export function detectListingQuery(message: string): { nb: string; type: string 
  * 2. Identity query → WHO-first — if "who is X" pattern, search WHO notebook first
  * 3. Listing query → type scan — if "show all contacts" pattern, type-scan results
  * 4. Name search — if extractSearchTerms finds proper nouns or quoted strings,
- *    try queryEntries({ name: term }) before giving up
+ *    try queryEntries({ name: term }) before giving up (capped at 10 results)
  *
  * Returns { resolved: false } if no strategy produced results.
  * The caller should then fall through to the normal decomposition pipeline.
+ *
+ * Phase 20b: Commands bypass the gate (except code lookup).
  */
 export async function quickResolve(message: string): Promise<QuickResolveResult> {
   const EMPTY: QuickResolveResult = { resolved: false, entries: [], strategy: 'none', bodies: [] };
 
-  // ── Strategy 1: Code lookup ──
+  // Phase 20b: Check for command intent early
+  const isCommand = isCommandIntent(message);
+
+  // ── Strategy 1: Code lookup (runs even for commands) ──
   const codes = extractCodes(message);
   if (codes.length > 0) {
     const entries: IndexEntry[] = [];
@@ -223,8 +253,15 @@ export async function quickResolve(message: string): Promise<QuickResolveResult>
       }
     }
     if (entries.length > 0) {
-      return { resolved: true, entries, strategy: 'code_lookup', bodies };
+      // For commands with codes: resolve but mark as command for intent-aware synthesis
+      return { resolved: true, entries, strategy: 'code_lookup', bodies, isCommand };
     }
+  }
+
+  // Phase 20b: If this is a command, stop here. Don't fall into name search.
+  // Commands need the full agentic pipeline, not the retrieval-only synthesis path.
+  if (isCommand) {
+    return EMPTY;
   }
 
   // ── Strategy 1.5: Identity question → WHO-first name search ──
@@ -262,11 +299,19 @@ export async function quickResolve(message: string): Promise<QuickResolveResult>
   }
 
   // ── Strategy 4: Name search ──
+  // Phase 20b: Added context cap to prevent broad matches from flooding the context.
+  // If name search returns >10 results, the match is too broad — skip and try next term.
   const terms = extractSearchTerms(message);
   if (terms.length > 0) {
     for (const term of terms) {
       // queryEntries({ name: ... }) does a name-match lookup in SQLite
       const byName = queryEntries({ name: term });
+
+      // Context cap: if too many results, the search is too broad
+      if (byName.length > 10) {
+        continue;  // skip this term, try the next one
+      }
+
       if (byName.length > 0) {
         const bodies: string[] = [];
         if (byName.length <= 5) {
