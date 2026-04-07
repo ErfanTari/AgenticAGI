@@ -5,6 +5,7 @@ const memoryHistorySkill: MCPSkill = {
   name: 'memory_history',
   description:
     'Get version history for a memory entry. Shows all changes made over time. Use when user asks what changed or wants to rollback a memory entry.',
+  permissionLevel: 'read-only',
   inputSchema: {
     type: 'object',
     properties: {

@@ -22,6 +22,7 @@ export interface DecomposedUnit {
   route: RouteKind;
   content: string;
   order: number;
+  taskType?: 'coding' | 'general';
 }
 
 export interface DecompositionResult {
@@ -33,6 +34,7 @@ export type UnitSearchStrategy =
   | 'project'
   | 'time'
   | 'procedure'
+  | 'type_scan'
   | 'bm25'
   | 'vector_fallback';
 

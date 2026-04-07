@@ -8,10 +8,12 @@ export interface SkillResult {
     display?: string;
     error?: string;
 }
+export type PermissionLevel = 'read-only' | 'workspace-write' | 'full-access';
 /** MCP-compatible universal skill interface */
 export interface MCPSkill {
     name: string;
     description: string;
+    permissionLevel: PermissionLevel;
     inputSchema: {
         type: 'object';
         properties: Record<string, {

@@ -61,9 +61,22 @@ function htmlToText(html: string): string {
     .trim();
 }
 
+// FIX 7: Auto-rewrite GitHub blob URLs to raw.githubusercontent.com
+export function rewriteGitHubBlobUrl(url: string): string {
+  const blobMatch = url.match(
+    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/
+  );
+  if (blobMatch) {
+    const [, owner, repo, rest] = blobMatch;
+    return `https://raw.githubusercontent.com/${owner}/${repo}/${rest}`;
+  }
+  return url;
+}
+
 const webFetchSkill: MCPSkill = {
   name: 'web_fetch',
   description: 'Fetch a URL and return its page text, all links, and direct download links. Use to browse a website, find catalog links, or read page content. Input: { url, extract_links_matching? }',
+  permissionLevel: 'read-only',
   inputSchema: {
     type: 'object',
     properties: {
@@ -77,8 +90,9 @@ const webFetchSkill: MCPSkill = {
   },
 
   async execute(input: Record<string, unknown>): Promise<SkillResult> {
-    const url = String(input.url ?? '').trim();
-    if (!url) return { success: false, output: '', error: 'url is required' };
+    const rawUrl = String(input.url ?? '').trim();
+    if (!rawUrl) return { success: false, output: '', error: 'url is required' };
+    const url = rewriteGitHubBlobUrl(rawUrl);
 
     let parsedUrl: URL;
     try {

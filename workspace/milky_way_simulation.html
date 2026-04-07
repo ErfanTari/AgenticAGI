@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Milky Way Galaxy 3D Simulation</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000000; overflow: hidden; font-family: 'Courier New', Courier, monospace; }
+#canvas-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+#title-bar {
+  position: fixed; top: 0; left: 0; width: 100%;
+  padding: 12px 20px;
+  background: rgba(0,0,0,0.75);
+  border-bottom: 1px solid rgba(0,255,255,0.3);
+  z-index: 100; text-align: center;
+}
+#title-bar h1 {
+  color: cyan;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: clamp(11px, 2vw, 20px);
+  letter-spacing: 4px;
+  text-shadow: 0 0 10px cyan, 0 0 25px rgba(0,255,255,0.5);
+}
+#subtitle {
+  color: rgba(0,255,255,0.55);
+  font-size: clamp(8px, 0.9vw, 11px);
+  letter-spacing: 2px;
+  margin-top: 4px;
+}
+#bottom-panel {
+  position: fixed; bottom: 0; left: 0; width: 100%;
+  padding: 10px 20px;
+  background: rgba(0,0,0,0.75);
+  border-top: 1px solid rgba(0,255,255,0.3);
+  z-index: 100;
+  display: flex; justify-content: center; align-items: center; gap: 16px;
+}
+.ctrl-btn {
+  background: rgba(0,255,255,0.1);
+  color: cyan;
+  border: 1px solid rgba(0,255,255,0.5);
+  padding: 7px 18px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 11px; letter-spacing: 2px;
+  cursor: pointer; transition: all 0.2s;
+  text-transform: uppercase;
+}
+.ctrl-btn:hover { background: rgba(0,255,255,0.25); border-color: cyan; box-shadow: 0 0 10px rgba(0,255,255,0.4); }
+.ctrl-btn.active { background: rgba(0,255,255,0.28); box-shadow: 0 0 12px rgba(0,255,255,0.55); }
+.info-txt { color: rgba(0,255,255,0.45); font-size: 10px; letter-spacing: 1px; }
+#stats {
+  position: fixed; top: 72px; right: 16px; z-index: 100;
+  color: rgba(0,255,255,0.4); font-size: 10px; letter-spacing: 1px;
+  line-height: 1.7; text-align: right;
+}
+</style>
+</head>
+<body>
+<div id="canvas-container"></div>
+
+<div id="title-bar">
+  <h1>MILKY WAY GALAXY 3D SIMULATION</h1>
+  <div id="subtitle">DRAG TO ROTATE &bull; SCROLL TO ZOOM &bull; SPACEBAR TOGGLE AUTO-ROTATION</div>
+</div>
+
+<div id="stats">
+  SPIRAL ARM STARS: 100,000<br>
+  GALACTIC BULGE:&nbsp;&nbsp;&nbsp;15,000<br>
+  HALO STARS:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;5,000<br>
+  BACKGROUND:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3,000<br>
+  ─────────────────────<br>
+  TOTAL:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;123,000
+</div>
+
+<div id="bottom-panel">
+  <span class="info-txt">[SPACEBAR] TOGGLE</span>
+  <button class="ctrl-btn active" id="rot-btn" onclick="toggleRotation()">&#9654; AUTO-ROTATE: ON</button>
+  <button class="ctrl-btn" onclick="resetCamera()">&#8635; RESET VIEW</button>
+  <span class="info-txt">[SCROLL] ZOOM</span>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  // ── Renderer ──────────────────────────────────────────────────────────────
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 1);
+  document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+  // ── Scene / Camera ────────────────────────────────────────────────────────
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 300000);
+  camera.position.set(0, 12000, 28000);
+  camera.lookAt(0, 0, 0);
+
+  // ── OrbitControls ─────────────────────────────────────────────────────────
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.minDistance = 1500;
+  controls.maxDistance = 90000;
+  controls.target.set(0, 0, 0);
+
+  // ── Galaxy group (tilted) ─────────────────────────────────────────────────
+  const galaxy = new THREE.Group();
+  galaxy.rotation.x = 0.2;
+  scene.add(galaxy);
+
+  // ── Utilities ─────────────────────────────────────────────────────────────
+  function randNorm(mean, std) {
+    let u = 0, v = 0;
+    while (!u) u = Math.random();
+    while (!v) v = Math.random();
+    return mean + std * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  function lerpColor(a, b, t) {
+    return new THREE.Color(
+      a.r + (b.r - a.r) * t,
+      a.g + (b.g - a.g) * t,
+      a.b + (b.b - a.b) * t
+    );
+  }
+
+  // ── Textures ──────────────────────────────────────────────────────────────
+  function makeStarTex(sz) {
+    const c = document.createElement('canvas');
+    c.width = c.height = sz;
+    const ctx = c.getContext('2d');
+    const cx = sz / 2;
+    const g = ctx.createRadialGradient(cx, cx, 0, cx, cx, cx);
+    g.addColorStop(0,    'rgba(255,255,255,1)');
+    g.addColorStop(0.15, 'rgba(255,255,255,0.85)');
+    g.addColorStop(0.4,  'rgba(255,255,255,0.25)');
+    g.addColorStop(1,    'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, sz, sz);
+    return new THREE.CanvasTexture(c);
+  }
+
+  function makeCoreTex() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 512;
+    const ctx = c.getContext('2d');
+    const cx = 256;
+    const g = ctx.createRadialGradient(cx, cx, 0, cx, cx, cx);
+    g.addColorStop(0,    'rgba(255,255,230,1)');
+    g.addColorStop(0.04, 'rgba(255,245,190,0.97)');
+    g.addColorStop(0.12, 'rgba(255,210,130,0.88)');
+    g.addColorStop(0.25, 'rgba(255,170, 80,0.70)');
+    g.addColorStop(0.45, 'rgba(200,100, 40,0.40)');
+    g.addColorStop(0.70, 'rgba(120, 50, 15,0.15)');
+    g.addColorStop(1,    'rgba(  0,  0,  0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 512, 512);
+    return new THREE.CanvasTexture(c);
+  }
+
+  const starTex = makeStarTex(64);
+  const coreTex = makeCoreTex();
+
+  // ── Colors ────────────────────────────────────────────────────────────────
+  const C_BLUEWHITE  = new THREE.Color(0.55, 0.75, 1.00);
+  const C_WHITE      = new THREE.Color(1.00, 1.00, 1.00);
+  const C_YWWHITE    = new THREE.Color(1.00, 1.00, 0.75);
+  const C_YELLOW     = new THREE.Color(1.00, 0.90, 0.40);
+  const C_ORANGE     = new THREE.Color(1.00, 0.60, 0.20);
+  const C_WARMWHITE  = new THREE.Color(1.00, 0.96, 0.82);
+
+  function spiralColor(nr) {
+    if (nr < 0.12) return lerpColor(C_WARMWHITE, C_YWWHITE, nr / 0.12);
+    if (nr < 0.32) return lerpColor(C_YWWHITE,   C_YELLOW,  (nr - 0.12) / 0.20);
+    if (nr < 0.60) return lerpColor(C_YELLOW,    C_WHITE,   (nr - 0.32) / 0.28);
+    return             lerpColor(C_WHITE,     C_BLUEWHITE,(nr - 0.60) / 0.40);
+  }
+
+  // ── 1. SPIRAL ARMS — 100 000 stars ────────────────────────────────────────
+  (function () {
+    const N = 100000;
+    const pos  = new Float32Array(N * 3);
+    const col  = new Float32Array(N * 3);
+    const sz   = new Float32Array(N);
+    const a = 1, b = 0.25, maxR = 14000;
+    const offsets = [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2];
+    const thetaMax = Math.log(maxR / a) / b;
+
+    for (let i = 0; i < N; i++) {
+      const arm = i % 4;
+      const theta = Math.random() * thetaMax;
+      const r = a * Math.exp(b * theta);
+      const spread = 0.07 + 0.14 * (r / maxR);
+      const jitter = randNorm(0, spread);
+      const angle  = theta + offsets[arm] + jitter;
+      const rj     = Math.max(r + randNorm(0, r * 0.055 + 80), 1);
+      const x = Math.cos(angle) * rj;
+      const z = Math.sin(angle) * rj;
+      const y = randNorm(0, 70 + (rj / maxR) * 220);
+      pos[i*3]   = x; pos[i*3+1] = y; pos[i*3+2] = z;
+      const nr   = Math.min(rj / maxR, 1);
+      const c    = spiralColor(nr);
+      col[i*3]   = c.r; col[i*3+1] = c.g; col[i*3+2] = c.b;
+      sz[i]      = 1.4 + Math.random() * 2.2 * (1 - nr * 0.45);
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+
+    const mat = new THREE.PointsMaterial({
+      size: 2.6, map: starTex, vertexColors: true,
+      blending: THREE.AdditiveBlending, transparent: true,
+      depthWrite: false, opacity: 0.88
+    });
+
+    galaxy.add(new THREE.Points(geo, mat));
+  })();
+
+  // ── 2. GALACTIC BULGE — 15 000 stars ─────────────────────────────────────
+  (function () {
+    const N = 15000;
+    const pos = new Float32Array(N * 3);
+    const col = new Float32Array(N * 3);
+    const R   = 2000;
+
+    for (let i = 0; i < N; i++) {
+      const r   = Math.abs(randNorm(0, R * 0.32));
+      const th  = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      pos[i*3]   = r * Math.sin(phi) * Math.cos(th);
+      pos[i*3+1] = r * Math.cos(phi) * 0.52;
+      pos[i*3+2] = r * Math.sin(phi) * Math.sin(th);
+      const nr = Math.min(r / R, 1);
+      const c  = lerpColor(C_WARMWHITE, C_ORANGE, nr * nr);
+      col[i*3]   = c.r; col[i*3+1] = c.g; col[i*3+2] = c.b;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+
+    const mat = new THREE.PointsMaterial({
+      size: 3.2, map: starTex, vertexColors: true,
+      blending: THREE.AdditiveBlending, transparent: true,
+      depthWrite: false, opacity: 0.95
+    });
+
+    galaxy.add(new THREE.Points(geo, mat));
+  })();
+
+  // ── 3. CORE GLOW SPRITES ──────────────────────────────────────────────────
+  const outerGlowMat = new THREE.SpriteMaterial({
+    map: coreTex, blending: THREE.AdditiveBlending,
+    transparent: true, depthWrite: false, opacity: 0.80
+  });
+  const outerGlow = new THREE.Sprite(outerGlowMat);
+  outerGlow.scale.set(7500, 7500, 1);
+  galaxy.add(outerGlow);
+
+  const innerGlowMat = new THREE.SpriteMaterial({
+    map: coreTex, blending: THREE.AdditiveBlending,
+    transparent: true, depthWrite: false, opacity: 0.90
+  });
+  const innerGlow = new THREE.Sprite(innerGlowMat);
+  innerGlow.scale.set(2800, 2800, 1);
+  galaxy.add(innerGlow);
+
+  // ── 4. HALO STARS — 5 000 ────────────────────────────────────────────────
+  (function () {
+    const N  = 5000;
+    const pos = new Float32Array(N * 3);
+    const col = new Float32Array(N * 3);
+    const HR  = 22000;
+    const CA  = new THREE.Color(0.80, 0.76, 0.62);
+    const CB  = new THREE.Color(0.62, 0.68, 0.92);
+
+    for (let i = 0; i < N; i++) {
+      const r   = HR * Math.cbrt(Math.random()) * (0.25 + Math.random() * 0.75);
+      const th  = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      pos[i*3]   = r * Math.sin(phi) * Math.cos(th);
+      pos[i*3+1] = r * Math.cos(phi);
+      pos[i*3+2] = r * Math.sin(phi) * Math.sin(th);
+      const c = lerpColor(CA, CB, Math.random());
+      col[i*3]   = c.r; col[i*3+1] = c.g; col[i*3+2] = c.b;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+
+    const mat = new THREE.PointsMaterial({
+      size: 1.8, map: starTex, vertexColors: true,
+      blending: THREE.AdditiveBlending, transparent: true,
+      depthWrite: false, opacity: 0.58
+    });
+
+    scene.add(new THREE.Points(geo, mat));
+  })();
+
+  // ── 5. BACKGROUND STARS — 3 000 ──────────────────────────────────────────
+  (function () {
+    const N   = 3000;
+    const pos = new Float32Array(N * 3);
+    const col = new Float32Array(N * 3);
+    const COLORS = [
+      new THREE.Color(0.70, 0.80, 1.00),
+      new THREE.Color(1.00, 1.00, 0.92),
+      new THREE.Color(1.00, 0.84, 0.68)
+    ];
+
+    for (let i = 0; i < N; i++) {
+      const r   = 50000 + Math.random() * 45000;
+      const th  = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      pos[i*3]   = r * Math.sin(phi) * Math.cos(th);
+      pos[i*3+1] = r * Math.cos(phi);
+      pos[i*3+2] = r * Math.sin(phi) * Math.sin(th);
+      const c = COLORS[Math.floor(Math.random() * 3)];
+      col[i*3]   = c.r; col[i*3+1] = c.g; col[i*3+2] = c.b;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+
+    const mat = new THREE.PointsMaterial({
+      size: 1.1, map: starTex, vertexColors: true,
+      blending: THREE.AdditiveBlending, transparent: true,
+      depthWrite: false, opacity: 0.48
+    });
+
+    scene.add(new THREE.Points(geo, mat));
+  })();
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let autoRotate = true;
+  const ROT_SPEED = 0.0003;
+  const clock = new THREE.Clock();
+
+  // ── Render Loop ───────────────────────────────────────────────────────────
+  function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+
+    if (autoRotate) {
+      galaxy.rotation.y += ROT_SPEED;
+    }
+
+    // Pulsing core glow
+    const pulse = 0.78 + 0.12 * Math.sin(t * 1.4);
+    outerGlowMat.opacity = pulse;
+    innerGlowMat.opacity = 0.85 + 0.10 * Math.sin(t * 1.9 + 1.0);
+
+    controls.update();
+    renderer.render(scene, camera);
+  }
+
+  animate();
+
+  // ── Controls ──────────────────────────────────────────────────────────────
+  window.toggleRotation = function () {
+    autoRotate = !autoRotate;
+    const btn = document.getElementById('rot-btn');
+    if (autoRotate) {
+      btn.textContent = '▶ AUTO-ROTATE: ON';
+      btn.classList.add('active');
+    } else {
+      btn.textContent = '⏸ AUTO-ROTATE: OFF';
+      btn.classList.remove('active');
+    }
+  };
+
+  window.resetCamera = function () {
+    camera.position.set(0, 12000, 28000);
+    camera.lookAt(0, 0, 0);
+    controls.target.set(0, 0, 0);
+    controls.update();
+  };
+
+  document.addEventListener('keydown', function (e) {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      window.toggleRotation();
+    }
+  });
+
+  // ── Resize ────────────────────────────────────────────────────────────────
+  window.addEventListener('resize', function () {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+})();
+</script>
+</body>
+</html>

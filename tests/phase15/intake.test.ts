@@ -52,7 +52,7 @@ describe('Phase 15: runIntake()', () => {
     const result = await runIntake('Who is Sara?', db, llm);
 
     expect(result.signals.personSignal).not.toBeNull();
-    expect(result.signals.personSignal?.name).toBe('Sara');
+    expect(result.signals.personSignal).toBe('Sara');
     expect(result.signals.querySignal).toBe(true);
     expect(result.signals.agenticSignal).toBe(false);
   });
@@ -126,7 +126,7 @@ describe('Phase 15: runIntake()', () => {
     const result = await runIntake('Deadline for project proposal is next Friday', db, llm);
 
     expect(result.signals.timeSignal).not.toBeNull();
-    expect(result.signals.timeSignal?.description).toContain('Friday');
+    expect(result.signals.timeSignal).toContain('Friday');
   });
 
   it('returns empty resolvedContext when no signals match memory', async () => {

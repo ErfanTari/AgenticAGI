@@ -1,8 +1,11 @@
 import readline from 'node:readline';
+import { validateConfig } from './core/config.js';
 import { initDatabase } from './core/memory/mod.js';
 import { processMessage, startAgent, stopAgent } from './core/agent.js';
+import { sanitizeForHistory } from './core/decomposition.js';
 import { transparency } from './core/transparency.js';
 import { attachConsoleRenderer } from './core/transparency-renderer.js';
+import { currentSession } from './core/session/session-log.js';
 import type { Message } from './core/types.js';
 
 // Initialize transparency bus based on environment
@@ -17,6 +20,9 @@ if (TRANSPARENT || DEBUG_DEEP) {
   transparency.enable();
   attachConsoleRenderer(['intent', 'complexity', 'plan', 'step_start', 'step_result', 'memory_write']);
 }
+
+// Validate required config on startup
+validateConfig();
 
 // Initialize
 initDatabase();
@@ -70,11 +76,18 @@ function prompt() {
     }
 
     try {
+      // Log user input to session JSONL
+      currentSession().append({ role: 'user', content: trimmed, ts: new Date().toISOString() });
+
       const res = await processMessage(trimmed, history);
+
+      // Log assistant response to session JSONL
+      currentSession().append({ role: 'assistant', content: res.reply, ts: new Date().toISOString() });
 
       // Keep conversation history (last 6 turns)
       history.push({ role: 'user', content: trimmed });
-      history.push({ role: 'assistant', content: res.reply });
+      // Sanitize before storing — Gemma 4 thinking tags MUST NOT enter history
+      history.push({ role: 'assistant', content: sanitizeForHistory(res.reply) });
       if (history.length > 12) history.splice(0, 2);
 
       console.log(`\nagent > ${res.reply}`);

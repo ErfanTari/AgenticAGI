@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { runWithRetry } from '../../core/react.js';
-import { registerSkill } from '../../core/skills/registry.js';
+import { registerSkill, _unfreezeRegistry } from '../../core/skills/registry.js';
 import { processMessage } from '../../core/agent.js';
 import { runHeartbeat } from '../../core/heartbeat.js';
 import type { MCPSkill } from '../../core/skills/types.js';
@@ -48,6 +48,7 @@ function createFlakeySkill(name: string, failCount: number): MCPSkill {
   return {
     name,
     description: `Fails ${failCount} times then succeeds`,
+    permissionLevel: 'read-only',
     inputSchema: {
       type: 'object',
       properties: { value: { type: 'string', description: 'input value' } },
@@ -56,7 +57,7 @@ function createFlakeySkill(name: string, failCount: number): MCPSkill {
     async execute(input: Record<string, unknown>) {
       calls++;
       if (calls <= failCount) {
-        return { success: false, output: '', error: `Attempt ${calls} failed` };
+        return { success: false, output: '', error: `Attempt ${calls} failed: invalid value for 'value'` };
       }
       return { success: true, output: `Success: ${input.value}` };
     },
@@ -139,6 +140,7 @@ describe('Group 4: Full Loop Integration', () => {
 
   // 4C — Retry counter reported correctly
   it('4C: retries field accurate per response, total across mixed session = 3', async () => {
+    _unfreezeRegistry();
     const repairLLM: LLMHandler = async () => JSON.stringify({ value: 'repaired' });
     let totalRetries = 0;
 

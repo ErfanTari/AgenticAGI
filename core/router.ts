@@ -1,19 +1,80 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { buildContext } from './context.js';
-import { executePlan, verifyExecution, buildUserReport } from './executor.js';
+import { executePlan, runPostFlightSynthesis, buildUserReport } from './executor.js';
 import { transparency } from './transparency.js';
 import { localDateString } from './utils/date.js';
 import type { WorkingMemory } from './memory/working-memory.js';
 import { stripThinkingTags } from './llm.js';
-import { decomposeTask, assessComplexity } from './planner.js';
+import { decomposeTask } from './planner.js';
 import { fetchByCode, hybridSearch, queryEntries, updateEntry, upsertEntry } from './memory/mod.js';
 import { writeReflection } from './memory/episodic.js';
 import { addRelationship, getRelationshipsFrom } from './memory/relationships.js';
-import { getSkillDescriptions } from './skills/registry.js';
+import { getSkillDescriptionsForPermission, getSkillsByPermission, getAllSkills } from './skills/registry.js';
+import { getActivePermissionMode } from './permission.js';
 import { runSkill } from './skills/runner.js';
 import { memoryAgent } from './memory/memory-agent.js';
-import { runQueryLoop } from './query-loop.js';
+import { type ArtifactContext, runQueryLoop } from './query-loop.js';
+import { PATHS } from '../config/agent.config.js';
+import { runWithRetry } from './react.js';
+import { resolveTemplates } from './planner.js';
+
+// Fix 3/5: Module-level session artifact cache — persists across turns in the same session
+let _lastSessionArtifact: ArtifactContext | undefined = undefined;
+/** Exported for testing only */
+export function _resetSessionArtifact(): void { _lastSessionArtifact = undefined; }
+
+/**
+ * Build a concise manifest of files in the workspace directory.
+ * Format: "workspace/file.html (3min ago)\nworkspace/file2.js (5min ago)"
+ * Depth-limited to direct children + one level of subdirectory — skips node_modules.
+ */
+export function buildWorkspaceManifest(): string {
+  const workspaceDir = PATHS.workspace;
+  if (!fs.existsSync(workspaceDir)) return '';
+  try {
+    const now = Date.now();
+    const lines: string[] = [];
+
+    function scanDir(dir: string, prefix: string, depth: number): void {
+      if (depth > 1) return;
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+        const fullPath = path.join(dir, entry.name);
+        const relPath = `workspace/${prefix}${entry.name}`;
+        if (entry.isDirectory()) {
+          scanDir(fullPath, `${prefix}${entry.name}/`, depth + 1);
+        } else {
+          try {
+            const stat = fs.statSync(fullPath);
+            const ageMs = now - stat.mtimeMs;
+            const ageMin = Math.round(ageMs / 60000);
+            const ageStr = ageMin < 60
+              ? `${ageMin}min ago`
+              : `${Math.round(ageMin / 60)}h ago`;
+            lines.push(`${relPath} (${ageStr})`);
+          } catch { /* skip inaccessible */ }
+        }
+      }
+    }
+
+    scanDir(workspaceDir, '', 0);
+    // Sort by most recently modified first (age string parse is cheap enough)
+    lines.sort((a, b) => {
+      const getMin = (s: string) => {
+        const m = s.match(/\((\d+)(min|h) ago\)/);
+        if (!m) return 9999;
+        return parseInt(m[1]) * (m[2] === 'h' ? 60 : 1);
+      };
+      return getMin(a) - getMin(b);
+    });
+    return lines.slice(0, 30).join('\n'); // cap at 30 entries to stay token-efficient
+  } catch {
+    return '';
+  }
+}
 import type {
-  Classification,
   DecomposedUnit,
   LLMHandler,
   Message,
@@ -115,7 +176,7 @@ function persistFactualAssertions(unitTexts: string[]): void {
             name: projectName,
             status: 'active',
             summary: `Project: ${projectName}`,
-            body: text,
+            body: `## Description\n${projectName} project.\n\n## Initial Request\n${text}\n\n## Tasks\n_No tasks recorded yet_\n\n## Status\nactive`,
           });
           currentProject = { code: project.code, name: projectName };
         }
@@ -280,7 +341,21 @@ function buildMemoryContext(units: DecomposedUnit[], results: UnitMemoryResult[]
     if (result.entries.length === 0) {
       return `## ${unit.id}\nStrategy: ${result.strategy}\nConfidence: ${result.confidence}\nNo memory matches.`;
     }
-    const lines = result.entries.map(entry => `- [${entry.code}] ${entry.name}: ${entry.summary}`);
+
+    // Bug 3: Cap active PLAN.EX entries at 2 most-recently-updated to prevent
+    // stale/orphaned execution states from flooding the planner context.
+    let entries = result.entries;
+    const planExEntries = entries.filter(e => e.nb === 'PLAN' && e.type === 'EX');
+    if (planExEntries.length > 2) {
+      const sorted = [...planExEntries].sort((a, b) => b.updated.localeCompare(a.updated));
+      const keep = new Set(sorted.slice(0, 2).map(e => e.code));
+      entries = entries.filter(e => !(e.nb === 'PLAN' && e.type === 'EX') || keep.has(e.code));
+      for (const dropped of planExEntries.slice(2)) {
+        transparency.emit({ type: 'memory_context_filtered', data: { code: dropped.code, reason: 'plan_ex_cap', status: dropped.status } });
+      }
+    }
+
+    const lines = entries.map(entry => `- [${entry.code}] ${entry.name}: ${entry.summary}`);
     return `## ${unit.id}\nStrategy: ${result.strategy}\nConfidence: ${result.confidence}\n${lines.join('\n')}`;
   }).join('\n\n');
 }
@@ -411,6 +486,40 @@ async function handleQueryUnits(
   return { parts, resolved: aggregateResolved(resolvedResults) };
 }
 
+async function writeCompletionMemoryFromPostFlight(
+  plan: TaskPlan,
+  execution: ExecutionResult,
+  verification: VerificationResult,
+  _reflection: { went_well: string; to_improve: string; learned: string },
+  llmHandler: LLMHandler,
+): Promise<void> {
+  const milestoneEventCode = execution.milestoneResults?.at(-1)?.eventCode;
+  if (milestoneEventCode) {
+    const outcome = verification.verified ? 'success' : (execution.completed.length > 0 ? 'partial' : 'failure');
+    writeReflection(milestoneEventCode, {
+      code: milestoneEventCode,
+      trigger: plan.goal,
+      task_name: plan.goal,
+      skill_sequence: execution.completed.map(step => step.skill),
+      outcome,
+      failure_reason: execution.abortReason,
+      linked_codes: execution.linkedCodes ?? [],
+      session_id: plan.createdAt,
+    }, llmHandler).catch(() => {});
+  }
+
+  const matchingBrains = queryEntries({ nb: 'PLAN', type: 'PJ', name: plan.goal });
+  if (matchingBrains.length > 0) {
+    try {
+      updateEntry(matchingBrains[0].code, {
+        summary: `${verification.verified ? 'Completed' : 'Updated'} on ${localDateString()} — ${plan.goal.slice(0, 80)}`,
+      });
+    } catch {
+      // Project brain update is best-effort.
+    }
+  }
+}
+
 async function writeCompletionMemory(
   plan: TaskPlan,
   execution: ExecutionResult,
@@ -444,55 +553,91 @@ async function writeCompletionMemory(
   }
 }
 
+/**
+ * Lightweight executor for "simple" plans (LOW/MEDIUM complexity).
+ * Runs steps sequentially — no milestone overhead, no verification LLM call,
+ * no PLAN.EX persistence. Returns the last meaningful step output as the reply.
+ */
+async function runSimplePlan(
+  plan: TaskPlan,
+  llmHandler: LLMHandler,
+): Promise<{ reply: string; artifactContext?: ArtifactContext }> {
+  const stepResults = new Map<string, string>();
+  let lastOutput = '';
+  let artifactContext: ArtifactContext | undefined;
+
+  for (const step of plan.steps) {
+    // Resolve {{template}} references from prior step outputs
+    const resolvedInput = resolveTemplates(
+      step.input as Record<string, unknown>,
+      stepResults,
+    ) as Record<string, string>;
+
+    const result = await runWithRetry(step.skill, resolvedInput, llmHandler, 2);
+
+    const output = result.success
+      ? (typeof result.output === 'string' ? result.output : JSON.stringify(result.output ?? ''))
+      : (result.error ?? 'Step failed');
+
+    if (step.storeResultAs) {
+      stepResults.set(step.storeResultAs, output);
+    }
+    stepResults.set(step.id, output);
+
+    if (result.success) {
+      lastOutput = result.display ?? output;
+      // Track artifact context if a file was written
+      if ((step.skill === 'generate_and_save_file' || step.skill === 'file_writer') && resolvedInput.path) {
+        artifactContext = {
+          path: resolvedInput.path as string,
+          format: (resolvedInput.format as string) ?? 'html',
+          description: (resolvedInput.description as string) ?? (resolvedInput.spec_code as string) ?? plan.goal,
+        };
+      }
+    }
+  }
+
+  transparency.emit({ type: 'route', data: { level: 'simple', reason: 'plan self-assessed as simple', path: 'simple_runner' } });
+  return { reply: lastOutput || 'Done.', artifactContext };
+}
+
 async function handleAgenticUnits(
   units: DecomposedUnit[],
   results: UnitMemoryResult[],
   llmHandler: LLMHandler,
   priorContext: ResolvedMemory | null = null,
   workingMemory?: WorkingMemory,
-  history?: Message[],
+  _history?: Message[],
 ): Promise<AgenticRouteResult> {
   const goalMessage = units.map(unit => unit.content).join('\n');
   const minOrder = Math.min(...units.map(unit => unit.order));
 
-  // Phase 16 — Complexity routing
-  // LOW/MEDIUM → QueryLoop (model decides steps iteratively)
-  // HIGH/MAX   → existing decomposeTask + executePlan pipeline
-  const complexityClassification: Classification = { intent: 'planned_workflow', codes: [] };
-  const complexity = await assessComplexity(goalMessage, complexityClassification, llmHandler);
-  transparency.emit({ type: 'route', data: { level: complexity.level, reason: complexity.reason, path: complexity.level === 'LOW' || complexity.level === 'MEDIUM' ? 'query_loop' : 'planner' } });
-
-  if (complexity.level === 'LOW' || complexity.level === 'MEDIUM') {
-    const loopResult = await runQueryLoop(goalMessage, llmHandler, workingMemory, history);
-    // Build a minimal stub plan so the return type is satisfied
-    const stubPlan: TaskPlan = {
-      goal: goalMessage,
-      steps: [{ id: 'ql_1', skill: 'query_loop', input: {}, description: goalMessage, dependsOn: [], optional: false, confidence_score: 1.0, risk_level: 'LOW' as const }],
-      milestones: [],
-      goals: buildGoals(units),
-      complexity: complexity.level,
-      needsConfirmation: false,
-      createdAt: new Date().toISOString(),
-    };
-    return {
-      parts: [{ order: minOrder, route: 'agentic', reply: loopResult.reply }],
-      plan: stubPlan,
-    };
-  }
-
-  // HIGH/MAX — full milestone planner + executor
+  // Always call decomposeTask — the model self-assesses complexity in the plan JSON.
+  // "simple" (LOW/MEDIUM) → runSimplePlan (no milestone overhead)
+  // "complex" (HIGH/MAX)  → full executePlan pipeline
   const goals = buildGoals(units);
   const memoryContext = [
     buildMemoryContext(units, results),
     buildResolvedContext('PRIOR QUERY CONTEXT', priorContext),
   ].filter(Boolean).join('\n\n');
   // Phase 15 Conflict 5: pass projectCode so decomposeTask can use project brain cache
+  const permissionMode = getActivePermissionMode();
+  const allowedSkills = getSkillsByPermission(permissionMode);
+  const allSkillsList = getAllSkills();
+  const blockedSkillNames = allSkillsList
+    .filter(s => !allowedSkills.some(a => a.name === s.name))
+    .map(s => s.name);
+  const workspaceFiles = buildWorkspaceManifest();
   const plan = await decomposeTask(goalMessage, {
-    skills: getSkillDescriptions(),
+    skills: getSkillDescriptionsForPermission(permissionMode),
     goals,
     memoryContext,
     decompositionSummary: buildDecompositionSummary(units),
     projectCode: workingMemory?.projectCode ?? null,
+    permissionMode,
+    blockedSkillNames,
+    workspaceFiles: workspaceFiles || undefined,
+    recentArtifact: _lastSessionArtifact,
   }, llmHandler);
 
   if (plan.needsConfirmation) {
@@ -507,13 +652,53 @@ async function handleAgenticUnits(
     };
   }
 
+  // Phase 18 — Coding route: any unit with taskType==='coding' goes to QueryLoop
+  const codingUnits = units.filter(u => u.taskType === 'coding');
+  if (codingUnits.length > 0) {
+    transparency.emit({
+      type: 'coding_route_selected',
+      data: {
+        unitIds: codingUnits.map(u => u.id),
+        complexity: plan.complexity ?? 'unknown',
+        reason: 'taskType=coding',
+      },
+    });
+    const loopResult = await runQueryLoop(goalMessage, llmHandler, workingMemory, _history);
+    if (loopResult.artifactContext) {
+      _lastSessionArtifact = loopResult.artifactContext;
+    }
+    return {
+      parts: [{ order: minOrder, route: 'agentic', reply: loopResult.reply }],
+      plan,
+    };
+  }
+
+  // Route based on the plan's self-assessed complexity
+  const isSimple = plan.complexity === 'LOW' || plan.complexity === 'MEDIUM';
+  if (isSimple) {
+    const simpleResult = await runSimplePlan(plan, llmHandler);
+    if (simpleResult.artifactContext) {
+      _lastSessionArtifact = simpleResult.artifactContext;
+    }
+    return {
+      parts: [{ order: minOrder, route: 'agentic', reply: simpleResult.reply }],
+      plan,
+    };
+  }
+
   const execution = await executePlan(plan, llmHandler, workingMemory);
-  // Skip LLM verification call when executor already escalated (e.g. hard abort, too many failures)
-  // FIX-H1: Short-circuit verification for escalated plans; use LLM verification for non-escalated
-  const verification = execution.escalated
-    ? { verified: false, confidence: 0, issues: [execution.escalationMessage ?? 'Execution escalated'], suggestion: undefined }
-    : await verifyExecution(plan, execution, llmHandler);
-  writeCompletionMemory(plan, execution, verification, llmHandler).catch(() => {});
+  // Skip LLM synthesis call when executor already escalated (e.g. hard abort, too many failures)
+  let verification: import('./schemas.js').VerificationResult;
+  if (execution.escalated) {
+    verification = { verified: false, confidence: 0, issues: [execution.escalationMessage ?? 'Execution escalated'], suggestion: undefined };
+    writeCompletionMemory(plan, execution, verification, llmHandler).catch(() => {});
+  } else {
+    // FIX 6: Single merged post-flight call replaces verifyExecution + writeCompletionMemory separately
+    const postFlight = await runPostFlightSynthesis(plan, execution, llmHandler);
+    verification = postFlight.verification;
+    // Write reflection using the merged result
+    writeCompletionMemoryFromPostFlight(plan, execution, verification, postFlight.reflection, llmHandler).catch(() => {});
+  }
   // FIX-5: If executor didn't enqueue task_complete (e.g. escalated path), enqueue it now
   if (!execution.taskCompleteEnqueued) {
     memoryAgent.enqueue({
@@ -589,4 +774,34 @@ export async function routeDecomposedUnits(
     execution: agenticExecution?.execution,
     verification: agenticExecution?.verification,
   };
+}
+
+/**
+ * Execute a previously confirmed plan. Called by the plan confirmation interceptor
+ * in agent.ts when the user confirms a plan that had needsConfirmation: true.
+ */
+export async function executeConfirmedPlan(
+  plan: import('./schemas.js').TaskPlan,
+  llmHandler: LLMHandler,
+  workingMemory?: WorkingMemory,
+): Promise<{ reply: string; execution: import('./executor.js').ExecutionResult; verification: import('./schemas.js').VerificationResult }> {
+  const execution = await executePlan(plan, llmHandler, workingMemory);
+  let verification: import('./schemas.js').VerificationResult;
+  if (execution.escalated) {
+    verification = { verified: false, confidence: 0, issues: [execution.escalationMessage ?? 'Execution escalated'], suggestion: undefined };
+    writeCompletionMemory(plan, execution, verification, llmHandler).catch(() => {});
+  } else {
+    const postFlight = await runPostFlightSynthesis(plan, execution, llmHandler);
+    verification = postFlight.verification;
+    writeCompletionMemoryFromPostFlight(plan, execution, verification, postFlight.reflection, llmHandler).catch(() => {});
+  }
+  if (!execution.taskCompleteEnqueued) {
+    memoryAgent.enqueue({
+      type: 'task_complete',
+      workingMemory: workingMemory ?? undefined,
+      workingMemoryId: workingMemory?.taskId ?? null,
+    });
+  }
+  const reply = stripThinkingTags(buildUserReport(plan, execution, verification)).trim();
+  return { reply, execution, verification };
 }

@@ -1,7 +1,31 @@
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { MCPSkill, SkillResult } from '../types.js';
+
+// ─── Sandbox Detection ─────────────────────────────────────────────────────
+
+type SandboxStatus = 'full' | 'none';
+let _sandboxStatus: SandboxStatus | null = null;
+
+function detectSandbox(): SandboxStatus {
+  if (_sandboxStatus !== null) return _sandboxStatus;
+  try {
+    execSync('unshare --user --map-root-user true', {
+      stdio: 'pipe',
+      timeout: 2000,
+    });
+    _sandboxStatus = 'full';
+  } catch {
+    _sandboxStatus = 'none';
+  }
+  return _sandboxStatus;
+}
+
+// For test injection
+export function _setSandboxStatus(s: SandboxStatus | null): void {
+  _sandboxStatus = s;
+}
 
 // ─── Security: Blocked patterns (hardcoded — cannot be overridden by LLM or planner) ───
 
@@ -24,6 +48,9 @@ const BLOCKED_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /eval\s+\$\(/i, reason: 'eval subshell' },
   { pattern: /\$\(curl\s/i, reason: 'curl subshell' },
   { pattern: /`curl\s/i, reason: 'curl backtick subshell' },
+  // Destructive disk/file tools
+  { pattern: /\bshred\b/i, reason: 'file shredder' },
+  { pattern: /\bwipefs\b/i, reason: 'filesystem signature wipe' },
   // Multi-line bypass prevention
   { pattern: /rm[\s\S]*-[\s\S]*r[\s\S]*f/i, reason: 'recursive delete (multiline attempt)' },
 ];
@@ -115,6 +142,7 @@ function normalizeWorkspaceCwd(cwd: string): string {
 export const runBash: MCPSkill = {
   name: 'run_bash',
   description: 'Run a bash command inside the workspace directory. Use for git, npm, file ops, build steps, deployment commands.',
+  permissionLevel: 'full-access',
 
   inputSchema: {
     type: 'object',
@@ -232,7 +260,16 @@ export const runBash: MCPSkill = {
         };
       }
 
-      return { success: true, output };
+      // Add sandbox warning if no isolation + full-access mode
+      const sandbox = detectSandbox();
+      const mode = process.env.PERMISSION_MODE ?? 'workspace-write';
+
+      let warningPrefix = '';
+      if (sandbox === 'none' && mode === 'full-access') {
+        warningPrefix = '[warning: no sandbox — running without isolation]\n';
+      }
+
+      return { success: true, output: warningPrefix + output };
     } catch (err) {
       return {
         success: false,

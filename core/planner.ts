@@ -4,6 +4,8 @@ import type { TaskGoal, TaskMilestone, TaskPlan, TaskStep } from './schemas.js';
 import { transparency } from './transparency.js';
 import { queryEntries } from './memory/index.js';
 import { fetchByCode } from './memory/fetch.js';
+import { promptLoader } from './prompt-loader.js';
+import { TOKEN_BUDGETS } from '../config/agent.config.js';
 
 // --- Graded complexity (P6) ---
 
@@ -15,11 +17,35 @@ export interface ComplexityAssessment {
   estimatedSteps: number;
 }
 
+// Fix 5: keywords that imply code/file output → HIGH when combined with output keywords
+const GENERATION_VERBS = /\b(build|create|generate|simulation|app|tool|game|make|write|develop)\b/i;
+const OUTPUT_SIGNALS = /\b(html|css|javascript|code|file|page|website|script|component|program|application)\b/i;
+
 export async function assessComplexity(
   message: string,
   _classification: Classification,
   llmHandler?: LLMHandler,
 ): Promise<ComplexityAssessment> {
+  // FORCE_HIGH check — certain domains always need the planner regardless of signal count
+  for (const [signalName, pattern] of Object.entries(FORCE_HIGH_SIGNALS)) {
+    if (pattern.test(message)) {
+      return {
+        level: 'HIGH',
+        reason: `ForceHigh: ${signalName}`,
+        estimatedSteps: 7,
+      };
+    }
+  }
+
+  // Fix 5: Generation + code/file output signals → HIGH (route to planner, not queryLoop)
+  if (GENERATION_VERBS.test(message) && OUTPUT_SIGNALS.test(message)) {
+    return {
+      level: 'HIGH',
+      reason: 'GenerationTask: build/create/generate + code/file output detected',
+      estimatedSteps: 5,
+    };
+  }
+
   // We call the underlying complexity detection without going through isComplexTask wrapper
   // to avoid potential circular reference issues
   const { count, signals, skills } = countHeuristicSignals(message);
@@ -64,6 +90,21 @@ export async function assessComplexity(
 }
 
 // --- Complexity Detection (Priority 2) ---
+
+/**
+ * FORCE_HIGH: any match → immediately return HIGH (7 estimated steps).
+ * These domains always involve interdependent components regardless of phrasing length.
+ */
+const FORCE_HIGH_SIGNALS: Record<string, RegExp> = {
+  // Game development — any genre, any platform
+  gameDev: /\b(game|arcade|platformer|shooter|rpg|puzzle\s+game|beat.?em.?up|streets\s+of\s+rage|side.?scroller|top.?down|infinite\s+runner|physics\s+engine|game\s+loop|sprite|hitbox|collision\s+detection|tile\s+map|level\s+design|enemy\s+ai|player\s+controller)\b/i,
+  // App / software with a UI
+  appDev: /\b(web\s+app|mobile\s+app|desktop\s+app|single[\s-]page\s+app|spa|pwa|full[\s-]stack|backend\s+api|rest\s+api|graphql\s+api|dashboard|admin\s+panel|crud\s+app|e-?commerce|chat\s+app|note[\s-]taking\s+app|todo\s+app)\b/i,
+  // Multi-file project scaffolding
+  scaffolding: /\b(scaffold|boilerplate|starter\s+(kit|project|template)|project\s+structure|monorepo|microservice)\b/i,
+  // Rendering / graphics / animation
+  rendering: /\b(canvas\s+api|webgl|three\.?js|animation\s+loop|requestAnimationFrame|shader|particle\s+system|2d\s+engine|3d\s+engine)\b/i,
+};
 
 // Heuristic regex patterns for multi-step detection
 const COMPLEXITY_SIGNALS = {
@@ -534,6 +575,10 @@ export interface PlannerContext {
   memoryContext?: string;
   decompositionSummary?: string;
   projectCode?: string | null;
+  permissionMode?: string;
+  blockedSkillNames?: string[];
+  workspaceFiles?: string;
+  recentArtifact?: { path: string; format: string; description: string };
 }
 
 function derivePlanComplexity(stepCount: number): ComplexityLevel {
@@ -543,7 +588,10 @@ function derivePlanComplexity(stepCount: number): ComplexityLevel {
   return 'MAX';
 }
 
-function shouldRequireConfirmation(steps: TaskStep[]): boolean {
+function shouldRequireConfirmation(steps: TaskStep[], complexity?: ComplexityLevel): boolean {
+  // MAX complexity tasks always require confirmation — too many unknowns to proceed blindly
+  if (complexity === 'MAX') return true;
+
   return steps.some(step => {
     const text = `${step.description} ${JSON.stringify(step.input)}`.toLowerCase();
     const destructive = /\b(delete|destroy|wipe|reset|remove|drop table|rm -rf|format disk)\b/.test(text);
@@ -634,6 +682,68 @@ function normalizeMilestones(
   return milestones;
 }
 
+/**
+ * Layer 3: For every generate_and_save_file step whose target path already exists
+ * in the workspace manifest, ensure a file_reader step precedes it.
+ * If one is missing, auto-insert it before the generation step.
+ */
+function enforceFileReaderPrerequisite(
+  steps: TaskStep[],
+  workspaceFiles?: string,
+): TaskStep[] {
+  if (!workspaceFiles) return steps;
+
+  // Build set of known workspace paths from the manifest string
+  const existingPaths = new Set<string>();
+  for (const line of workspaceFiles.split('\n')) {
+    const match = line.match(/^(workspace\/\S+)/);
+    if (match) existingPaths.add(match[1]);
+  }
+
+  const result: TaskStep[] = [];
+  for (const step of steps) {
+    if (step.skill === 'generate_and_save_file') {
+      const targetPath = typeof step.input?.path === 'string' ? step.input.path : '';
+      const normalizedPath = targetPath.startsWith('workspace/')
+        ? targetPath
+        : `workspace/${targetPath}`;
+
+      if (existingPaths.has(normalizedPath)) {
+        // Check if a file_reader for this path already exists before this step
+        const alreadyHasReader = result.some(
+          s => s.skill === 'file_reader' && typeof s.input?.path === 'string' &&
+            (s.input.path === targetPath || s.input.path === normalizedPath || s.input.path.endsWith(targetPath)),
+        );
+        // Also check if the step itself pulls content via context from a prior step
+        const hasContextInput = typeof step.input?.context === 'string' && step.input.context.startsWith('{{');
+
+        if (!alreadyHasReader && !hasContextInput) {
+          const readerId = `auto_read_${step.id}`;
+          const readerStep: TaskStep & { _insertedFor?: string } = {
+            id: readerId,
+            skill: 'file_reader',
+            description: `Read existing file before modifying: ${targetPath}`,
+            input: { path: normalizedPath },
+            dependsOn: step.dependsOn ?? [],
+            storeResultAs: `${step.id}_existing_content`,
+            optional: false,
+            confidence_score: 1.0,
+            risk_level: 'LOW' as const,
+            _insertedFor: step.id,
+          };
+          result.push(readerStep);
+          // Wire the generation step to depend on the reader and use its content
+          step.dependsOn = [...(step.dependsOn ?? []), readerId];
+          if (!step.input) step.input = {};
+          step.input.context = `{{${readerStep.storeResultAs}}}`;
+        }
+      }
+    }
+    result.push(step);
+  }
+  return result;
+}
+
 function normalizePlanPayload(
   raw: Record<string, unknown>,
   message: string,
@@ -642,13 +752,39 @@ function normalizePlanPayload(
   const steps = Array.isArray(raw.steps) ? raw.steps as TaskStep[] : [];
   const rawGoals = Array.isArray(raw.goals) ? raw.goals as TaskGoal[] : [];
   const goals = rawGoals.length > 0 ? rawGoals : buildGoals(message, context.goals);
-  const complexity = typeof raw.complexity === 'string' && ['LOW', 'MEDIUM', 'HIGH', 'MAX'].includes(raw.complexity)
-    ? raw.complexity as ComplexityLevel
-    : derivePlanComplexity(steps.length);
+  // Normalize model-returned "simple"/"complex" to canonical ComplexityLevel values
+  const rawComplexity = typeof raw.complexity === 'string' ? raw.complexity : '';
+  const complexityMap: Record<string, ComplexityLevel> = { simple: 'LOW', complex: 'HIGH' };
+  const complexity: ComplexityLevel = complexityMap[rawComplexity]
+    ?? (['LOW', 'MEDIUM', 'HIGH', 'MAX'].includes(rawComplexity) ? rawComplexity as ComplexityLevel : derivePlanComplexity(steps.length));
   const milestones = normalizeMilestones(raw.milestones, steps, goals, complexity);
-  const flattenedSteps = flattenMilestones(milestones).slice(0, 8);
+  let flattenedSteps = flattenMilestones(milestones).slice(0, 8);
 
   if (flattenedSteps.length === 0) return null;
+
+  // Safety net: strip pure mkdir steps and remove their dependency IDs from downstream steps.
+  // file_writer creates parent directories automatically — mkdir steps are never needed.
+  const mkdirStepIds = new Set(
+    flattenedSteps
+      .filter(s => s.skill === 'run_bash' && /^mkdir\b/.test(String(s.input?.command ?? '').trim()))
+      .map(s => s.id)
+  );
+  if (mkdirStepIds.size > 0) {
+    for (const step of flattenedSteps) {
+      step.dependsOn = (step.dependsOn ?? []).filter(id => !mkdirStepIds.has(id));
+    }
+    flattenedSteps = flattenedSteps.filter(s => !mkdirStepIds.has(s.id));
+    // Also remove mkdir steps from milestones
+    for (const milestone of milestones) {
+      milestone.steps = milestone.steps.filter(s => !mkdirStepIds.has(s.id));
+    }
+  }
+
+  if (flattenedSteps.length === 0) return null;
+
+  // Layer 3: enforce file_reader prerequisite for existing workspace files.
+  // Operates on plan.steps — milestones are cosmetic groupings and don't need re-sync here.
+  flattenedSteps = enforceFileReaderPrerequisite(flattenedSteps, context.workspaceFiles);
 
   return {
     goal: typeof raw.goal === 'string' && raw.goal.trim() ? raw.goal : message,
@@ -656,7 +792,7 @@ function normalizePlanPayload(
     milestones,
     steps: flattenedSteps,
     complexity,
-    needsConfirmation: shouldRequireConfirmation(flattenedSteps),
+    needsConfirmation: shouldRequireConfirmation(flattenedSteps, complexity),
     estimatedDuration: typeof raw.estimatedDuration === 'string' ? raw.estimatedDuration : undefined,
   };
 }
@@ -705,265 +841,54 @@ export async function decomposeTask(
     ? `PROJECT BRAIN CONTEXT:\n${projectBrainContext}`
     : (context.memoryContext ? `RELEVANT MEMORY CONTEXT:\n${context.memoryContext}` : '');
 
+  const workspaceSection = context.workspaceFiles
+    ? `WORKSPACE STATE (files on disk right now):\n${context.workspaceFiles}`
+    : '';
+
+  const recentArtifactSection = context.recentArtifact
+    ? [
+        'RECENT ARTIFACT (the file just created/modified this session):',
+        `- path: ${context.recentArtifact.path}`,
+        `- type: ${context.recentArtifact.format}`,
+        `- description: ${context.recentArtifact.description.slice(0, 300)}`,
+        '→ If the user\'s message refers to "the game", "the page", "it", or "the file", they mean THIS file.',
+        '→ To modify it: step 1 = file_reader(path above), step 2 = generate_and_save_file(same path, context="{{step1_result}}")',
+      ].join('\n')
+    : '';
+
   const planningContextSections = [
     context.decompositionSummary ? `DECOMPOSED GOALS:\n${context.decompositionSummary}` : '',
     memorySection,
+    workspaceSection,
+    recentArtifactSection,
     goalsText ? `TASK GOALS:\n${goalsText}` : '',
   ].filter(Boolean).join('\n\n');
+
+  const runtimeContext = context.permissionMode
+    ? [
+        '',
+        'RUNTIME CONTEXT:',
+        `- Permission mode: ${context.permissionMode}`,
+        `- Skills available: ${context.skills.split('\n\n').length} of ${context.skills.split('\n\n').length + (context.blockedSkillNames?.length ?? 0)}`,
+        ...(context.blockedSkillNames && context.blockedSkillNames.length > 0
+          ? [
+              `- BLOCKED skills (require higher permission): ${context.blockedSkillNames.join(', ')}`,
+              '- If the user\'s task requires a blocked skill, explain the limitation and suggest what CAN be done with available skills.',
+            ]
+          : []),
+      ].join('\n')
+    : '';
+
+  const plannerSystemPrompt = promptLoader.load('planner', {
+    skill_descriptions: context.skills,
+    runtime_context: runtimeContext,
+    planning_context_sections: planningContextSections,
+  });
 
   const planningPrompt: Message[] = [
     {
       role: 'system',
-      content: `You are a task planner. Decompose the user's request into goals, milestones, and steps.
-Each step uses one skill. Available skills:
-${context.skills}
-
-Output ONLY raw JSON in COMPACT format (single line, no newlines, no indentation). No markdown. No code blocks. No backticks. No explanations. No thinking text.
-Start your response with { and end with }
-
-CRITICAL: Use compact JSON format: {"goal":"...","goals":[...],"milestones":[...],"steps":[...]} - DO NOT use pretty-printed JSON with newlines.
-
-Return ONLY a JSON object matching this schema:
-{
-  "goal": "what the user wants",
-  "goals": [
-    {
-      "id": "goal_1",
-      "sourceUnitIds": ["unit_1"],
-      "description": "goal description"
-    }
-  ],
-  "milestones": [
-    {
-      "id": "milestone_1",
-      "goalIds": ["goal_1"],
-      "title": "meaningful checkpoint title",
-      "description": "what will be true when this milestone is complete",
-      "completionCriteria": "observable checkpoint",
-      "steps": [
-        {
-          "id": "step1",
-          "description": "what this step does",
-          "skill": "skill_name",
-          "input": { ... skill input params ... },
-          "dependsOn": [],
-          "storeResultAs": "step1_result",
-          "optional": false
-        }
-      ]
-    }
-  ],
-  "steps": [
-    {
-      "id": "step1",
-      "description": "same ordered step list flattened from milestones",
-      "skill": "skill_name",
-      "input": { ... skill input params ... },
-      "dependsOn": [],
-      "storeResultAs": "step1_result",
-      "optional": false
-    }
-  ],
-  "complexity": "LOW|MEDIUM|HIGH|MAX",
-  "needsConfirmation": false,
-  "estimatedDuration": "30s"
-}
-
-CRITICAL INPUT RULES:
-- "input" values must be primitive only: string, number, boolean, or null
-- NEVER nest objects inside "input"
-- "optional" must be boolean true/false (not an object)
-- "storeResultAs" must be a string or null (not an object)
-
-CORRECT:
-- "optional": false
-- "storeResultAs": "step1_result"
-- "input": {"path": "workspace/file.html", "content": "<!DOCTYPE html>..."}
-
-WRONG (do not generate these):
-- "optional": {"false": ""}
-- "storeResultAs": {"step1_result": ""}
-- "input": {"path": {"workspace/file.html": ""}}
-
-More correct examples:
-- web_search: { "query": "search term here" }
-- file_reader: { "path": "/path/to/file.txt" }
-- calculator: { "expression": "5 + 3" }
-- run_bash: { "command": "ls -la" }
-- memory_read: { "query": "projects and skills for Erfan", "nb": "WHAT", "limit": 6 }
-- memory_write (project): { "nb": "WHAT", "type": "PJ", "name": "ProjectName", "summary": "one line summary", "body": "details" }
-- memory_write (todo): { "nb": "NOW", "type": "TD", "name": "Task description", "summary": "brief", "body": "details" }
-- memory_write (contact): { "nb": "WHO", "type": "CT", "name": "Full Name", "summary": "role or note", "body": "contact details" }
-- memory_write (event): { "nb": "WHEN", "type": "CA", "name": "Event name", "summary": "brief", "body": "date and details" }
-- memory_write (knowledge): { "nb": "WHAT", "type": "KN", "name": "Entry name", "summary": "one line", "body": "full content" }
-- memory_write (procedure): { "nb": "HOW", "type": "PR", "name": "Procedure name", "summary": "brief", "body": "steps" }
-- relationship_write: { "from_code": "WHO.CT-000001", "relation": "interested_in", "to_code": "WHAT.PJ-000003" }
-- relationship_write (by name): { "from_code": "Sara Ahmadi", "relation": "interested_in", "to_code": "AgenticAGI" }
-- content_writer (markdown report): { "prompt": "Write a status report...", "format": "markdown", "maxTokens": 1500 }
-- content_writer (html page): { "prompt": "Write an HTML portfolio...", "format": "html", "maxTokens": 2800 }
-- content_writer (plain/code): { "prompt": "Write a JavaScript function...", "format": "plain", "maxTokens": 500 }
-IMPORTANT: content_writer MUST always include "format" field. Default to "markdown" for reports/assessments/briefings, "html" for web pages, "plain" for code.
-
-RELATIONSHIP_WRITE RULES:
-→ ALWAYS use entry codes not names when available
-→ If a prior step stored a code via storeResultAs, use that template in relationship_write input
-→ CORRECT pattern:
-  Step 1: memory_write { "name": "Sara Ahmadi", ... } storeResultAs: "sara_code"
-  Step 2: relationship_write { "from_code": "{{sara_code}}", "relation": "interested_in", "to_code": "WHAT.PJ-000014" }
-→ WRONG pattern:
-  Step 2: relationship_write { "from_code": "Sara Ahmadi", "to_code": "AgenticAGI" }
-  ← names cause ambiguous lookup when duplicates exist
-→ If you don't have a code from a prior step, use the exact full name as it appears in memory
-→ For well-known entries like AgenticAGI, use the known code directly: WHAT.PJ-000014
-
-CRITICAL SKILL SELECTION RULES:
-- Use memory_write when: saving contacts, projects, todos, knowledge, plans, deadlines, procedures, reflections, or ANY notebook entry (WHO/WHAT/WHEN/HOW/WHY/NOW/PLAN). Memory entries use codes like WHO.CT-000001, WHAT.PJ-000003 etc.
-- Use relationship_write when: linking two entries with a directional relationship (interested_in, owns, works_for, blocks, refers). NEVER use memory_write for relationships.
-- Use file_writer ONLY when: the user explicitly asks to write/save/create an actual file on disk (.txt, .md, .json, .sh etc.)
-- NEVER use file_writer for notebook memory entries
-- run_bash runs inside workspace/ directory — NEVER include "cd workspace" in bash commands, it is already the working directory
-- JavaScript files in workspace use ESM (ES modules) — use "import" NOT "require". Use: import fibonacci from './fibonacci.js'; NOT: const fibonacci = require('./fibonacci');
-- When writing JS test files use node:assert: import assert from 'node:assert'; assert.strictEqual(fibonacci(1), 1);
-- For test+fix loops: mark run_bash steps as optional: true so the plan continues to fix steps even if tests fail
-- PREFER implement_and_test over manual write→run→fix steps when the task is: write code + run tests + fix failures. This collapses the loop into ONE plan step, freeing the remaining steps for memory_write or other tasks. Do NOT encode write→test→fix as separate plan steps when implement_and_test is available.
-- For "check/debug/fix existing code" tasks, implement_and_test reuses existing workspace files when the provided filename/test_filename already exist. Use the real existing filenames so the skill edits the current artifact instead of generating a fresh one.
-
-implement_and_test input format:
-{
-  "implementation_prompt": "Write a JavaScript ESM function called fibonacci that returns the nth Fibonacci number. Export as default.",
-  "test_prompt": "Write ESM tests for fibonacci: fib(1)=1, fib(5)=5, fib(10)=55. Import from ./fibonacci.js",
-  "filename": "fibonacci.js",
-  "test_filename": "fibonacci.test.js",
-  "max_attempts": 3
-}
-This skill handles the retry loop internally, repairs both implementation and tests when needed, reuses existing files when present, and writes a HOW.PR entry on success.
-- NEVER use file_writer to "save" information unless user explicitly says "save to file" or names a file
-
-DEPENDENCY RULES:
-- memory_write steps are ALWAYS independent. Never add dependsOn for memory_write steps unless one write literally needs the output of another (e.g. step2 uses the code created by step1 as input via {{step1_result}}).
-- For compound messages that create multiple contacts and a project, all steps have dependsOn: [] — they run independently.
-- Only add dependsOn when a step's INPUT field contains a {{stepN_result}} template reference. If there is no template reference, dependsOn must be [].
-
-Rules:
-- Maximum 8 steps
-- Use "dependsOn" to reference previous step IDs when a step needs prior output
-- Use "storeResultAs" to name outputs that later steps reference via {{stepN_result}} in their input
-- Mark non-critical steps as "optional": true
-- If the task involves creating memory, include a memory_write step
-- Every plan MUST include milestones
-- LOW complexity gets exactly one milestone
-- MEDIUM/HIGH/MAX complexity must use multiple meaningful milestones when more than two steps are needed
-- Milestones are checkpoints in the world, not just arbitrary step buckets
-
-ARCHITECTURE RULES:
-- If the user asks to use memory (e.g. "from memory", "use everything you know about me"), step 1 MUST be memory_read.
-- Never use file_reader to access memory notebooks; use memory_read for memory content.
-- Do NOT inline large file contents in planner JSON.
-- For large artifacts (HTML/CSS/JS/docs), use:
-  1) content_writer step to generate content text
-  2) file_writer step to write that generated text
-- run_bash already executes inside workspace root; if cwd is needed, it must be a subdirectory relative to workspace (e.g. "src"), never "workspace".
-- Keep planner JSON small and structural.
-
-SYNTHESIS TASK WORKFLOW:
-When asked for a report, overview, briefing, weekly status, or summary of the user's work/projects/status, ALWAYS follow this exact sequence. NEVER skip memory_read steps to save time.
-
-STEP 1 — memory_read: read active projects
-  input: { "query": "active projects", "nb": "WHAT", "limit": 10 }
-  storeResultAs: "projects"
-STEP 2 — memory_read: read deadlines and calendar events
-  input: { "query": "deadlines events upcoming", "nb": "WHEN", "limit": 10 }
-  storeResultAs: "deadlines"
-STEP 3 — memory_read: read todos and active tasks
-  input: { "query": "todos overdue due tasks", "nb": "NOW", "limit": 10 }
-  storeResultAs: "todos"
-STEP 4 — memory_read: read active plans (optional — PLAN may be empty)
-  input: { "query": "active plans", "nb": "PLAN", "limit": 5 }
-  storeResultAs: "plans"
-  optional: true
-STEP 5 — content_writer: generate the report from all memory
-  input: { "prompt": "Write a weekly status report in markdown. Projects: {{projects}} Deadlines: {{deadlines}} Todos: {{todos}} Plans: {{plans}}", "format": "markdown", "maxTokens": 1500 }
-  storeResultAs: "report_content"
-  dependsOn: [step1, step2, step3, step4]
-STEP 6 — file_writer: save report to workspace
-  input: { "path": "workspace/weekly_report.md", "content": "{{report_content}}" }
-  dependsOn: [step5]
-STEP 7 — memory_write: save report as NOW.RP entry
-  input: { "nb": "NOW", "type": "RP", "name": "Weekly Status Report", "summary": "Auto-generated weekly status report", "body": "{{report_content}}" }
-  dependsOn: [step5]
-
-SYNTHESIS RULES:
-→ ALWAYS read at least WHAT and NOW notebooks before generating any report (required steps)
-→ WHEN and PLAN memory_read steps are optional: true — they may return empty results
-→ ALWAYS write both file AND memory entry (steps 6 and 7 are both required)
-→ NEVER skip memory_read steps to save time
-→ content_writer receives ALL notebook data combined in its context
-→ If the user names a specific file path, use that path in file_writer
-
-COMPARISON TASK RULES:
-When asked to "compare X to our system/architecture/project":
-→ Step 1: web_search for external information about X
-→ Step 2: memory_read with a SPECIFIC query targeting the named project or entry
-  CORRECT: { "query": "AgenticAGI architecture notebooks codes relationships", "nb": "WHAT", "limit": 3 }
-  WRONG:   { "query": "memory", "nb": "WHAT", "limit": 10 }  ← too broad, returns unrelated entries
-→ Do NOT use prior comparison reports or knowledge entries as source for a new comparison
-  Prior reports are DERIVED content, not source truth — always read the original project entry
-→ content_writer prompt must reference BOTH {{search_results}} AND {{memory_result}} explicitly
-  CORRECT: { "prompt": "Compare: Research says {{search_results}}. Our system from memory: {{memory_result}}. What are we doing better? What are we missing?", "format": "markdown" }
-
-WEB RESEARCH + SYNTHESIS WORKFLOW:
-When a task requires searching the web and then writing a comparison, assessment, briefing, or report (NOT downloading a file), use this pattern:
-
-STEP 1 — web_search: find relevant content
-  input: { "query": "specific search terms" }
-  storeResultAs: "search_results"
-  optional: false
-STEP 2 — content_writer: synthesize search results with memory data
-  input: { "prompt": "Write the comparison/briefing using search results: {{search_results}} and memory: {{memory_result}}", "maxTokens": 1500 }
-  storeResultAs: "report_content"
-  dependsOn: [step1_id]
-→ For synthesis tasks, pass {{search_results}} DIRECTLY to content_writer. Do NOT use url_extract or web_fetch.
-
-WEB BROWSING / DOWNLOAD WORKFLOW:
-When a task requires actually visiting a website or downloading a file, ALWAYS follow this exact sequence.
-NEVER skip url_extract steps — they are MANDATORY between any search/fetch and the next URL-consuming step.
-
-STEP 1 — web_search: find relevant pages
-  input: { "query": "search terms" }
-  storeResultAs: "search_results"
-STEP 2 — url_extract: MANDATORY — get a clean URL from search results (NEVER skip this)
-  input: { "text": "{{search_results}}" }
-  storeResultAs: "target_url"
-  dependsOn: [step1_id]
-STEP 3 — web_fetch: load the actual page to find download links
-  input: { "url": "{{target_url}}", "extract_links_matching": ".pdf" }
-  storeResultAs: "page_content"
-  dependsOn: [step2_id]
-STEP 4 — url_extract: MANDATORY — get the direct download link from the page (NEVER skip this)
-  input: { "text": "{{page_content}}", "filter": "pdf" }
-  storeResultAs: "download_url"
-  dependsOn: [step3_id]
-STEP 5 — run_bash: download the file
-  input: { "command": "mkdir -p downloads && curl -L -o downloads/filename.pdf '{{download_url}}'" }
-  dependsOn: [step4_id]
-
-BAD EXAMPLE (DO NOT DO THIS — skips url_extract):
-  step1: web_search → step2: web_fetch(url="{{search_results}}") ← WRONG, never use raw search results as URL
-
-GOOD EXAMPLE (correct pattern):
-  step1: web_search → step2: url_extract(text="{{search_results}}") → step3: web_fetch(url="{{target_url}}")
-
-WEB BROWSING RULES (NEVER BREAK THESE):
-- NEVER pass search result text directly as a URL to curl or web_fetch
-- NEVER use curl with a search query as the URL
-- ALWAYS use url_extract between web_search/web_fetch and any download step — NEVER skip url_extract
-- NEVER go from web_search directly to web_fetch or run_bash without url_extract in between
-- web_fetch loads pages and returns links; run_bash+curl downloads files
-- curl command MUST single-quote the URL: curl -L -o file '{{download_url}}'
-- Use -L flag with curl to follow redirects
-- url_extract output is a single clean URL string — use it directly in next step
-
-${planningContextSections}`,
+      content: plannerSystemPrompt,
     },
     { role: 'user', content: userMessageWithProcedure },
   ];
@@ -992,7 +917,7 @@ ${planningContextSections}`,
 
     const response = await llmHandler(messages, {
       responseSchema: taskPlanJsonSchema,
-      maxTokens: 4096,  // Increased to handle large file content in plans
+      maxTokens: TOKEN_BUDGETS.PLANNER,
     });
     unsubRaw();
     lastResponse = response;

@@ -15,6 +15,19 @@ class SessionCache {
   private nameIndex: Map<string, string> = new Map();
 
   set(code: string, entry: IndexEntry): void {
+    // FIX 6: Never cache terminal PLAN.EX entries — they cannot be resumed and
+    // should not appear in context. filterTerminalPlanEx handles the read side,
+    // but we should not store them at all.
+    if (
+      entry.nb === 'PLAN' &&
+      entry.type === 'EX' &&
+      (entry.status === 'complete' || entry.status === 'failed')
+    ) {
+      console.debug(`[session-cache] skipping terminal PLAN.EX: ${code} (${entry.status})`);
+      transparency.emit({ type: 'session_cache_skip', data: { code, reason: 'terminal_plan_ex', status: entry.status } });
+      return;
+    }
+
     this.entries.set(code, entry);
     if (entry.name) {
       this.nameIndex.set(entry.name.toLowerCase(), code);

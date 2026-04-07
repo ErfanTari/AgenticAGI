@@ -12,6 +12,13 @@ import type {
 import type { IndexEntry } from './types.js';
 
 const DEFAULT_LIMIT = 4;
+
+// FIX 4: Options carrying intake signals into unit-search as scope constraints
+export interface UnitSearchOptions {
+  projectSignal?: string | null;
+  personSignal?: string | null;
+  timeSignal?: string | null;
+}
 const VECTOR_CONFIDENCE_THRESHOLD = 0.45;
 
 const TIME_SIGNAL_PATTERNS = [
@@ -50,6 +57,19 @@ const PERSON_BLOCKLIST = new Set([
   'Next', 'Last', 'All', 'Any', 'New', 'Old', 'First', 'Final', 'Complete', 'Simple',
   'Complex', 'Basic', 'Full', 'Quick', 'Large', 'Small', 'Good', 'Best',
 ]);
+
+/** Remove terminal PLAN.EX entries — they confuse the planner into thinking work is already active */
+function filterTerminalPlanEx(entries: IndexEntry[]): IndexEntry[] {
+  const filtered: IndexEntry[] = [];
+  for (const e of entries) {
+    if (e.nb === 'PLAN' && e.type === 'EX' && (e.status === 'complete' || e.status === 'failed')) {
+      transparency.emit({ type: 'memory_context_filtered', data: { code: e.code, reason: 'terminal_plan_ex', status: e.status } });
+    } else {
+      filtered.push(e);
+    }
+  }
+  return filtered;
+}
 
 function uniqueByCode(entries: IndexEntry[]): IndexEntry[] {
   const seen = new Set<string>();
@@ -213,6 +233,32 @@ async function searchVectorsScoped(
     .filter((item): item is { entry: IndexEntry; score: number } => Boolean(item.entry));
 }
 
+// FIX 3: Detect listing queries like "all contacts", "list all projects", "show me my todos"
+function detectListingQuery(content: string): { nb: string; type: string } | null {
+  const lower = content.toLowerCase();
+  const listingLanguage = ['all ', 'list', 'show me', 'tell me', 'every ', 'what are my'];
+  const hasListingLanguage = listingLanguage.some(l => lower.includes(l));
+  if (!hasListingLanguage) return null;
+
+  const patterns: Array<{ keywords: string[]; nb: string; type: string }> = [
+    { keywords: ['contact', 'contacts', 'people', 'person'], nb: 'WHO', type: 'CT' },
+    { keywords: ['project', 'projects', 'working on'], nb: 'WHAT', type: 'PJ' },
+    { keywords: ['todo', 'todos', 'task', 'tasks', 'to-do'], nb: 'NOW', type: 'TD' },
+    { keywords: ['note', 'notes', 'knowledge'], nb: 'WHAT', type: 'KN' },
+    { keywords: ['procedure', 'procedures', 'skill', 'skills', 'how to'], nb: 'HOW', type: 'PR' },
+    { keywords: ['deadline', 'deadlines', 'due'], nb: 'WHEN', type: 'DL' },
+    { keywords: ['plan', 'plans', 'planning'], nb: 'PLAN', type: 'PL' },
+    { keywords: ['goal', 'goals', 'objective'], nb: 'WHY', type: 'MT' },
+  ];
+
+  for (const pattern of patterns) {
+    if (pattern.keywords.some(k => lower.includes(k))) {
+      return { nb: pattern.nb, type: pattern.type };
+    }
+  }
+  return null;
+}
+
 function searchPerson(content: string): UnitMemoryResult | null {
   const name = detectPersonName(content);
   if (!name) return null;
@@ -222,6 +268,22 @@ function searchPerson(content: string): UnitMemoryResult | null {
   return {
     unitId: '',
     strategy: 'person',
+    confidence: matched.confidence,
+    entries: matched.entries,
+    contents: loadContents(matched.entries),
+  };
+}
+
+// FIX 2: Search project by an explicit name (from intake signal or content extraction)
+function searchProjectByName(name: string): UnitMemoryResult {
+  const entries = uniqueByCode([
+    ...queryEntries({ nb: 'PLAN', type: 'PJ', name }),
+    ...queryEntries({ nb: 'WHAT', name }),
+  ]).slice(0, DEFAULT_LIMIT);
+  const matched = searchExactOrFuzzy(entries, name);
+  return {
+    unitId: '',
+    strategy: 'project',
     confidence: matched.confidence,
     entries: matched.entries,
     contents: loadContents(matched.entries),
@@ -285,7 +347,7 @@ async function searchFallback(
   const bm25 = searchBM25Scoped(unit.content, notebooks, DEFAULT_LIMIT);
   const topBm25 = bm25[0]?.entry;
   const bm25Confidence = computeBm25Confidence(unit.content, topBm25);
-  const bm25Entries = bm25.map(item => item.entry);
+  const bm25Entries = filterTerminalPlanEx(bm25.map(item => item.entry));
 
   if (bm25Entries.length > 0 && bm25Confidence >= VECTOR_CONFIDENCE_THRESHOLD) {
     return {
@@ -298,7 +360,7 @@ async function searchFallback(
 
   try {
     const vector = await searchVectorsScoped(unit.content, notebooks, DEFAULT_LIMIT);
-    const vectorEntries = vector.map(item => item.entry);
+    const vectorEntries = filterTerminalPlanEx(vector.map(item => item.entry));
     if (vectorEntries.length > 0) {
       return {
         strategy: 'vector_fallback',
@@ -319,7 +381,7 @@ async function searchFallback(
   };
 }
 
-async function searchUnit(unit: DecomposedUnit, alreadyResolved?: string[]): Promise<UnitMemoryResult> {
+async function searchUnit(unit: DecomposedUnit, alreadyResolved?: string[], options?: UnitSearchOptions): Promise<UnitMemoryResult> {
   // Phase 15 Conflict 1: if alreadyResolved codes are provided and any match cached entries,
   // serve from session cache and skip SQLite/BM25/vector for those entries.
   if (alreadyResolved && alreadyResolved.length > 0) {
@@ -328,13 +390,14 @@ async function searchUnit(unit: DecomposedUnit, alreadyResolved?: string[]): Pro
       const cached = sessionCache.getByCode(code);
       if (cached) cachedEntries.push(cached);
     }
-    if (cachedEntries.length > 0) {
+    const filteredCachedEntries = filterTerminalPlanEx(cachedEntries);
+    if (filteredCachedEntries.length > 0) {
       const result: UnitMemoryResult = {
         unitId: unit.id,
         strategy: 'bm25',
         confidence: 0.8,
-        entries: cachedEntries,
-        contents: loadContents(cachedEntries),
+        entries: filteredCachedEntries,
+        contents: loadContents(filteredCachedEntries),
       };
       transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
       return result;
@@ -362,6 +425,36 @@ async function searchUnit(unit: DecomposedUnit, alreadyResolved?: string[]): Pro
         return result;
       }
     }
+  }
+
+  // FIX 3: Listing fast-path runs FIRST — "all contacts", "list all projects", etc.
+  // Must precede signal guards: a false-positive personSignal ("contacts") would otherwise
+  // short-circuit before listing detection fires. Listing intent is unambiguous.
+  const listingMatch = detectListingQuery(unit.content);
+  if (listingMatch) {
+    const entries = uniqueByCode(queryEntries({ nb: listingMatch.nb, type: listingMatch.type, status: 'active' })).slice(0, 20);
+    const result: UnitMemoryResult = { unitId: unit.id, strategy: 'type_scan' as UnitMemoryResult['strategy'], confidence: entries.length > 0 ? 1 : 0, entries, contents: loadContents(entries) };
+    transparency.emit({ type: 'unit_search_strategy', data: { strategy: 'type_scan', projectName: null, confidence: result.confidence, codes: entries.map(e => e.code) } });
+    transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
+    return result;
+  }
+
+  // FIX 4+2: Intake projectSignal takes priority over content heuristics (non-listing queries)
+  if (options?.projectSignal) {
+    const projectResult = searchProjectByName(options.projectSignal);
+    const result = { ...projectResult, unitId: unit.id };
+    transparency.emit({ type: 'unit_search_strategy', data: { strategy: 'project', projectName: options.projectSignal, confidence: result.confidence, codes: result.entries.map(e => e.code) } });
+    transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
+    return result;
+  }
+
+  // FIX 4+2: Intake personSignal takes priority over content heuristics (when no project signal)
+  if (options?.personSignal) {
+    const entries = uniqueByCode(queryEntries({ nb: 'WHO', name: options.personSignal })).slice(0, DEFAULT_LIMIT);
+    const matched = searchExactOrFuzzy(entries, options.personSignal);
+    const result: UnitMemoryResult = { unitId: unit.id, strategy: 'person', confidence: matched.confidence, entries: matched.entries, contents: loadContents(matched.entries) };
+    transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
+    return result;
   }
 
   const person = searchPerson(unit.content);
@@ -412,10 +505,11 @@ async function searchUnit(unit: DecomposedUnit, alreadyResolved?: string[]): Pro
 export async function searchMemoryForUnits(
   units: DecomposedUnit[],
   alreadyResolvedCodes?: string[],
+  options?: UnitSearchOptions,
 ): Promise<UnitMemoryResult[]> {
   return Promise.all(units.map(async unit => {
     try {
-      return await searchUnit(unit, alreadyResolvedCodes);
+      return await searchUnit(unit, alreadyResolvedCodes, options);
     } catch {
       const result: UnitMemoryResult = {
         unitId: unit.id,

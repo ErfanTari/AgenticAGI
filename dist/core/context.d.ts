@@ -33,7 +33,8 @@ export declare function getIndexSummary(): string;
  * Falls back gracefully if summarization fails.
  */
 export declare function buildRollingContext(history: Message[], llmHandler: LLMHandler): Promise<ContextHistory>;
-export declare function buildContext(userMessage: string, resolved: ResolvedMemory | null, history: Message[], skills: Skill[], intent?: Intent, skillOutput?: string, llmHandler?: LLMHandler): Promise<Message[]>;
+export type ContextMode = 'default' | 'agentic_coding';
+export declare function buildContext(userMessage: string, resolved: ResolvedMemory | null, history: Message[], skills: Skill[], intent?: Intent, skillOutput?: string, llmHandler?: LLMHandler, contextMode?: ContextMode): Promise<Message[]>;
 /**
  * Count exact tokens using gpt-tokenizer.
  * Can accept either a string or Message array.

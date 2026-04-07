@@ -1,6 +1,7 @@
 # AgenticAGI — Architecture Deep Dive
 
-> Based on actual source code as of the Phase 13 decomposition-first runtime and subsequent routing hardening.
+> Based on actual source code as of QueryLoop Efficiency Fix Sprint (April 2026).
+> 933 tests pass. Build clean.
 
 ---
 
@@ -12,7 +13,131 @@ The codebase is TypeScript/Node.js (ESM), uses `better-sqlite3` for its index, w
 
 ---
 
-## 2. Core Design Principles (from `CLAUDE.md`)
+## 2. Project Root
+
+```
+AgenticAGI/
+├── ARCHITECTURE.md          ← this file
+├── CLAUDE.md                ← build philosophy + phase history
+├── agent-card.json          ← A2A protocol capability card
+├── chat.ts                  ← CLI REPL entry point
+├── package.json             ← pnpm, ESM, vitest
+├── tsconfig.json
+├── .env                     ← model endpoints + API keys
+│
+├── config/
+│   └── agent.config.ts      ← PATHS, TYPE_MAP, LLM/embedding config
+│
+├── core/                    ← agent runtime (see §3)
+│   ├── agent.ts             ← processMessage(), fast paths, compatibility
+│   ├── config.ts            ← Zod config validation (Phase 17A)
+│   ├── permission.ts        ← enforcePermission(), getActivePermissionMode()
+│   ├── decomposition.ts     ← LLM-first message decomposition
+│   ├── router.ts            ← route dispatcher (conversational/query/agentic)
+│   ├── planner.ts           ← multi-goal task planning + complexity assessment
+│   ├── executor.ts          ← milestone execution loop + verification
+│   ├── query-loop.ts        ← iterative skill-calling loop (LOW/MEDIUM tasks)
+│   ├── context.ts           ← context assembly, token budget, compaction
+│   ├── llm.ts               ← LLM endpoint adapter (primary + fallback)
+│   ├── resolver.ts          ← 5-step memory query escalation
+│   ├── intent.ts            ← legacy compatibility classifier (shim)
+│   ├── intake.ts            ← startup intake / findings
+│   ├── react.ts             ← ReAct retry wrapper for skills
+│   ├── heartbeat.ts         ← background memory health checks
+│   ├── meeting.ts           ← /meeting mode briefing
+│   ├── autonomous.ts        ← autonomous execution loop
+│   ├── schemas.ts           ← Zod v4 schemas + JSON schema export
+│   ├── structured.ts        ← generic structured LLM output pipeline
+│   ├── transparency.ts      ← internal event bus
+│   ├── transparency-renderer.ts
+│   ├── agent-card.ts        ← A2A agent card sync
+│   ├── types.ts             ← shared types (Message, LLMHandler, Intent, etc.)
+│   ├── utils/
+│   │   └── date.ts          ← localDateString(), localDatePlusDays()
+│   │
+│   ├── session/
+│   │   └── session-log.ts   ← JSONL conversation persistence (Phase 17B)
+│   │
+│   ├── skills/
+│   │   ├── types.ts         ← MCPSkill, SkillResult, PermissionLevel
+│   │   ├── registry.ts      ← skill registry (freezable singleton)
+│   │   ├── runner.ts        ← runSkill() with permission enforcement
+│   │   └── tools/
+│   │       ├── calculator.ts
+│   │       ├── content_writer.ts
+│   │       ├── file_reader.ts        ← binary detection, size limit, symlink guard
+│   │       ├── file_writer.ts        ← 10MB limit, workspace boundary, symlink guard
+│   │       ├── generate_and_save_file.ts
+│   │       ├── implement_and_test.ts
+│   │       ├── memory_history.ts
+│   │       ├── memory_read.ts
+│   │       ├── memory_write.ts
+│   │       ├── relationship_write.ts
+│   │       ├── run_bash.ts           ← sandbox detection, command audit
+│   │       ├── url_extract.ts
+│   │       ├── verify_state.ts
+│   │       ├── web_fetch.ts
+│   │       └── web_search.ts
+│   │
+│   └── memory/
+│       ├── mod.ts            ← re-exports (initDatabase, upsertEntry, etc.)
+│       ├── index.ts          ← SQLite init, schema, bootstrap
+│       ├── write.ts          ← createEntry, upsertEntry (file-first)
+│       ├── fetch.ts          ← fetchByCode (markdown reader)
+│       ├── codegen.ts        ← atomic code generation
+│       ├── search.ts         ← hybridSearch, BM25 + vector + RRF
+│       ├── fts.ts            ← FTS5 full-text index
+│       ├── chunks.ts         ← vector chunk storage
+│       ├── embeddings.ts     ← embedding API + cosine similarity
+│       ├── relationships.ts  ← relationship CRUD
+│       ├── versioning.ts     ← git-backed memory commits
+│       ├── lifecycle.ts      ← decay, utility, importance scoring
+│       ├── episodic.ts       ← WHEN.EV / WHEN.RF / WHEN.HX writes
+│       ├── plan-ex.ts        ← PLAN.EX execution state persistence
+│       ├── project.ts        ← PLAN.PJ project brain
+│       ├── execution-log.ts  ← JSONL execution audit log
+│       ├── pointer-index.ts  ← MEMORY.md thin always-loaded index
+│       ├── session-cache.ts  ← in-memory recent-entry cache
+│       ├── memory-agent.ts   ← async background memory write queue
+│       ├── working-memory.ts ← per-task execution state
+│       ├── unit-search.ts    ← parallel per-unit BM25/vector search
+│       └── types.ts          ← IndexEntry, SearchResult, etc.
+│
+├── memory/                  ← markdown files (canonical truth)
+│   ├── WHO/contacts/
+│   ├── WHAT/projects/, knowledge/
+│   ├── WHEN/calendar/, deadlines/
+│   ├── HOW/procedures/
+│   ├── WHY/meta/, questions/
+│   ├── NOW/todos/, reports/
+│   └── PLAN/planning/
+│
+├── index/
+│   └── memory.sqlite        ← master index + relationships + FTS + chunks
+│
+├── tests/
+│   ├── phase1/ … phase17/   ← unit tests across 17 phases
+│   ├── log-fixes/            ← Log Analysis Sprint tests
+│   ├── log2-fixes/           ← Log Analysis Sprint #2 tests
+│   ├── fixes/                ← Four-Bug / Five-Fix sprint tests
+│   ├── permission-planner/   ← Permission-Aware Planner tests
+│   ├── queryloop-efficiency/ ← QueryLoop Efficiency tests
+│   ├── mocks/
+│   │   ├── MockLLMHandler.ts ← deterministic LLM mock (Phase 17B)
+│   │   └── scenarios/        ← scripted mock scenarios
+│   └── setup-env.ts
+│
+├── scripts/                 ← stress tests, utilities
+├── server/                  ← HTTP API server
+├── public/                  ← web UI (transparency panel)
+├── apps/                    ← app integrations
+├── docs/                    ← phase completion docs
+└── dist/                    ← compiled output
+```
+
+---
+
+## 3. Core Design Principles
 
 | Principle | What It Means in Code |
 |-----------|----------------------|
@@ -20,57 +145,178 @@ The codebase is TypeScript/Node.js (ESM), uses `better-sqlite3` for its index, w
 | **Index first, fetch second, search last** | Resolver tries direct code lookup → filter query → relationship traversal → only then calls `hybridSearch()`. |
 | **Codes are the universal language** | Every entry has a code like `WHO.CT-000001`. Codes encode notebook + type + sequence number. |
 | **Simplicity over cleverness** | Each layer must earn its place. No speculative abstractions. |
+| **Permission before execution** | Every skill declares a `permissionLevel`. The runner enforces it against the active mode before calling `execute()`. |
 
 ---
 
-## 3. Top-Level Request Lifecycle
-
-A user message enters `processMessage()` in `core/agent.ts` and now flows through a decomposition-first pipeline:
+## 4. Top-Level Request Lifecycle
 
 ```
 User Message
     │
     ▼
-[1] Fast-path bypasses        ← core/agent.ts
-    ├── /log ...     → immediate NOW.LOG write
-    ├── /meeting     → Meeting Mode
-    └── direct code  → direct memory fetch
+[0] Plan confirmation intercept          ← core/agent.ts
+    │  If pendingConfirmationPlan exists:
+    │  ├── "yes"/"go"/"proceed" → executeConfirmedPlan() → done
+    │  ├── "no"/"cancel"        → clear plan, inform user → done
+    │  └── ambiguous            → re-prompt with milestones
     │
     ▼
-[2] decomposeMessage()        ← core/decomposition.ts
-    │  LLM-first structured decomposition
-    │  Returns: DecompositionResult { units[] }
+[1] Fast-path bypasses                   ← core/agent.ts
+    ├── /log ...       → NOW.LOG write
+    ├── /meeting       → Meeting Mode
+    └── WHO.CT-000001  → direct code fetch
+    │
+    ▼
+[2] decomposeMessage()                   ← core/decomposition.ts
+    │  LLM-structured decomposition
+    │  → DecompositionResult { units[] }
     │  unit.route ∈ { conversational | agentic | query }
     │
     ▼
-[3] searchMemoryForUnits()    ← core/memory/unit-search.ts
-    │  Runs one search per unit in parallel
-    │  BM25 first, vector only as fallback
+[3] searchMemoryForUnits()               ← core/memory/unit-search.ts
+    │  Parallel per-unit BM25/vector search
     │
     ▼
-[4] routeDecomposedUnits()    ← core/router.ts
+[4] routeDecomposedUnits()               ← core/router.ts
     │
-    ├── conversational units → one batched LLM response
-    ├── query units          → direct retrieval / hybrid fallback
-    └── agentic units        → multi-goal planner + executor
-         ▲
-         └── resolved query units are injected into planning context
+    ├── conversational → buildContext() → callLLM()
+    │
+    ├── query → direct retrieval / hybrid fallback (no LLM if results found)
+    │
+    └── agentic → assessComplexity()
+                   ├── LOW/MEDIUM → runQueryLoop()   ← iterative skill loop
+                   └── HIGH/MAX   → decomposeTask()  ← milestone planner
+                                     → executePlan()
+                                     → verifyExecution()
     │
     ▼
 [5] Merge route outputs by original unit order
     │
     ▼
-[6] AgentResponse
-    { reply, intent, resolved, created?, error?, retries? }
+[6] AgentResponse { reply, intent, resolved, created?, error?, retries? }
+    │
+    ▼
+[7] Session log append (user + assistant)  ← core/session/session-log.ts
 ```
-
-Legacy exported intent labels still exist for compatibility, but they are no longer the primary runtime router.
 
 ---
 
-## 4. Decomposition + Legacy Compatibility
+## 5. Full System Diagram
 
-`core/decomposition.ts` is now the primary understanding layer.
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                           USER INPUT                                │
+│                      chat.ts (CLI REPL)                             │
+│              session-log.ts (JSONL persistence)                     │
+└──────────────────────────┬──────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                       core/agent.ts                                  │
+│                                                                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────┐       │
+│  │ Plan Confirm  │  │  Fast Paths  │  │ Decomposition         │       │
+│  │ State Machine │  │  /log /meet  │  │ (LLM-first, few-shot  │       │
+│  │ (intercept @  │  │  code fetch  │  │  hardened, retry +    │       │
+│  │  top of msg)  │  │              │  │  heuristic repair)    │       │
+│  └──────┬───────┘  └──────┬───────┘  └───────────┬───────────┘       │
+│         │                 │                       │                   │
+│         └─────────────────┼───────────────────────┘                   │
+│                             ▼                                        │
+│                    ┌────────────────┐                                 │
+│                    │   router.ts    │                                 │
+│                    │ (route by unit │                                 │
+│                    │  type + complexity)                              │
+│                    └───┬────┬────┬──┘                                 │
+│                        │    │    │                                    │
+└────────────────────────┼────┼────┼────────────────────────────────────┘
+                         │    │    │
+        ┌────────────────┘    │    └────────────────┐
+        ▼                     ▼                     ▼
+┌──────────────┐   ┌──────────────────┐   ┌──────────────────────┐
+│ Conversational│   │   Query Path     │   │   Agentic Path       │
+│              │   │                  │   │                      │
+│ buildContext()│   │ resolver.ts      │   │ ┌──────────────────┐ │
+│ callLLM()    │   │ (5-step lookup)  │   │ │ LOW/MED:         │ │
+│              │   │                  │   │ │ query-loop.ts    │ │
+│              │   │ hybridSearch()   │   │ │ (iterative LLM   │ │
+│              │   │ (BM25 + vector)  │   │ │  + skill calls)  │ │
+│              │   │                  │   │ ├──────────────────┤ │
+│              │   │                  │   │ │ HIGH/MAX:        │ │
+│              │   │                  │   │ │ planner.ts       │ │
+│              │   │                  │   │ │ executor.ts      │ │
+│              │   │                  │   │ │ (milestone loop) │ │
+│              │   │                  │   │ └──────────────────┘ │
+└──────────────┘   └──────────────────┘   └──────────────────────┘
+        │                   │                       │
+        └───────────────────┼───────────────────────┘
+                            │
+                            ▼
+        ┌───────────────────────────────────────────┐
+        │           SKILL EXECUTION                  │
+        │                                            │
+        │  runner.ts → enforcePermission() → skill   │
+        │  react.ts  → retry on failure              │
+        │                                            │
+        │  15 skills:                                │
+        │  calculator, file_reader, file_writer,     │
+        │  run_bash, web_search, web_fetch,          │
+        │  url_extract, memory_read, memory_write,   │
+        │  content_writer, relationship_write,        │
+        │  implement_and_test, memory_history,        │
+        │  verify_state, generate_and_save_file       │
+        └───────────────┬───────────────────────────┘
+                        │
+                        ▼
+        ┌───────────────────────────────────────────┐
+        │           MEMORY SYSTEM                    │
+        │                                            │
+        │  ┌─────────┐    ┌──────────────────┐      │
+        │  │ Markdown │    │    SQLite        │      │
+        │  │  Files   │◄──►│  index_entries   │      │
+        │  │ (truth)  │    │  relationships   │      │
+        │  │          │    │  fts_content     │      │
+        │  │ memory/  │    │  chunks          │      │
+        │  │  WHO/    │    │  counters        │      │
+        │  │  WHAT/   │    │  settings        │      │
+        │  │  WHEN/   │    │  heartbeat_queue │      │
+        │  │  HOW/    │    └──────────────────┘      │
+        │  │  WHY/    │                              │
+        │  │  NOW/    │    ┌──────────────────┐      │
+        │  │  PLAN/   │    │ Git versioning   │      │
+        │  └─────────┘    │ (fire-and-forget) │      │
+        │                  └──────────────────┘      │
+        │                                            │
+        │  pointer-index.ts → MEMORY.md (thin index) │
+        │  session-cache.ts → in-memory recent cache  │
+        │  memory-agent.ts  → async write queue       │
+        │  working-memory.ts → per-task state          │
+        └───────────────────────────────────────────┘
+                        │
+                        ▼
+        ┌───────────────────────────────────────────┐
+        │           BACKGROUND                       │
+        │                                            │
+        │  heartbeat.ts (30 min cycle)               │
+        │  ├── deadline checks                       │
+        │  ├── overdue todo/plan detection           │
+        │  ├── stale question surfacing              │
+        │  ├── plan calibration                      │
+        │  ├── stale project detection               │
+        │  ├── vision alignment check                │
+        │  └── AutoDream (pointer index refresh)     │
+        │                                            │
+        │  transparency.ts (event bus)               │
+        │  └── all subsystems emit events            │
+        └───────────────────────────────────────────┘
+```
+
+---
+
+## 6. Decomposition + Legacy Compatibility
+
+`core/decomposition.ts` is the primary understanding layer.
 
 ### Decomposition model
 
@@ -87,48 +333,29 @@ interface DecomposedUnit {
 
 ### Hardening behavior
 
-- If the initial decomposition under-splits an obviously compound message, the system retries with a stricter compound prompt.
-- If that still fails, a narrow heuristic repair pass splits only on strong clause boundaries.
+- If the initial decomposition under-splits a compound message, the system retries with a stricter compound prompt.
+- If that still fails, a narrow heuristic repair pass splits on strong clause boundaries.
 - The heuristic layer exists to protect the decomposition architecture, not to replace it.
+- **Few-shot hardening**: 3 EXAMPLE blocks (agentic, conversational, query) + WRONG/RIGHT format enforcement to prevent flat-array hallucination.
+- **Bare primitive filtering**: Numbers, booleans, and invalid strings are filtered from units before validation.
+- **Retry with examples**: On garbage output (no valid units after normalization), retries once with 2 few-shot examples before falling back to heuristic repair.
+- **Session-wide repair counter**: `_decompositionRepairCount` tracks total heuristic repairs; warns at 3+.
 
 ### `core/intent.ts` status
 
-`classifyIntent()` still exists, but it is now a compatibility shim for legacy tests, metadata, and a few older call paths. It is not the primary runtime router.
+`classifyIntent()` still exists as a compatibility shim for legacy tests, metadata, and a few simple direct-tool flows. It is not the primary runtime router.
 
 ### What still uses the compatibility shim
 
-- direct/simple `file_writer`
-- direct/simple `run_bash`
-- direct/simple `web_search`
-- direct/simple `calculator`
+- direct/simple `file_writer`, `run_bash`, `web_search`, `calculator`
 - deterministic memory writes
-
-Those paths are only allowed for single-unit, non-compound messages.
-
-### Compatibility extraction shape
-
-```typescript
-interface Classification {
-  intent: Intent;
-  codes: string[];      // e.g. ["WHO.CT-000001"]
-  nb?: string;          // "WHO" | "WHAT" | "WHEN" | "HOW" | "WHY" | "NOW" | "PLAN"
-  type?: string;        // "CT" | "PJ" | "PR" | ...
-  status?: string;      // "active" | "open" | "upcoming"
-  name?: string;        // extracted entity name
-  relation?: string;    // "owns" | "works_for" | "supplies" | "blocks" | "refers"
-  skill?: string;       // "calculator" | "web_search" | ...
-  skillInput?: Record<string, unknown>;
-  due_date?: string;    // ISO date string
-}
-```
+- single-unit, non-compound messages only
 
 ---
 
-## 5. Memory System
+## 7. Memory System
 
-### 5a. The 7-Notebook Schema
-
-Every memory entry belongs to exactly one notebook. The notebook + type combination determines where the file lives and what the entry represents.
+### 7a. The 7-Notebook Schema
 
 | Notebook | Purpose | Types |
 |----------|---------|-------|
@@ -140,48 +367,40 @@ Every memory entry belongs to exactly one notebook. The notebook + type combinat
 | **NOW** | Actionable current items | TD (todo), RP (report), LOG (log entry) |
 | **PLAN** | Plans and constraints | PL (planning), EX (execution state), CT (constraint), MS (milestone), PJ (project brain) |
 
-### 5b. Entry Code Format
+### 7b. Entry Code Format
 
-`{NOTEBOOK}.{TYPE}-{SEQUENCE}`
-Example: `WHO.CT-000042`
+`{NOTEBOOK}.{TYPE}-{SEQUENCE}` — e.g. `WHO.CT-000042`
 
-Codes are generated by `core/memory/codegen.ts` using an atomic SQLite counter increment (`nextCounter()` in `core/memory/index.ts`). The counter prevents race conditions.
+Generated via atomic SQLite counter increment (`nextCounter()` in `core/memory/index.ts`).
 
-### 5c. Dual Storage: Files + SQLite
+### 7c. Dual Storage: Files + SQLite
 
 **Markdown files** (canonical truth):
 ```
 memory/WHO/contacts/WHO.CT-000001_john-smith.md
 ```
-Each file has YAML frontmatter (`code`, `nb`, `type`, `name`, `status`, `updated`, `summary`) followed by the body content.
+Each file has YAML frontmatter (`code`, `nb`, `type`, `name`, `status`, `updated`, `summary`, `due_date`) followed by body content.
 
-**SQLite** (`agent.db`, the map):
-- `index_entries` — metadata only (code, nb, type, name, status, updated, summary, path, due_date, importance_score, etc.)
+**SQLite** (`memory.sqlite`, the map):
+- `index_entries` — metadata (code, nb, type, name, status, updated, summary, path, due_date, importance_score, utility_score, usage_count, last_accessed, decay_rate, active_page, pinned, privacy_tier, source, confidence, atomic_facts, embedding)
 - `relationships` — directed graph edges between entries
 - `counters` — atomic sequence numbers per type key
 - `fts_content` — FTS5 full-text search index
 - `chunks` — vector embedding chunks (BLOB storage)
-- `heartbeat_queue` — notifications generated during background scans
+- `heartbeat_queue` — notifications from background scans
 - `settings` — key/value store (e.g., `embedding_model` for migration detection)
 
-**Write order** (`core/memory/write.ts`): File write FIRST, SQLite transaction SECOND. If the file write fails, SQLite is never touched (no partial commit). If SQLite fails after the file write, the file is cleaned up. Files are the canonical store — SQLite is rebuilt from disk on bootstrap.
+**Write order** (`core/memory/write.ts`): File write FIRST, SQLite transaction SECOND. If the file write fails, SQLite is never touched. If SQLite fails after the file write, the file is cleaned up.
 
-### 5d. Create / Upsert Flow
+### 7d. Bootstrapping
 
-`upsertEntry()` is the primary write path:
-1. Check if active entry with same (nb, type, name) exists in SQLite
-2. **If yes** → update SQLite row + rewrite markdown file body (atomic transaction) → re-index FTS → git commit
-3. **If no** → `createEntry()`: generate code → SQLite transaction (insert row + FTS index + chunk store) → write markdown file → schedule embedding (fire-and-forget) → git commit (fire-and-forget)
-
-### 5e. Bootstrapping
-
-On first startup with an empty SQLite (`index_entries` count = 0), `bootstrapIndexFromMemoryFiles()` scans all `.md` files under `memory/`, parses frontmatter, and rebuilds the entire index. This means you can delete `agent.db` and it will reconstruct from disk.
+On first startup with an empty SQLite, `bootstrapIndexFromMemoryFiles()` scans all `.md` files under `memory/`, parses frontmatter, and rebuilds the entire index. You can delete the `.sqlite` file and it will reconstruct from disk.
 
 ---
 
-## 6. Memory Query Pipeline (`core/resolver.ts` + `core/memory/search.ts`)
+## 8. Memory Query Pipeline
 
-When intent is `memory_query`, `code_fetch`, or `relationship_query`, the resolver runs a **5-step escalating lookup**:
+When resolving memory queries, a **5-step escalating lookup** runs:
 
 ```
 Step 1: Direct code lookup (if codes[] non-empty)
@@ -196,27 +415,24 @@ Step 3: Relationship traversal (if relation verb found)
 Step 4: Name fuzzy match
     → queryEntries({ name: extractedName })
 
-Step 5: Hybrid search fallback (in agent.ts, after resolveQuery returns null)
+Step 5: Hybrid search fallback
     → hybridSearch(message, { nb })
 ```
-
-Only if all steps fail does the agent return "No matching entries found."
 
 ### Hybrid Search (`core/memory/search.ts`)
 
 ```
 hybridSearch(query)
-    ├── BM25 via FTS5 (always available) → searchBM25()
-    └── Vector cosine similarity (optional, when EMBEDDING_CONFIG set) → searchVectors()
+    ├── BM25 via FTS5 (always available)
+    └── Vector cosine similarity (optional)
          │
          └── Reciprocal Rank Fusion (RRF k=60)
-              → merges both ranked lists
-              → returns top-N SearchResult[]
+              → vector results get 1.01x weight for semantic tie-breaking
 ```
 
-RRF formula: `score += 1 / (60 + rank)` for each list. Vector results get a 1.01x weight multiplier for semantic tie-breaking. When embedding API is unavailable, falls back to BM25-only transparently.
+When embedding API is unavailable, falls back to BM25-only transparently.
 
-### Relevance Ranking in Context (`core/context.ts`)
+### Relevance Ranking (`core/context.ts`)
 
 Before injecting memory into the LLM prompt, entries are re-ranked by `rankByLightRAG()`:
 
@@ -225,328 +441,357 @@ Score = (BM25F_field_weighted + recency_decay + importance_boost + utility_boost
          × page_boost × pinned_boost
 ```
 
-- **BM25F**: Term frequency weighted by field (name weight=5, summary weight=3)
-- **Recency**: `e^(-0.05 * age_in_days)` — recent entries score higher
-- **Importance**: `importance_score * 0.1` (set by LLM via `extractMemoryMetadata()`)
-- **Active page**: `1.2x` if `active_page=1`, `0.8x` otherwise
+- **BM25F**: Term frequency weighted by field (name=5, summary=3)
+- **Recency**: `e^(-0.05 * age_in_days)`
+- **Importance**: `importance_score * 0.1`
+- **Active page**: `1.2x` if page 1, `0.8x` otherwise
 - **Pinned**: `2.0x` boost
 
 ---
 
-## 7. Planner/Executor Pipeline
+## 9. Planner / Executor Pipeline
 
-### 7a. Task Planning (`core/planner.ts`)
+### 9a. Complexity Routing
 
-Agentic units are grouped into one planning request. The planner receives:
+`assessComplexity()` determines the execution path:
 
-- agentic goals only
-- decomposition summary
-- memory context from unit search
-- prior query results resolved earlier in the same message
-- skill catalog
+| Level | Path | Engine |
+|-------|------|--------|
+| LOW | iterative | `runQueryLoop()` — while-loop with LLM + skill calls |
+| MEDIUM | iterative | `runQueryLoop()` — same engine, more iterations |
+| HIGH | planned | `decomposeTask()` → `executePlan()` — milestone-based |
+| MAX | planned | Same as HIGH, with confirmation gate |
 
-`decomposeTask(message, context, llmHandler)` returns a milestone-aware `TaskPlan`:
+### 9b. QueryLoop (`core/query-loop.ts`)
+
+For LOW/MEDIUM tasks:
+- `while(true)` loop: call LLM → extract JSON action → execute skill → inject result → repeat
+- Circuit breaker: trips at 3 consecutive identical failures
+- MAX_ITERATIONS: 20
+- When model emits plain text (no JSON action) → returns that text as reply
+- Permission-filtered skill list: uses `getSkillDescriptionsForPermission()` — blocked skills never shown
+- MEMORY.md relevance filtering: `filterPointerIndex()` scores entries by keyword overlap with goal, reduces ~50 entries to ~15 relevant ones
+
+**System prompt efficiency rules** (reduce wasted iterations):
+- **SINGLE-FILE HTML RULE**: Produce one self-contained HTML file with inline `<style>`/`<script>` and CDN-loaded libraries
+- **GENERATE-FIRST RULE**: Skip web_search when the model has sufficient knowledge; warns against fetching GitHub blob pages
+- **DESCRIPTION QUALITY RULE**: `generate_and_save_file` descriptions must be detailed specs (100-300 words)
+- **Post-generation hint**: After successful `generate_and_save_file`, appends "Do not re-read files you just generated"
+
+### 9c. Task Planning (`core/planner.ts`)
+
+For HIGH/MAX tasks, produces a milestone-aware `TaskPlan`.
+
+**Permission-aware**: Planner prompt includes a RUNTIME CONTEXT block showing the active permission mode, available skill count, and blocked skill names. Only permission-filtered skills appear in the skill list.
+
+**Confirmation gate**: MAX complexity plans always require user confirmation. Other plans require confirmation only for destructive ops / external side effects / risky overwrites (computed by `shouldRequireConfirmation()`, never trusting the LLM's value).
+
+Plan structure:
 
 ```typescript
 interface TaskPlan {
   goal: string;
-  goals?: TaskGoal[];
   milestones?: TaskMilestone[];
   steps: TaskStep[];
   complexity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'MAX';
   needsConfirmation?: boolean;
-  estimatedDuration?: string;
-  createdAt: string;
 }
 
 interface TaskStep {
-  id: string;           // unique step identifier
-  skill: string;        // must match a registered skill name
+  id: string;
+  skill: string;           // must match a registered skill name
   description: string;
-  input: Record<string, unknown>;   // may contain {{template_tokens}}
-  dependsOn: string[];  // step IDs that must complete first
-  storeResultAs?: string;           // key to store output for downstream steps
-  optional?: boolean;
+  input: Record<string, unknown>;  // may contain {{template_tokens}}
+  dependsOn: string[];
   confidence_score?: number;
   risk_level?: string;
 }
 ```
 
-The LLM response is validated against `TaskPlanSchema` (Zod v4). If validation fails, a retry is attempted with the schema sent directly as a structured output hint.
-
-Current rule: all plans use milestones. `LOW` complexity gets exactly one milestone; higher-complexity plans must use explicit milestone boundaries.
-
-Template tokens (`{{step_id_result}}`) still allow one step's output to flow into later inputs.
-
-### 7b. Execution (`core/executor.ts`)
-
-`executePlan()` now executes by milestone, then by step:
+### 9d. Execution (`core/executor.ts`)
 
 ```
-For each milestone in plan.milestones:
+For each milestone:
     1. Emit milestone_start
     2. Execute steps sequentially with dependency / timeout / risk guards
-    3. On failure: persist PLAN.EX as failed and abort
-    4. On success: run post-milestone memory cycle
-    5. Emit milestone_result
-    6. Reevaluate remaining milestones conservatively
+    3. mkdir-skip safety: run_bash + "mkdir" → auto-skipped (file_writer handles dirs)
+    4. On failure: persist PLAN.EX as failed and abort
+    5. On success: run post-milestone memory cycle
+    6. Failure-aware revision: revision prompt includes FAILED section with errors
+       → revision can return abort:true to stop execution
+    7. Reactive revision: skip revision LLM call on happy path (no failures, no suspicious output)
+    8. Post-flight synthesis: single runPostFlightSynthesis() LLM call
+       → returns { verification, summary, reflection } with filesystem/DB ground truth snapshot
 ```
 
-Required step failure → plan aborts. Optional step failure → continue with remaining steps.
+### 9e. Plan Confirmation State Machine (`core/agent.ts`)
 
-### 7c. Post-milestone memory cycle
+When a plan requires confirmation (`needsConfirmation: true`), a module-level `pendingConfirmationPlan` stores the plan. At the TOP of the next `processMessage()` call — before intake, decomposition, or routing — the interceptor checks:
 
-After each completed milestone:
+- **Confirmation** (`isUserConfirmation()` — regex: yes/go/proceed/do it/etc.) → executes the plan via `executeConfirmedPlan()`, clears state
+- **Rejection** (`isUserRejection()` — regex: no/cancel/stop/etc.) → clears state, informs user
+- **Ambiguous** → re-prompts with milestone summary, keeps plan pending
 
-1. write `WHEN.EV`
-2. optionally write `HOW.PR`
-3. update `PLAN.EX`
-4. infer/write relationships where possible
+This prevents the "fake execution" hallucination where the conversational LLM fabricates plan completion after reading confirmation in chat history.
 
-After full completion:
+### 9f. Post-milestone memory cycle
 
-1. write `WHEN.RF`
-2. update matching `PLAN.PJ` summary when relevant
-3. extract durable facts into `WHAT` / `WHO` where justified
-
-### 7d. PLAN.EX state machine (`core/memory/plan-ex.ts`)
-
-`PLAN.EX` is the persisted execution-state notebook for planned work.
-
-- `active` / `in_progress` → resumable
-- `complete` / `failed` → terminal
-- Active-plan loading only returns resumable states
-- Status is updated in both SQLite and markdown frontmatter
-
-This was hardened after a real bug where completed plans remained `active` and accumulated false startup resume prompts.
-
-### 7e. Verification (`core/executor.ts`)
-
-`verifyExecution()` sends plan goal + completed/failed summaries to the LLM and asks:
-```json
-{"verified": true/false, "confidence": 0.0-1.0, "issues": [...], "suggestion": "..."}
-```
-Verification is advisory — never blocks execution.
-
-### 7f. Completion memory
-
-Final plan completion still writes episodic and reflective memory. Failures also produce `WHEN.EV` entries to avoid survivorship bias.
+After each milestone: write `WHEN.EV`, optionally write `HOW.PR`, update `PLAN.EX`.
+After full completion: write `WHEN.RF`, update `PLAN.PJ`, extract durable facts.
 
 ---
 
-## 8. Skills Registry (`core/skills/registry.ts`)
+## 10. Security & Permission Layer (Phase 17A)
 
-Skills are **MCP-compatible** (Model Context Protocol). Each skill is an `MCPSkill`:
+### Permission Model
 
-```typescript
-interface MCPSkill {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;   // JSON Schema
-  execute(input: Record<string, unknown>): Promise<SkillResult>;
-}
-```
+Three permission modes, enforced at the skill runner level:
 
-### Registered Skills (14 total)
+| Mode | Allows |
+|------|--------|
+| `read-only` | calculator, file_reader, memory_read, memory_history, web_search, web_fetch, url_extract, content_writer |
+| `workspace-write` | All read-only + file_writer, memory_write, relationship_write, generate_and_save_file, verify_state |
+| `full-access` | All workspace-write + run_bash, implement_and_test |
 
-| Skill | Purpose |
-|-------|---------|
-| `calculator` | Math evaluation via `mathjs` |
-| `file_reader` | Read files from workspace |
-| `web_search` | Web search (Brave/SerpAPI/fallback) |
-| `file_writer` | Write files to workspace |
-| `run_bash` | Execute shell commands |
-| `memory_read` | Query the agent's own memory |
-| `memory_write` | Write to the agent's memory |
-| `content_writer` | LLM-based content generation |
-| `web_fetch` | Fetch URL content |
-| `url_extract` | Extract structured data from URL |
-| `relationship_write` | Create memory relationships |
-| `implement_and_test` | Write code + run tests |
-| `memory_history` | Query git history of a memory entry |
-| `verify_state` | Verify filesystem/process state |
+Every `MCPSkill` declares a `permissionLevel`. Before execution, `runner.ts` calls `enforcePermission()` to compare against the active mode.
 
-### ReAct Retry (`core/react.ts`)
+### Config Validation (`core/config.ts`)
 
-`runWithRetry(skill, input, llmHandler)` wraps skill execution:
-- On failure, sends the error to the LLM and asks it to propose a corrected input
-- Retries up to a configured limit
-- Returns `{ success, output, error, retries }`
+Zod schema validates required environment variables at startup:
+- `LLM_ENDPOINT` (valid URL, required)
+- `LLM_MODEL` (non-empty string, required)
+- `PERMISSION_MODE` (enum, defaults to `workspace-write`)
+
+### Registry Freeze
+
+`freezeRegistry()` is called at module load. After freezing, `registerSkill()` calls are silently rejected. `_unfreezeRegistry()` exists only for test isolation.
+
+### Bash Security (`core/skills/tools/run_bash.ts`)
+
+- **Blocked patterns**: `rm -rf`, fork bombs, `mkfs`, `dd`, `sudo`, `shred`, `wipefs`, pipe-to-shell, eval subshells (18 patterns)
+- **Confirmation-required**: `rm` (non-recursive), `rmdir`, destructive git, SQL drops (8 patterns)
+- **Workspace scope**: Path traversal detection (`../`, `~/`, `$HOME`, `/etc/`, `/usr/`, `/var/`)
+- **Sandbox detection**: Probes `unshare --user --map-root-user` capability, caches result. Warning prefix when running without sandbox in `full-access` mode.
+
+### File Security
+
+Both `file_reader` and `file_writer` enforce:
+- Workspace boundary (resolved path must start with workspace root)
+- Symlink escape detection (`realpathSync` re-check after resolution)
+- Binary file detection (NUL-byte scan in first 8KB)
+- Size limits (file_reader: 50K chars, file_writer: 10MB)
 
 ---
 
-## 9. Context Assembly (`core/context.ts`)
+## 11. Session Persistence (Phase 17B)
 
-`buildContext()` assembles the final message array sent to the LLM. Order of assembly:
+### Session JSONL (`core/session/session-log.ts`)
+
+Every conversation turn is appended to a JSONL file:
 
 ```
-System Prompt (SYSTEM_PROMPT constant)
-    + Owner Persona (WHO.CT first active contact, cached 60s)
-    + Notebook Counts (only for summary/overview intent)
-    + Resolved Memory (entries ranked by rankByLightRAG, full content if available)
-    + Active Constraints (PLAN.CT entries — injected into EVERY step)
+~/.zaraban/sessions/{YYYY-MM-DD}_{sessionId}.jsonl
+```
+
+- **Rotation**: At 256KB, current file moves to `.1`, previous `.1` to `.2`, etc. Max 3 rotations.
+- **Fire-and-forget**: `append()` never throws — agent continues even if disk is full.
+- **Singleton**: `currentSession()` returns the process-scoped session.
+- **Wiring**: `chat.ts` calls `append()` after user input and after assistant reply.
+
+### Mock LLM Handler (`tests/mocks/MockLLMHandler.ts`)
+
+Deterministic LLM replacement for testing:
+- Scenario-based: match trigger substring in last user message → return canned response
+- Call history tracking via `.calls[]`
+- Three scenario files: decompose-simple, plan-file-write, conversational
+
+---
+
+## 12. Context Assembly (`core/context.ts`)
+
+`buildContext()` assembles the final message array sent to the LLM:
+
+```
+System Prompt
+    + Owner Persona (WHO.CT, cached 60s)
+    + Notebook Counts (only for summary/overview queries)
+    + Resolved Memory (ranked by rankByLightRAG)
+    + Active Constraints (PLAN.CT entries)
     + Skill Output (if skill ran)
-    + Previous Conversation Summary (if history compacted)
-    ─────────────────────────────
+    + Conversation Summary (if history compacted)
+    ────────────────────
     [system message]
     [history messages]
     [user message]
 ```
 
-### Token Budget Management
+### Token Budget
 
-- **Soft limit**: 1500 tokens
-- **Hard ceiling**: 2000 tokens
-- **Warning**: 1200 tokens (80%)
+- **Soft limit**: 1,500 tokens
+- **Hard ceiling**: 2,000 tokens
+- **Compaction triggers**: 70% of budget (1,050) OR 100K absolute threshold
+- **Circuit breaker**: Compaction disabled after 3 consecutive failures
 
-When budget is exceeded, four progressive strategies run:
-1. Token-budget-aware history trim (keep as many recent turns as fit in 40% of budget)
-2. Trim memory to summaries only + truncate skill output to 2000 chars
+Progressive degradation when budget exceeded:
+1. Token-budget-aware history trim (keep recent turns in 40% budget)
+2. Trim memory to summaries only + cap skill output at 2,000 chars
 3. Drop all history, keep system + user only
-4. Truncate user input (if still over ceiling)
-
-### Rolling Summarization
-
-When history > 12 turns, `buildRollingContext()` runs:
-- Old turns → 2-3 sentence summary (5s timeout, graceful fallback)
-- Recent 3 turns → kept verbatim
-- Summary appended to system message (not as a separate message — LLM template compatibility)
+4. Truncate user input
 
 ---
 
-## 10. Heartbeat (`core/heartbeat.ts`)
+## 13. Skills Registry
 
-The heartbeat runs every 30 minutes while the agent is idle (skips if `isProcessingMessage = true`):
-
-```
-checkDeadlines()         — WHEN entries due within 24h
-checkOverdueTodos()      — NOW.TD / PLAN.PL past due_date → marks 'overdue'
-checkStaleQuestions()    — WHY.QU open for 3+ days
-checkPlanCalibration()   — PLAN.PL active for 7+ days without update
-checkStaleProjects()     — WHAT.PJ active for 7+ days
-checkVisionAlignment()   — Plans/projects with no keyword overlap with North Star vision
-checkStalePlanPJ()       — PLAN.PJ project brains not updated in 3+ days
-```
-
-Each check runs in isolation — one failure does not stop others.
-
-Findings are:
-1. Written as `WHY.MT` entries in memory
-2. Queued in `heartbeat_queue` table
-3. Surfaced to user at next `processMessage()` call as a prefix ("📋 While you were away: ...")
-
----
-
-## 11. Memory Versioning (`core/memory/versioning.ts`)
-
-Every `createEntry()` and `upsertEntry()` call triggers `commitMemoryWrite()`:
-- Initializes a git repo in the memory directory if needed
-- Stages the changed `.md` file
-- Creates a commit: `"memory: update {code} ({name}) by {actor}"`
-- Fire-and-forget — never blocks the write path
-
-The `memory_history` skill lets the agent query git log for any entry, providing full change history.
-
----
-
-## 12. Memory Lifecycle (`core/memory/lifecycle.ts`)
-
-After a memory write, `extractMemoryMetadata()` fires asynchronously:
-- Calls the LLM with the entry's content
-- Extracts `importance_score` (0.0–1.0) and `atomic_facts` (key facts as JSON array)
-- Stores back in SQLite
-- These values feed into `rankByLightRAG()` scoring
-
----
-
-## 13. Transparency System (`core/transparency.ts`)
-
-An event emitter that publishes internal agent events without coupling subsystems:
+### MCPSkill Interface
 
 ```typescript
-type TransparencyEvent =
-  | { type: 'decomposition'; data: DecompositionResult }
-  | { type: 'unit_memory_search'; data: { unit: DecomposedUnit; result: UnitMemoryResult } }
-  | { type: 'plan'; data: TaskPlan }
-  | { type: 'step_start'; data: { step: TaskStep } }
-  | { type: 'step_result'; data: { step, result, ms } }
-  | { type: 'milestone_start'; data: { id, title, index, total } }
-  | { type: 'milestone_result'; data: { id, title, success, index, total } }
-  | { type: 'milestone_revised'; data: { fromId, remaining } }
-  | { type: 'milestone_memory_cycle'; data: { milestoneId, writes } }
-  | { type: 'failure_classified'; data: { error, class: FailureClass } }
-  | { type: 'context_built'; data: { tokens, sections } }
-  | { type: 'context_compacted'; data: { before, after } }
+interface MCPSkill {
+  name: string;
+  description: string;
+  permissionLevel: PermissionLevel;    // 'read-only' | 'workspace-write' | 'full-access'
+  inputSchema: Record<string, unknown>;
+  execute(input: Record<string, unknown>): Promise<SkillResult>;
+}
 ```
 
-The renderer (`core/transparency-renderer.ts`) subscribes and renders these as human-readable output.
+### 15 Registered Skills
+
+| Skill | Permission | Purpose |
+|-------|-----------|---------|
+| `calculator` | read-only | Math via `mathjs` |
+| `file_reader` | read-only | Read workspace files (binary detection, size limit, symlink guard) |
+| `web_search` | read-only | Web search (Brave/SerpAPI/fallback) |
+| `web_fetch` | read-only | Fetch URL content (auto-rewrites GitHub blob URLs to raw) |
+| `url_extract` | read-only | Extract structured data from URLs |
+| `memory_read` | read-only | Query agent's memory by code, notebook, or search |
+| `memory_history` | read-only | Git-backed entry history and rollback |
+| `content_writer` | read-only | LLM-based content generation (markdown/html/plain/code formats, optional context for modification) |
+| `file_writer` | workspace-write | Write workspace files (10MB limit, workspace boundary, auto-creates dirs) |
+| `memory_write` | workspace-write | Create/update memory entries |
+| `relationship_write` | workspace-write | Create directed relationships between entries |
+| `generate_and_save_file` | workspace-write | LLM-generate large files via sub-LLM + save to disk |
+| `verify_state` | workspace-write | Validate file/memory/process outcomes |
+| `run_bash` | full-access | Execute shell commands (sandbox detection, blocked patterns, workspace scope) |
+| `implement_and_test` | full-access | Write code + run tests + fix loop |
+
+### content_writer Formats (`core/skills/tools/content_writer.ts`)
+
+| Format | Min Output | Token Floor | Notes |
+|--------|-----------|-------------|-------|
+| `html` | 500 chars | 6000 tokens | Single-file HTML with inline CSS/JS |
+| `markdown` | 200 chars | 4000 tokens | Standard markdown |
+| `plain` | 100 chars | 4000 tokens | Plain text |
+| `code` | 80 chars | 4000 tokens | Pure source code, balanced-brace validation |
+
+- Optional `context` input for modifying existing content
+- Minimum length validation: output below floor returns `{ success: false }`
+- Balanced-brace check: always fires for `code` format, catches truncated output
+
+### web_fetch GitHub Rewrite (`core/skills/tools/web_fetch.ts`)
+
+`rewriteGitHubBlobUrl()` transparently converts `github.com/.../blob/...` URLs to `raw.githubusercontent.com/...`, so the agent gets raw source content instead of GitHub UI chrome.
+
+### ReAct Retry (`core/react.ts`)
+
+`runWithRetry(skill, input, llmHandler)` — on failure, asks LLM to propose corrected input and retries up to a configured limit.
 
 ---
 
-## 14. Data Flow Diagram
+## 14. Heartbeat (`core/heartbeat.ts`)
 
-```
-User Input
-    │
-    ▼
-Fast-path bypass check    [/log, /meeting, direct code]
-    │
-    ▼
-decomposeMessage()        [structured LLM output]
-    │
-searchMemoryForUnits()    [parallel per-unit search]
-    │
-    ▼
-routeDecomposedUnits()    [router.ts]
-    │
-    ├── conversational → buildContext() → callLLM()
-    ├── query          → direct retrieval / hybrid fallback
-    └── agentic        → decomposeTask()
-                         → executePlan() by milestone
-                         → verifyExecution()
-                         → buildUserReport()
-                         → milestone/final memory writes
-    │
-    ▼
-merge by unit order
-    │
-    ▼
-AgentResponse
-```
+Runs every 30 minutes while idle (`isProcessingMessage = false`):
+
+| Check | What it does |
+|-------|-------------|
+| `checkDeadlines()` | WHEN entries due within 24h |
+| `checkOverdueTodos()` | NOW.TD / PLAN.PL past due_date → marks 'overdue' |
+| `checkStaleQuestions()` | WHY.QU open for 3+ days |
+| `checkPlanCalibration()` | PLAN.PL active 7+ days without update |
+| `checkStaleProjects()` | WHAT.PJ active 7+ days |
+| `checkVisionAlignment()` | Plans with no overlap with North Star vision |
+| `checkStalePlanPJ()` | PLAN.PJ project brains not updated in 3+ days |
+| `checkAutoDream()` | Idle > 10 min → refresh pointer index from today's events |
+
+Findings → `heartbeat_queue` table → surfaced at next user interaction.
 
 ---
 
-## 15. Key Files Reference
+## 15. Memory Versioning (`core/memory/versioning.ts`)
 
-| File | Role |
-|------|------|
-| `core/agent.ts` | Main request handler, fast paths, compatibility shim |
-| `core/decomposition.ts` | Structured message decomposition + compound hardening |
-| `core/router.ts` | Route execution for conversational / query / agentic units |
-| `core/intent.ts` | Legacy compatibility classifier, no longer primary router |
-| `core/planner.ts` | Multi-goal, milestone-aware task planning |
-| `core/executor.ts` | Milestone execution loop, verification, reporting |
-| `core/context.ts` | Context assembly, token budget, rolling summarization |
-| `core/react.ts` | ReAct retry wrapper for skills |
-| `core/resolver.ts` | 5-step memory query escalation |
-| `core/llm.ts` | LLM endpoint adapter |
-| `core/heartbeat.ts` | Background memory health checks |
-| `core/transparency.ts` | Internal event bus |
-| `core/memory/unit-search.ts` | Parallel per-unit memory search with BM25/vector fallback |
-| `core/memory/index.ts` | SQLite init, schema, bootstrap from disk |
-| `core/memory/write.ts` | createEntry, upsertEntry, updateEntry |
-| `core/memory/plan-ex.ts` | PLAN.EX persistence, active-plan loading, terminal status handling |
-| `core/memory/search.ts` | hybridSearch, BM25+vector+RRF |
-| `core/memory/fts.ts` | FTS5 full-text search |
-| `core/memory/embeddings.ts` | Vector embeddings, cosine similarity |
-| `core/memory/codegen.ts` | Entry code generation |
-| `core/memory/versioning.ts` | Git-backed memory commits |
-| `core/memory/lifecycle.ts` | Async importance scoring + atomic fact extraction |
-| `core/memory/episodic.ts` | WHEN.EV and WHEN.RF write helpers |
-| `core/skills/registry.ts` | MCP skill registry |
-| `core/skills/runner.ts` | Skill execution |
-| `core/skills/tools/` | Individual skill implementations |
-| `core/structured.ts` | Generic structured LLM output pipeline |
-| `core/agent-card.ts` | A2A agent card (capability advertisement) |
-| `config/agent.config.ts` | Paths, type map, embedding config |
-| `chat.ts` | CLI entry point |
+Every write triggers `commitMemoryWrite()` (fire-and-forget):
+- Initializes git repo in memory directory if needed
+- Stages + commits the changed `.md` file
+- Generation counter invalidates in-flight commits on `_resetGitInstance()`
+- `memory_history` skill exposes full change history per entry
+
+---
+
+## 16. Transparency System (`core/transparency.ts`)
+
+Event emitter for internal agent observability:
+
+| Event | Source |
+|-------|--------|
+| `decomposition` | decomposition.ts |
+| `decomposition_retry` | decomposition.ts |
+| `decomposition_repair` | decomposition.ts |
+| `unit_memory_search` | unit-search.ts |
+| `memory_context_filtered` | unit-search.ts |
+| `plan` | planner.ts |
+| `planner_reasoning` | planner.ts |
+| `project_brain` | planner.ts |
+| `plan_confirmation_pending` | agent.ts |
+| `plan_confirmed` / `plan_rejected` | agent.ts |
+| `plan_confirmation_ambiguous` | agent.ts |
+| `route` | router.ts, agent.ts |
+| `step_start` / `step_result` | executor.ts |
+| `milestone_revision_skipped` | executor.ts |
+| `how_pr_skipped` | executor.ts |
+| `failure_classified` | executor.ts |
+| `verification_snapshot` | executor.ts |
+| `post_flight_complete` | executor.ts |
+| `context_compacted` | context.ts |
+| `llm_raw` / `llm_stripped` | llm.ts |
+| `query_loop_start` / `query_loop_end` | query-loop.ts |
+| `query_loop_iteration` / `query_loop_narration` | query-loop.ts |
+| `query_loop_skill_call` / `query_loop_skill_result` | query-loop.ts |
+| `working_memory_created` / `_updated` / `_archived` / `_loaded` | working-memory.ts |
+| `session_cache_store` / `_hit` / `_miss` / `_skip` | session-cache.ts |
+| `project_brain_hit` / `_miss` / `_rebuilt` / `_invalidated` | project.ts |
+| `meeting_complete` | meeting.ts |
+| `saga_rollback` | autonomous.ts |
+| `milestone_memory_cycle` | executor.ts |
+
+Enable with `TRANSPARENT=true`.
+
+---
+
+## 17. LLM Configuration
+
+```
+Primary:   LLM_ENDPOINT + LLM_MODEL (local LM Studio)
+Fallback:  LLM_FALLBACK_PROVIDER + LLM_FALLBACK_MODEL (Gemini/Anthropic)
+```
+
+- Timeout tiered by model size: 70B+=90s, 7B-14B=20s, 1B-4B=10s
+- Provider selection is async-scoped (`core/llm.ts` `AsyncLocalStorage`) — nested LLM calls in planner/executor use the same provider order
+- `stripThinkingTags()` removes reasoning artifacts from all model families (Qwen, Gemma, Gemini, generic `<think>` tags)
+
+---
+
+## 18. Testing
+
+- **933 tests** across 80+ test files
+- **Vitest** with ESM support
+- **Test isolation**: Each test overrides `PATHS.db` and `PATHS.memory` to a `tmpDir`
+- **Mock LLM**: `tests/mocks/MockLLMHandler.ts` for deterministic pipeline tests
+- **Stress tests**: `pnpm stress:p15:codex` — 8 adversarial scenarios (empty input, long input, concurrency, circuit breaker, compound routing, follow-up context)
+- **Stress critical**: `pnpm stress:critical` — focused critical-path stress tests
+
+```bash
+pnpm test                        # all 933 tests
+pnpm test tests/phase17/         # phase 17 only
+pnpm build                       # tsc compilation check
+pnpm stress:p15:codex            # stress test suite (requires LM Studio)
+pnpm stress:critical             # critical-path stress tests
+```

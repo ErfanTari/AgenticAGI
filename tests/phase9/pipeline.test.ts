@@ -67,6 +67,7 @@ function createPipelineLLM(): LLMHandler {
     if (content.includes('task planner')) {
       return JSON.stringify({
         goal: 'Write and run a script',
+        complexity: 'HIGH',
         steps: [
           { id: 'step1', description: 'Write file', skill: 'file_writer', input: { path: 'test.txt', content: 'hello' }, dependsOn: [], storeResultAs: 'step1_result', optional: false },
           { id: 'step2', description: 'Run command', skill: 'run_bash', input: { command: 'cat test.txt' }, dependsOn: ['step1'], optional: false },
@@ -146,18 +147,23 @@ describe('Priority 6: Pipeline Integration', () => {
       const content = messages.map(m => m.content).join(' ');
 
       if (content.includes('task complexity analyzer')) {
-        return JSON.stringify({ isComplex: true, reason: 'Multi-step', estimatedSteps: 2, requiresSkills: ['fail_skill'] });
+        return JSON.stringify({ isComplex: true, reason: 'Multi-step', estimatedSteps: 5, requiresSkills: ['fail_skill'] });
       }
       if (content.includes('task planner')) {
         return JSON.stringify({
           goal: 'Failing task',
+          complexity: 'HIGH',
           steps: [
             { id: 'step1', description: 'Will fail', skill: 'nonexistent_skill', input: {}, dependsOn: [], optional: false },
           ],
         });
       }
-      if (content.includes('verification assistant')) {
-        return JSON.stringify({ verified: false, confidence: 0.1, issues: ['Step failed'], suggestion: 'Try again' });
+      if (content.includes('verification assistant') || content.includes('post-execution analyst')) {
+        return JSON.stringify({
+          verification: { verified: false, confidence: 0.1, issues: ['Step failed'], suggestion: 'Try again' },
+          summary: 'Task failed.',
+          reflection: { went_well: '', to_improve: 'Fix skill', learned: '' },
+        });
       }
       return 'fallback';
     };

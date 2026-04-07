@@ -16,9 +16,19 @@ function normalizeWorkspacePath(inputPath: string): string {
     .replace(/^\/?workspace\//, '');
 }
 
+function isBinaryFile(filePath: string): boolean {
+  const SAMPLE_SIZE = 8192;
+  const buf = Buffer.allocUnsafe(SAMPLE_SIZE);
+  const fd = fs.openSync(filePath, 'r');
+  const bytesRead = fs.readSync(fd, buf, 0, SAMPLE_SIZE, 0);
+  fs.closeSync(fd);
+  return buf.slice(0, bytesRead).includes(0x00);
+}
+
 const fileReaderSkill: MCPSkill = {
   name: 'file_reader',
   description: 'Read a file from disk. Use when user asks to read, open, or load a file.',
+  permissionLevel: 'read-only',
   inputSchema: {
     type: 'object',
     properties: {
@@ -41,7 +51,7 @@ const fileReaderSkill: MCPSkill = {
     const resolved = path.resolve(WORKSPACE_ROOT, filePath);
 
     if (!resolved.startsWith(WORKSPACE_ROOT)) {
-      return { success: false, output: '', error: 'Access denied: Path outside workspace' };
+      return { success: false, output: '', error: 'Access denied: path escapes workspace boundary' };
     }
 
     // Resolve symlinks before re-checking jail (prevents symlink escape attacks)
@@ -52,7 +62,7 @@ const fileReaderSkill: MCPSkill = {
       // File may not exist yet — realpathSync will fail; we'll handle that below
     }
     if (!realResolved.startsWith(WORKSPACE_ROOT)) {
-      return { success: false, output: '', error: 'Access denied: Symlink points outside workspace' };
+      return { success: false, output: '', error: 'Access denied: symlink escapes workspace boundary' };
     }
 
     if (!fs.existsSync(resolved)) {
@@ -67,6 +77,10 @@ const fileReaderSkill: MCPSkill = {
     const ext = path.extname(resolved).toLowerCase();
     if (ext && !SUPPORTED_EXTENSIONS.has(ext)) {
       return { success: false, output: '', error: 'Binary file not supported' };
+    }
+
+    if (isBinaryFile(resolved)) {
+      return { success: false, output: '', error: 'Binary file — cannot read as text' };
     }
 
     const content = fs.readFileSync(resolved, 'utf-8');

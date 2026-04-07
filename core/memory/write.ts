@@ -75,6 +75,47 @@ function findByFingerprint(body: string, summary: string, nb: string, type: stri
   return null;
 }
 
+// FIX 3: Append-only types that must NEVER trigger near-duplicate suppression.
+// These are time-series / event logs — each entry is intentionally a new record.
+const APPEND_ONLY_TYPES = new Set(['NOW.LOG', 'WHEN.EV', 'WHEN.RF', 'PLAN.EX', 'WHEN.HX', 'NOW.RP']);
+
+// FIX 3: Types where near-duplicate prevention should fire.
+// WHO.CT is intentionally excluded — it already has fingerprint + fuzzy-name dedup (Stages 1+2).
+// Adding a third similarity layer there causes cross-test contamination when many CT entries exist.
+const DEDUP_SIMILARITY_TYPES = new Set(['WHAT.KN']);
+
+/**
+ * FIX 3: Combined name similarity using word-overlap (Jaccard) + substring bonus.
+ * "Favorite Color" vs "Favorite Vericolor" scores ~0.61 (> 0.6 threshold).
+ */
+function computeNameSimilarity(a: string, b: string): number {
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+  const wordsA = normalize(a).split(/\s+/).filter(Boolean);
+  const wordsB = normalize(b).split(/\s+/).filter(Boolean);
+  if (wordsA.length === 0 || wordsB.length === 0) return 0;
+
+  const setA = new Set(wordsA);
+  const setB = new Set(wordsB);
+  const exact = [...setA].filter(w => setB.has(w)).length;
+  const union = new Set([...setA, ...setB]).size;
+  const jaccard = exact / union;
+
+  // Substring bonus: shorter word contained within longer word (e.g. "color" in "vericolor")
+  let substringBonus = 0;
+  for (const wa of wordsA) {
+    if (wa.length < 3) continue;
+    for (const wb of wordsB) {
+      if (wb.length < 3) continue;
+      // Skip exact matches (already counted in Jaccard) — only bonus for partial overlap
+      if (wa !== wb && (wb.includes(wa) || wa.includes(wb))) {
+        substringBonus = Math.max(substringBonus, Math.min(wa.length, wb.length) / Math.max(wa.length, wb.length));
+      }
+    }
+  }
+
+  return Math.min(1, jaccard + substringBonus * 0.5);
+}
+
 /**
  * Stage 2 — Fuzzy name match for WHO.CT and WHO.ORG.
  * Matches: exact, substring, or initials match.
@@ -256,6 +297,21 @@ function extractBodyFromMarkdown(markdown: string): string {
   return afterFrontmatter.slice(headingMatch[0].length).trimEnd();
 }
 
+// FIX 2: Default body templates for entry types that commonly arrive empty.
+// Only applied when the caller provides an empty/short body (< 10 chars).
+function defaultBodyFor(nb: string, type: string): string | null {
+  if (nb === 'WHO' && type === 'CT') {
+    return '## Role / Relationship\n_Not specified_\n\n## Background\n_Not specified_\n\n## Notes\n_No notes yet_';
+  }
+  if (nb === 'WHAT' && type === 'PJ') {
+    return '## Description\n_Not specified_\n\n## Initial Request\n_Not specified_\n\n## Status\nActive\n\n## Tasks\n_No tasks recorded yet_\n\n## Notes\n_No notes yet_';
+  }
+  if (nb === 'PLAN' && type === 'PJ') {
+    return '## Initial Request\n_Not specified_\n\n## Goal\n_Not specified_\n\n## Phase\n_Not specified_\n\n## Key Decisions\n_None recorded yet_\n\n## Progress Notes\n_Updated as milestones complete_\n\n## Conclusions\n_Project ongoing_';
+  }
+  return null;
+}
+
 export function createEntry(input: CreateEntryInput): IndexEntry {
   const d = getDb();
 
@@ -263,19 +319,29 @@ export function createEntry(input: CreateEntryInput): IndexEntry {
   const code = generateCode(input.nb, input.type);
   const updated = localDateString();
 
+  // FIX 5: NOW.LOG defaults to status 'logged', not 'active'
+  const resolvedStatus = (input.nb === 'NOW' && input.type === 'LOG' && (!input.status || input.status === 'active'))
+    ? 'logged'
+    : input.status;
+
+  // FIX 2: Apply body template fallback when body is empty or too short
+  const resolvedBody = (!input.body || input.body.trim().length < 10)
+    ? (defaultBodyFor(input.nb, input.type) ?? input.body)
+    : input.body;
+
   const entryData: Omit<IndexEntry, 'path'> = {
     code,
     nb: input.nb,
     type: input.type,
     name: input.name,
-    status: input.status,
+    status: resolvedStatus,
     updated,
     summary: input.summary,
     due_date: input.due_date ?? null,
   };
 
   const filePath = resolveEntryPath(input.nb, input.type, code, input.name);
-  const markdown = buildMarkdown(entryData, input.body);
+  const markdown = buildMarkdown(entryData, resolvedBody);
 
   // FIX F: Write markdown file FIRST, then SQLite.
   // If file write throws, SQLite is never touched (no partial commit).
@@ -289,7 +355,7 @@ export function createEntry(input: CreateEntryInput): IndexEntry {
   // Step 3: Run SQLite transaction (insertEntry + FTS + chunks) after file write
   const run = d.transaction(() => {
     insertEntry(entry);
-    indexContent(code, input.nb, `${input.name} ${input.summary} ${input.body}`);
+    indexContent(code, input.nb, `${input.name} ${input.summary} ${resolvedBody}`);
     const chunks = chunkMarkdown(code, markdown);
     if (chunks.length > 0) {
       storeChunks(chunks);
@@ -507,6 +573,25 @@ export function upsertEntry(
     upsertPointerEntry({ code: existing.code, name: input.name, summary: input.summary ?? '', lastActive: localDateString() });
 
     return { code: existing.code, created: false };
+  }
+
+  // FIX 3: Near-duplicate prevention for WHAT.KN and WHO.CT/ORG.
+  // Applied only to non-append-only types. No LLM needed — purely name similarity.
+  const typeKey = `${input.nb}.${input.type}`;
+  if (DEDUP_SIMILARITY_TYPES.has(typeKey) && !APPEND_ONLY_TYPES.has(typeKey)) {
+    try {
+      const candidates = d.prepare(`
+        SELECT code, name FROM index_entries
+        WHERE nb = ? AND type = ? AND status != 'archived'
+      `).all(input.nb, input.type) as Array<{ code: string; name: string }>;
+      for (const candidate of candidates) {
+        if (computeNameSimilarity(candidate.name, input.name) > 0.6) {
+          console.log(`[memory] Near-duplicate suppressed: "${input.name}" ~ "${candidate.name}" (${candidate.code})`);
+          upsertPointerEntry({ code: candidate.code, name: candidate.name, summary: input.summary ?? '', lastActive: localDateString() });
+          return { code: candidate.code, created: false };
+        }
+      }
+    } catch { /* best-effort — if check fails, fall through to normal create */ }
   }
 
   const created = createEntry(input);

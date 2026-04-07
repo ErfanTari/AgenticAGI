@@ -2,13 +2,9 @@ import { callLLM } from '../../llm.js';
 import { fetchByCode, queryEntries } from '../../memory/mod.js';
 import type { Message } from '../../types.js';
 import type { MCPSkill, SkillResult } from '../types.js';
+import { promptLoader } from '../../prompt-loader.js';
+import { TOKEN_BUDGETS } from '../../../config/agent.config.js';
 
-function parseMaxTokens(value: unknown): number {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return 2000;
-  // Allow up to 4096 — models that write analysis preambles need headroom for actual content
-  return Math.min(Math.floor(n), 4096);
-}
 
 // Detect whether the text starts with a reasoning/analysis preamble block.
 // Signals: "Thinking Process:", numbered analysis steps ("1. **Analyze**"), or
@@ -76,9 +72,6 @@ function isPortfolioPrompt(prompt: string): boolean {
   return /\bportfolio\b/i.test(prompt);
 }
 
-function expectsLargeContent(prompt: string): boolean {
-  return /\b(html|css|javascript|js|complete|full|single.?file|website|web ?page|portfolio)\b/i.test(prompt);
-}
 
 interface MemoryEntrySnapshot {
   code?: string;
@@ -337,12 +330,27 @@ function extractHtmlDocument(text: string): string | null {
 
 // ─── Format contract ────────────────────────────────────────────────────────
 
-type ContentFormat = 'markdown' | 'html' | 'plain';
+type ContentFormat = 'markdown' | 'html' | 'plain' | 'code';
+
+const FORMAT_FLOORS: Record<ContentFormat, number> = {
+  html: TOKEN_BUDGETS.CONTENT_WRITER_HTML,
+  markdown: TOKEN_BUDGETS.CONTENT_WRITER_MARKDOWN,
+  plain: TOKEN_BUDGETS.CONTENT_WRITER_PLAIN,
+  code: TOKEN_BUDGETS.CONTENT_WRITER_CODE,
+};
+
+function resolveMaxTokens(value: unknown, format: ContentFormat): number {
+  const n = Number(value);
+  const requested = Number.isFinite(n) && n > 0 ? Math.floor(n) : 2000;
+  const floor = FORMAT_FLOORS[format];
+  return Math.max(requested, floor);
+}
 
 const FORMAT_INSTRUCTIONS: Record<ContentFormat, string> = {
   markdown: 'Output ONLY valid markdown. No HTML tags. No preamble. Start directly with content. Use # for headers, ** for bold.',
   html: 'Output ONLY valid HTML body content or a full HTML document. No markdown. No preamble. Start with a tag, not text.',
   plain: 'Output ONLY plain text. No markdown. No HTML. No preamble. No headers, no bullets, just prose.',
+  code: 'You are a code generation assistant. Output ONLY source code. No markdown fences. No backticks. No explanations before or after the code. No comments unless they directly aid comprehension. Start with the first line of code. End with the last line of code.',
 };
 
 // Known HTML structural tag names — excludes single-letter TypeScript generics like <T>, <U>, <K>
@@ -359,6 +367,25 @@ const HTML_TAG_PATTERN = new RegExp(
   ')[\\s/>]',
   'i'
 );
+
+const MIN_OUTPUT_LENGTHS: Record<ContentFormat, number> = { html: 500, markdown: 200, plain: 100, code: 80 };
+
+function hasBalancedBraces(code: string): boolean {
+  let depth = 0;
+  let inString: string | null = null;
+  let escaped = false;
+  for (const ch of code) {
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\' && inString) { escaped = true; continue; }
+    if ((ch === '"' || ch === "'" || ch === '`') && !inString) { inString = ch; continue; }
+    if (inString && ch === inString) { inString = null; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    if (ch === '}') depth--;
+    if (depth < 0) return false;
+  }
+  return depth === 0;
+}
 
 function validateFormat(content: string, format: ContentFormat): { valid: boolean; reason?: string } {
   if (format === 'markdown') {
@@ -381,7 +408,7 @@ function validateFormat(content: string, format: ContentFormat): { valid: boolea
 
 function inferFormat(prompt: string): ContentFormat {
   if (expectsHtml(prompt)) return 'html';
-  if (/\b(\.js|\.ts|\.py|function\s|class\s|const\s|def\s)/i.test(prompt)) return 'plain';
+  if (/\b(\.js|\.ts|\.py|\.css|function\s|class\s|const\s|def\s|import\s)/i.test(prompt)) return 'code';
   return 'markdown';
 }
 
@@ -390,13 +417,15 @@ function inferFormat(prompt: string): ContentFormat {
 const contentWriterSkill: MCPSkill = {
   name: 'content_writer',
   description: 'Generate long-form text or code from instructions. Use this before file_writer when output content is large.',
+  permissionLevel: 'read-only',
   inputSchema: {
     type: 'object',
     properties: {
       prompt: { type: 'string', description: 'Exact content-generation instruction' },
-      format: { type: 'string', description: 'Output format: "markdown" | "html" | "plain". REQUIRED — always specify.' },
+      format: { type: 'string', description: 'Output format: "markdown" | "html" | "plain" | "code". REQUIRED — always specify.' },
       style: { type: 'string', description: 'Optional style/tone hint' },
-      maxTokens: { type: 'string', description: 'Optional output budget, default 1200, max 4096' },
+      maxTokens: { type: 'string', description: 'Optional output budget override. Format floors apply: html=16000, markdown=8000, plain/code=6000. Actual tokens used = max(requested, floor).' },
+      context: { type: 'string', description: 'Existing content to modify or extend. When provided, the prompt should describe what changes to make to this content.' },
     },
     required: ['prompt'],
   },
@@ -408,30 +437,48 @@ const contentWriterSkill: MCPSkill = {
 
     // Resolve format — use explicit param, fall back to inference
     const rawFormat = String(input.format ?? '').toLowerCase().trim();
-    const format: ContentFormat = (['markdown', 'html', 'plain'] as ContentFormat[]).includes(rawFormat as ContentFormat)
+    const format: ContentFormat = (['markdown', 'html', 'plain', 'code'] as ContentFormat[]).includes(rawFormat as ContentFormat)
       ? (rawFormat as ContentFormat)
       : inferFormat(prompt);
 
     const style = String(input.style ?? '').trim();
-    const baseTokens = parseMaxTokens(input.maxTokens);
-    // Large content (HTML/CSS/JS/full-file): boost to 4000 so thinking models have room for output
-    const maxTokens = (baseTokens === 2000 && expectsLargeContent(prompt)) ? 4000 : baseTokens;
+    const maxTokens = resolveMaxTokens(input.maxTokens, format);
+    console.log(`[content_writer] resolved tokens: ${maxTokens} (requested: ${input.maxTokens}, format: ${format})`);
     const boundedPrompt = prompt.length > 10000
       ? prompt.slice(0, 10000) + '\n\n[input truncated for generation budget]'
       : prompt;
 
     const formatInstruction = FORMAT_INSTRUCTIONS[format];
+    const contextInput = String(input.context ?? '').trim();
+    const hasContext = contextInput.length > 0;
+
+    const systemPrompt = hasContext
+      ? promptLoader.load('content-writer', {
+          mode: 'modification',
+          format: formatInstruction,
+          trailing_instruction: 'You will receive existing content and instructions for changes. Output ONLY the complete modified content. Do not include explanations, diffs, or commentary. Output the full updated file.',
+        })
+      : promptLoader.load('content-writer', {
+          mode: 'generation',
+          format: formatInstruction,
+          trailing_instruction: 'Do NOT include any analysis, planning, task breakdown, reasoning steps, or meta-commentary. Start directly with the content itself.',
+        });
 
     const messages: Message[] = [
-      {
-        role: 'system',
-        content: `You are a content generation assistant. ${formatInstruction} Do NOT include any analysis, planning, task breakdown, reasoning steps, or meta-commentary. Start directly with the content itself.`,
-      },
-      {
-        role: 'user',
-        content: style ? `Style: ${style}\n\nTask:\n${boundedPrompt}` : boundedPrompt,
-      },
+      { role: 'system', content: systemPrompt },
     ];
+
+    if (hasContext) {
+      messages.push(
+        { role: 'user', content: `Here is the existing content to modify:\n\n${contextInput}` },
+        { role: 'assistant', content: 'I have the existing content. What changes should I make?' },
+      );
+    }
+
+    messages.push({
+      role: 'user',
+      content: style ? `Style: ${style}\n\nTask:\n${boundedPrompt}` : boundedPrompt,
+    });
 
     try {
       const response = await callLLM(messages, { maxTokens });
@@ -573,6 +620,22 @@ const contentWriterSkill: MCPSkill = {
         if (!validateFormat(output, format).valid) {
           return { success: true, output, warning: `Format contract not fully met: ${check.reason}` } as SkillResult & { warning?: string };
         }
+      }
+
+      // ── Minimum length check ────────────────────────────────────────────────
+      const minLen = MIN_OUTPUT_LENGTHS[format];
+      if (output.length < minLen) {
+        return { success: false, output: '', error: `content_writer output too short (${output.length} < ${minLen} min for ${format})` };
+      }
+
+      // ── Balanced-brace check for code/plain format ──────────────────────────
+      const isCodeFormat = format === 'code';
+      const looksLikeCode = isCodeFormat || (
+        format === 'plain' &&
+        /\b(css|javascript|typescript|python|function|class|const|let|var)\b/i.test(prompt)
+      );
+      if (looksLikeCode && !hasBalancedBraces(output)) {
+        return { success: false, output: '', error: 'content_writer output has unbalanced braces — likely truncated mid-block.' };
       }
 
       return { success: true, output };

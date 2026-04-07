@@ -25,12 +25,29 @@ export interface ProjectEntry {
   phase: string;
   last_worked: string;
   notes: string;
+  /** Verbatim or near-verbatim user request that started the project (FIX 5) */
+  initialPrompt?: string;
+  /** Outcome description — what success looks like (FIX 5) */
+  goal?: string;
+  /** Fork-in-road decisions recorded during execution (FIX 5) */
+  decisions?: string[];
+  /** Post-completion: what worked, what didn't (FIX 5) */
+  conclusions?: string;
 }
 
 export function createProjectEntry(input: Omit<ProjectEntry, 'code'>): IndexEntry {
   fs.mkdirSync(PATHS.projects, { recursive: true });
 
-  const body = `## Vision
+  const body = `## Initial Request
+${input.initialPrompt ?? '_Not specified_'}
+
+## Goal
+${input.goal ?? input.vision}
+
+## Phase
+${input.phase}
+
+## Vision
 ${input.vision}
 
 ## Status
@@ -42,8 +59,14 @@ ${input.current}
 ## Next Action
 ${input.next_action}
 
-## Phase
-${input.phase}
+## Key Decisions
+${input.decisions?.map(d => `- ${d}`).join('\n') ?? '_None recorded yet_'}
+
+## Progress Notes
+_Updated as milestones complete_
+
+## Conclusions
+${input.conclusions ?? '_Project ongoing_'}
 
 ## Blocked By
 ${input.blocked_by.join(', ') || 'None'}

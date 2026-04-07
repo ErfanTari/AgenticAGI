@@ -22,6 +22,7 @@ function extractUrls(text: string, filter?: string): string[] {
 const urlExtractSkill: MCPSkill = {
   name: 'url_extract',
   description: 'Extract a clean URL from text. Use after web_search or web_fetch when you need a specific URL to pass to curl or web_fetch. Input: { text, filter?, index? }',
+  permissionLevel: 'read-only',
   inputSchema: {
     type: 'object',
     properties: {

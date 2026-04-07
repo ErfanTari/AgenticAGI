@@ -282,6 +282,14 @@ export async function addToActiveContext(
   }
 }
 
+/** Returns a human-readable step log string for injection into archive/summary prompts. */
+export function getStepSummary(wm: WorkingMemory): string {
+  if (wm.stepLog.length === 0) return '(none recorded)';
+  return wm.stepLog
+    .map(s => `- ${s.skill}: ${s.summary.slice(0, 100)}`)
+    .join('\n');
+}
+
 export async function archiveWorkingMemory(
   wm: WorkingMemory,
   _db: Database.Database,
@@ -292,11 +300,7 @@ export async function archiveWorkingMemory(
   // Ask LLM for an archive summary (best-effort)
   let archiveSummary = `Completed task: ${wm.goal.slice(0, 80)}`;
   try {
-    const stepSummaries = wm.stepLog
-      .slice(-5)
-      .map(s => `- ${s.outcome}: ${s.summary}`)
-      .join('\n');
-
+    const stepSummaryText = getStepSummary(wm);
     const archiveMessages: Message[] = [
       {
         role: 'system',
@@ -304,10 +308,10 @@ export async function archiveWorkingMemory(
       },
       {
         role: 'user',
-        content: `Goal: ${wm.goal}\n\nRecent steps:\n${stepSummaries || '(none)'}`,
+        content: `Goal: ${wm.goal}\n\nCompleted steps (${wm.stepLog.length} total):\n${stepSummaryText}`,
       },
     ];
-    archiveSummary = stripThinkingTags((await llm(archiveMessages, { maxTokens: 100 })).trim());
+    archiveSummary = stripThinkingTags((await llm(archiveMessages, { maxTokens: 500 })).trim());
   } catch { /* LLM call is best-effort */ }
 
   // Write WHEN.RF reflection (FIX 7 requirement)

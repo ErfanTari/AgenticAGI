@@ -102,18 +102,22 @@ async function processUpdate(update: MemoryUpdate): Promise<void> {
       }
 
       case 'task_complete': {
-        // Archive working memory if provided
-        // Note: archiveWorkingMemory() already writes WHEN.RF reflection internally
-        const wm = update.workingMemory;
-        if (wm && _db && _llm) {
-          const { archiveWorkingMemory } = await import('./working-memory.js');
-          await archiveWorkingMemory(wm, _db, _llm);
-        } else if (update.workingMemoryId && _db && _llm) {
-          // Load working memory by ID and archive it
+        // Archive working memory — always load fresh from disk so stepLog contains all steps
+        // that were appended by preceding step_complete queue items (queue is FIFO-sequential,
+        // so all step_complete items are fully persisted before this runs).
+        if (_db && _llm) {
           const { loadWorkingMemory, archiveWorkingMemory } = await import('./working-memory.js');
-          const loaded = await loadWorkingMemory(update.workingMemoryId);
-          if (loaded) {
-            await archiveWorkingMemory(loaded, _db, _llm);
+          const wmId = update.workingMemoryId ?? update.workingMemory?.taskId ?? null;
+          if (wmId) {
+            const loaded = await loadWorkingMemory(wmId);
+            if (loaded) {
+              await archiveWorkingMemory(loaded, _db, _llm);
+              break;
+            }
+          }
+          // Fallback: if we can't load by ID, archive the in-memory reference
+          if (update.workingMemory) {
+            await archiveWorkingMemory(update.workingMemory, _db, _llm);
           }
         }
         break;
@@ -132,6 +136,18 @@ async function processUpdate(update: MemoryUpdate): Promise<void> {
             const wm = await loadWorkingMemory(update.workingMemoryId);
             if (wm) {
               await addToActiveContext(wm, entry.code, entry.summary ?? entry.name);
+              // FIX 6: Write `contains` relationship from WHAT.PJ → NOW.TD
+              if (entry.nb === 'NOW' && entry.type === 'TD' && wm.projectCode) {
+                const { addRelationship } = await import('./relationships.js');
+                try {
+                  addRelationship({
+                    from_code: wm.projectCode,
+                    relation: 'contains',
+                    to_code: entry.code,
+                    note: 'task spawned from this project',
+                  });
+                } catch { /* best-effort */ }
+              }
             }
           }
         }

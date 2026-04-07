@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Pac-Man</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #333;
+            font-family: Arial, sans-serif;
+            color: white;
+            flex-direction: column;
+        }
+        #game-container {
+            border: 2px solid #000;
+            background-color: black;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+        .grid-cell {
+            width: 20px;
+            height: 20px;
+            box-sizing: border-box;
+            float: left;
+        }
+        .wall {
+            background-color: blue;
+            border: 1px solid darkblue;
+        }
+        .dot {
+            background-color: black;
+            position: relative;
+        }
+        .dot::after {
+            content: '';
+            display: block;
+            width: 6px;
+            height: 6px;
+            background-color: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .empty {
+            background-color: black;
+        }
+        #pacman {
+            width: 20px;
+            height: 20px;
+            background-color: yellow;
+            border-radius: 50%;
+            position: absolute;
+            transition: transform 0.05s linear; /* Smooth movement */
+            box-sizing: border-box;
+            transform-origin: center;
+            animation: chomping 0.3s infinite alternate;
+        }
+
+        @keyframes chomping {
+            0% {
+                clip-path: polygon(50% 50%, 100% 20%, 100% 80%);
+            }
+            100% {
+                clip-path: polygon(50% 50%, 100% 0%, 100% 100%);
+            }
+        }
+
+        .pacman-up {
+            transform: rotate(-90deg);
+        }
+        .pacman-down {
+            transform: rotate(90deg);
+        }
+        .pacman-left {
+            transform: rotate(180deg);
+        }
+        .pacman-right {
+            transform: rotate(0deg);
+        }
+        h1 {
+            margin-bottom: 20px;
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
+        }
+        #score-display {
+            margin-top: 20px;
+            font-size: 1.5em;
+            color: #ffcc00;
+            text-shadow: 0 0 5px #ffcc00;
+        }
+    </style>
+</head>
+<body>
+    <h1>Simple Pac-Man</h1>
+    <div id="game-container"></div>
+    <div id="score-display">Score: 0</div>
+
+    <script>
+        const gameContainer = document.getElementById('game-container');
+        const scoreDisplay = document.getElementById('score-display');
+        const gridSize = 20; // Size of each cell in pixels
+        let score = 0;
+
+        // 0: empty, 1: wall, 2: dot
+        const maze = [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,2,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,2,2,1],
+            [1,2,1,1,1,2,1,1,2,1,2,1,1,1,2,1,1,1,2,1],
+            [1,2,1,1,1,2,1,1,2,1,2,1,1,1,2,1,1,1,2,1],
+            [1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1],
+            [1,2,1,1,1,2,1,2,1,1,1,1,1,2,1,2,1,1,2,1],
+            [1,2,2,2,2,2,1,2,2,2,2,2,1,2,2,2,2,2,2,1],
+            [1,1,1,1,1,2,1,1,1,0,1,1,1,2,1,1,1,1,1,1],
+            [1,1,1,1,1,2,1,0,0,0,0,0,1,2,1,1,1,1,1,1],
+            [1,1,1,1,1,2,1,0,0,0,0,0,1,2,1,1,1,1,1,1],
+            [1,1,1,1,1,2,1,1,1,1,1,1,1,2,1,1,1,1,1,1],
+            [1,2,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,2,2,1],
+            [1,2,1,1,1,2,1,1,2,1,2,1,1,1,2,1,1,1,2,1],
+            [1,2,2,2,1,2,2,2,2,2,2,2,2,2,1,2,2,2,2,1],
+            [1,1,1,2,1,2,1,1,1,1,1,1,1,2,1,2,1,1,1,1],
+            [1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1],
+            [1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1],
+            [1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ];
+
+        const mazeRows = maze.length;
+        const mazeCols = maze[0].length;
+
+        gameContainer.style.width = `${mazeCols * gridSize}px`;
+        gameContainer.style.height = `${mazeRows * gridSize}px`;
+
+        let pacman = {
+            x: 9, // Initial column
+            y: 7, // Initial row
+            direction: 'right'
+        };
+
+        function drawMaze() {
+            gameContainer.innerHTML = ''; // Clear previous maze
+            for (let r = 0; r < mazeRows; r++) {
+                for (let c = 0; c < mazeCols; c++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('grid-cell');
+                    if (maze[r][c] === 1) {
+                        cell.classList.add('wall');
+                    } else if (maze[r][c] === 2) {
+                        cell.classList.add('dot');
+                    } else {
+                        cell.classList.add('empty');
+                    }
+                    cell.style.left = `${c * gridSize}px`;
+                    cell.style.top = `${r * gridSize}px`;
+                    gameContainer.appendChild(cell);
+                }
+            }
+        }
+
+        function createPacman() {
+            const pacmanElement = document.createElement('div');
+            pacmanElement.id = 'pacman';
+            gameContainer.appendChild(pacmanElement);
+            updatePacmanPosition();
+        }
+
+        function updatePacmanPosition() {
+            const pacmanElement = document.getElementById('pacman');
+            pacmanElement.style.left = `${pacman.x * gridSize}px`;
+            pacmanElement.style.top = `${pacman.y * gridSize}px`;
+
+            // Update Pac-Man's direction class for rotation and chomping
+            pacmanElement.className = ''; // Clear existing classes
+            pacmanElement.classList.add('pacman-right'); // Default
+            pacmanElement.classList.add('pacman-' + pacman.direction);
+            pacmanElement.id = 'pacman'; // Re-add ID
+        }
+
+        function movePacman(dx, dy, newDirection) {
+            const newX = pacman.x + dx;
+            const newY = pacman.y + dy;
+
+            // Check boundaries
+            if (newX >= 0 && newX < mazeCols && newY >= 0 && newY < mazeRows) {
+                // Check for wall collision
+                if (maze[newY][newX] !== 1) {
+                    pacman.x = newX;
+                    pacman.y = newY;
+                    pacman.direction = newDirection;
+
+                    // Check for dot eating
+                    if (maze[newY][newX] === 2) {
+                        maze[newY][newX] = 0; // Remove dot
+                        score++;
+                        scoreDisplay.textContent = `Score: ${score}`;
+                        drawMaze(); // Redraw maze to remove the eaten dot
+                    }
+                    updatePacmanPosition();
+                }
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                case 'ArrowUp':
+                    movePacman(0, -1, 'up');
+                    break;
+                case 'ArrowDown':
+                    movePacman(0, 1, 'down');
+                    break;
+                case 'ArrowLeft':
+                    movePacman(-1, 0, 'left');
+                    break;
+                case 'ArrowRight':
+                    movePacman(1, 0, 'right');
+                    break;
+            }
+        });
+
+        // Initialize the game
+        drawMaze();
+        createPacman();
+    </script>
+</body>
+</html>

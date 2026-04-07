@@ -1,0 +1,39 @@
+The Root Cause: Instruction Bloat
+
+The primary conflict exists between the Description Quality Rule (which demands 100–300 words of detail) and the JSON Tool Calling Format.
+
+The JSON Escaping Tax: When the model tries to follow the rule to provide "detailed specifications," it generates high-entropy text containing newlines, quotes, and mathematical symbols. To put this inside a JSON description field, every newline becomes \n and every quote becomes \". For technical specs, this increases the character count by 30–50% compared to raw Markdown.
+
+The Token Wall: In Iterations 1 through 5, the model hits a hard output limit. Because JSON is a "strict" format, even a single missing closing brace } or quote " makes the entire block invalid. The agent sees "Incomplete JSON" and prompts the model to "Resend exactly one complete JSON object."
+
+The "Fix-it" Paradox: When the system tells the model to "resend," the model tries to be even more careful or detailed to satisfy the prompt, which only guarantees it will hit the truncation wall again. You can see this in the log: the model provides more "Core Features" in Iteration 3 than in Iteration 1, ensuring the failure repeats.
+
+The Architectural Failure Points
+
+Low Bandwidth for High Entropy: Using JSON strings to transport 300-word technical specs is like trying to push a mountain through a straw. JSON is excellent for metadata (paths, codes, status) but is fundamentally broken for large-form instruction payloads.
+
+The Sub-Assistant Bottleneck: In Iteration 6, the model starts a reasoning block (<|channel>thought) to figure out why it’s failing. However, the architecture doesn't allow the model to change the format of the tool call. It is forced to keep trying JSON, which it already knows is too small for the required detail.
+
+Local Model Constraints: Based on the 5–8 second response times in the log, the model is likely hitting a token-per-second or max-completion-token limit set in the LLM configuration (as defined in your Tiered Timeout rules).
+
+The Redesign Solution: Pointer-Based Tooling
+
+To fix Phase 17 and prevent these loops, you must move the Instruction Payload out of the JSON string.
+
+Redesigned "Staging" Workflow:
+
+Write the Spec: The agent writes the 300-word detailed specification as a raw Markdown file in the PLAN.EX notebook.
+
+Call the Tool: The agent calls generate_and_save_file with a JSON object that only contains the path to that Markdown file:
+
+JSON
+{
+  "action": "generate_and_save_file",
+  "input": {
+    "path": "index.html",
+    "spec_code": "PLAN.EX-000042"
+  }
+}
+Execute: The Skill Runner reads the Markdown file directly.
+
+This approach eliminates the "Escaping Tax," prevents truncation errors from breaking the system, and allows for much larger, more complex instructions than a JSON string could ever safely carry.

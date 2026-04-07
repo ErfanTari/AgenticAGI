@@ -1719,3 +1719,549 @@ Four bugs found in live use, all fixed:
 
 - 769/770 tests pass (1 pre-existing flaky `sleep 35` timeout — unrelated)
 - Build: zero TypeScript errors
+
+---
+
+## Phase 17A — Security & Permission Layer (COMPLETE)
+
+Phase 17A adds a hardened security layer across the skills system. 809 tests pass. Build clean.
+
+### Task 1 + 2: Workspace Boundary Validation + Binary Detection (`core/skills/tools/file_reader.ts`, `core/skills/tools/file_writer.ts`)
+
+- **Path traversal blocked**: resolved paths outside `workspace/` return `{ success: false, error: '...boundary...' }` — error message always contains the word `boundary`
+- **Symlink escape blocked**: symlinks that resolve outside the workspace are rejected before any read/write
+- **Binary file detection**: `file_reader` samples the first 8 KB; any NUL byte triggers `{ success: false, error: '...Binary...' }` — plain text and empty files pass unblocked
+
+### Task 4: Permission Enforcement (`core/permission.ts`, `core/skills/runner.ts`)
+
+- `PermissionLevel` type: `'read-only' | 'workspace-write' | 'full-access'` (ordered by privilege)
+- `enforcePermission(skillName, requiredLevel, activeMode)` — returns `{ allowed: boolean, error?: string }` where errors always contain `'Permission denied'`
+- `getActivePermissionMode()` — reads `PERMISSION_MODE` env var, defaults to `'workspace-write'`
+- `runSkill()` in `runner.ts` calls `enforcePermission` before executing any skill; blocked skills return `{ success: false, error: '...' }` without executing
+- **All 15 skills annotated** with `permissionLevel`:
+  - `read-only`: `web_search`, `url_extract`, `web_fetch`, `memory_history`, `memory_read`, `content_writer`, `calculator`, `file_reader`, `verify_state`, `memory_history`
+  - `workspace-write`: `file_writer`, `memory_write`, `relationship_write`, `generate_and_save_file`
+  - `full-access`: `run_bash`, `implement_and_test`
+
+### Task 6: Config Zod Validation (`core/config.ts`, `chat.ts`)
+
+- New `core/config.ts` module: Zod schema validates `LLM_ENDPOINT` (URL), `LLM_MODEL` (non-empty string), `PERMISSION_MODE` (enum with default `'workspace-write'`)
+- `validateConfig()` calls `process.exit(1)` with a formatted error when validation fails
+- `_resetConfig()` exported for test isolation (clears cached config singleton)
+- `chat.ts` calls `validateConfig()` at startup before `initDatabase()`
+
+### Task 8: Skill Registry Singleton Freeze (`core/skills/registry.ts`)
+
+- Registry is frozen immediately after all built-in skills are registered at module load time
+- `registerSkill()` emits `console.warn('...[registry]...frozen...')` and returns early when frozen — does not throw
+- `_unfreezeRegistry()` — lifts freeze without clearing built-ins (for tests that need to add temporary skills)
+- `_resetRegistry()` — clears all skills AND lifts freeze (full reset for isolated test suites)
+
+### Test Files Updated for Registry Freeze Compatibility
+
+The registry freeze broke tests that called `registerSkill()` after module load. Fixed across:
+
+- `tests/phase6/skills.test.ts` — `_unfreezeRegistry()` before each `registerSkill()`; error message assertions updated to `.toContain('Access denied')`
+- `tests/phase7/react.test.ts` — `_unfreezeRegistry()` before each `registerSkill()`; `permissionLevel: 'read-only'` added to all test skill objects
+- `tests/phase7/stress-react.test.ts` — same pattern; applied to `createFlakeySkill()` and inline skill definitions
+- `tests/phase7/stress-integration.test.ts` — same pattern
+- `tests/phase9/p1-stress.test.ts` — `PERMISSION_MODE=full-access` scoped to Group 3 and Group 4 `describe` blocks only (was top-level `beforeAll`); this fixed test 2H where the sandbox warning prefix (`[warning: no sandbox...]`) was being prepended to truncated output, pushing length from 10000 to 10085 and breaking the `≤ 10050` assertion
+
+### New Test File
+
+- `tests/phase17/instance-a.test.ts` — 15 tests covering all 5 tasks:
+  - 4 boundary validation tests (path traversal, symlink escape, valid path, new subdir)
+  - 3 binary detection tests (NUL bytes, plain text, empty file)
+  - 4 permission enforcement tests (direct `enforcePermission()` calls)
+  - 2 config validation tests (missing `LLM_ENDPOINT` → `exit(1)`, valid env → Config object)
+  - 2 registry freeze tests (post-freeze registration blocked with warning, `_resetRegistry()` lifts freeze)
+
+### Test Results
+
+- 809/809 tests pass (51 new tests: 15 phase17a + prior test suite growth)
+- Build: zero TypeScript errors
+- Tag: `phase-17a-complete`
+
+---
+
+## Permission + File Creation Sprint (COMPLETE)
+
+Fixes for mkdir permission failures observed in live agentic runs (e.g. Street of Rage game task). 824/824 tests pass. Build clean. Tag: `phase-17a-complete`.
+
+### Fix 1 — Planner prompt FILE CREATION RULES block (`core/planner.ts`)
+
+- `NEVER use run_bash to create directories` rule added to planner system prompt
+- `CORRECT` / `WRONG` examples showing `file_writer` auto-creates parent directories
+- `run_bash` restricted to: git, npm, node execution, test runners, compilers
+
+### Fix 2 — Executor mkdir-skip safety net (`core/executor.ts`)
+
+- Before `runWithRetry`, detects `step.skill === 'run_bash'` + command starts with `mkdir`
+- Skips the step, pushes a synthetic completed entry: `"Directory creation skipped (file_writer handles this automatically)"`
+- Returns `null` (no failure recorded) — plan continues cleanly
+
+### Fix 3 — `parsePlan` post-processor strips mkdir steps (`core/planner.ts`)
+
+- After plan validation, iterates steps and removes any `run_bash { command: "mkdir ..." }` steps
+- Repairs `dependsOn` arrays of subsequent steps that referenced the removed mkdir step IDs
+- Prevents a model-generated mkdir from blocking downstream steps
+
+---
+
+## Four-Bug Fix Sprint (COMPLETE)
+
+15 tests in `tests/fixes/four-bugs.test.ts`. Build clean.
+
+### Fix 1A — `TYPE_MAP` extended (`config/agent.config.ts`)
+
+- Added missing entries for `WHEN.EV`, `WHEN.RF`, `HOW.SK`, `PLAN.EX`, `PLAN.CT`, `PLAN.PJ`, `NOW.LOG` and other Phase 11 types that were absent from the map
+
+### Fix 1B — `isRepairableSkillInputError` notebook+type patterns (`core/react.ts`)
+
+- Added two new repair-eligible patterns:
+  - `/\binvalid notebook\+type\b/i`
+  - `/\bnotebook .* does not support type\b/i`
+
+### Fix 2 — `resolveMaxTokens` floor (`core/skills/tools/content_writer.ts`)
+
+- `FORMAT_FLOORS: Record<ContentFormat, number> = { html: 6000, markdown: 4000, plain: 4000 }`
+- `resolveMaxTokens(value, format)` — takes the max of the requested value and the format floor
+- Replaces old `parseMaxTokens` which had no minimum
+
+### Fix 3 — Terminal PLAN.EX filter in unit-search (`core/memory/unit-search.ts`)
+
+- `filterTerminalPlanEx(entries)` — removes PLAN.EX entries with `status: 'complete'` or `status: 'failed'` from search results
+- Emits `memory_context_filtered` transparency event per filtered entry
+- Applied to BM25 results, vector results, and session-cache path
+
+### Fix 4 — `stripThinkingTags` PREAMBLE_PATTERNS (`core/llm.ts`)
+
+- Added 5 preamble patterns stripping "Here is the JSON…", "Certainly, here is…", "Sure, here is…", "Of course, here is…", "I'll provide…" prefixes before JSON output
+
+---
+
+## Five Targeted Fixes Sprint (COMPLETE)
+
+### Fix 1 — content_writer debug log
+
+- `console.log('[content_writer] resolved tokens: ...')` added after `resolveMaxTokens` call
+
+### Fix 2 — Working memory archival fresh disk load (`core/memory/memory-agent.ts`)
+
+- `task_complete` handler always loads from disk via `loadWorkingMemory(wmId)` before archiving
+- Falls back to `update.workingMemory` only if disk load fails
+
+### Fix 3 — MAX complexity forces confirmation (`core/planner.ts`)
+
+- `shouldRequireConfirmation(steps, complexity?)` — added `complexity?: ComplexityLevel` param
+- `if (complexity === 'MAX') return true` — any MAX complexity plan requires user confirmation
+- `parsePlan` wires `complexity` into `shouldRequireConfirmation` call
+
+### Fix 4 — Decomposition repair counter + transparency (`core/decomposition.ts`)
+
+- Module-level `_decompositionRepairCount` + `_resetDecompositionCounter()` exported for test isolation
+- Two heuristic repair sites increment counter and emit `decomposition_repair` transparency event
+- Warning logged when count reaches 3+: `"heuristic repair has fired 3+ times this session"`
+
+---
+
+## Log Analysis Fix Sprint (COMPLETE)
+
+10 fixes derived from real transparency log analysis of a failed Street of Rage game task. 858/858 tests pass. Build clean. Tag: `log-fixes-complete`.
+
+### FIX 1 — Raise maxTokens/timeouts on helper LLM calls
+
+- `intake.ts`: `maxTokens: 256` → `600`; added `console.warn` on parse failure
+- `working-memory.ts` archive summary: `maxTokens: 100` → `500`
+
+### FIX 2 — `extractFirstJsonObject` + `safeParseJson` universally applied (`core/executor.ts`)
+
+- `safeParseJson<T>(response, schema, callSite, fallback)` helper added to executor
+- Applied to `reviseRemainingMilestones` and verification parsing
+- `intake.ts` now uses `extractFirstJsonObject(stripThinkingTags(response))`
+
+### FIX 3 — Terminal PLAN.EX filter with transparency events (`core/memory/unit-search.ts`)
+
+- `filterTerminalPlanEx` emits `memory_context_filtered` with `{ code, reason: 'terminal_plan_ex', status }` per entry
+
+### FIX 4 — Grounded verification with filesystem/DB snapshot (`core/executor.ts`)
+
+- `buildGroundTruthSnapshot(completed)` — reads `fs.statSync` for file paths found in step outputs; checks SQLite for memory codes found in outputs
+- Returns `{ text, fileStates, memoryStates }` — injected into `runPostFlightSynthesis` prompt
+
+### FIX 5 — Reactive milestone revision (`core/executor.ts`)
+
+- Revision LLM call skipped on happy path — only fires when `milestoneHadFailures || milestoneHadSuspiciousOutput`
+- `milestoneHadSuspiciousOutput`: completed step whose output is depended upon by future steps AND is < 50 chars
+- Saves ~2-3s per milestone on successful runs
+- Emits `milestone_revision_skipped` transparency event on skip
+
+### FIX 6 — Merged post-execution into single `runPostFlightSynthesis` call (`core/executor.ts`, `core/router.ts`)
+
+- `runPostFlightSynthesis(plan, result, llmHandler)` — single LLM call returning `{ verification, summary, reflection }`
+- `PostFlightSchema` / `postFlightJsonSchema` in `core/schemas.ts`
+- Router non-escalated path uses `runPostFlightSynthesis` + `writeCompletionMemoryFromPostFlight`
+- Replaces three separate calls (verifyExecution, buildUserReport, writeCompletionMemory)
+
+### FIX 7 — content_writer minimum length + balanced-brace validation (`core/skills/tools/content_writer.ts`)
+
+- `MIN_OUTPUT_LENGTHS: { html: 500, markdown: 200, plain: 100 }` — output shorter than floor returns `{ success: false }`
+- `hasBalancedBraces(code)` — validates that `{` / `}` depth is balanced in plain format output; unbalanced = truncated code
+
+### FIX 8 — HOW.PR gate (`core/executor.ts`)
+
+- `hasExecutableStep` check: HOW.PR only written when milestone contains a `run_bash` or `implement_and_test` step
+- Content/file-writer-only milestones skip the HOW.PR write (noise without reusable value)
+- Emits `how_pr_skipped` transparency event with `{ milestoneId, reason: 'no_executable_step', skills }`
+
+### FIX 9 — Working memory step recording wiring
+
+- `getStepSummary(wm: WorkingMemory): string` added to `core/memory/working-memory.ts` — formats `stepLog` as `"- skill: summary"` lines
+- `archiveWorkingMemory` now uses `getStepSummary(wm)` in the LLM archive prompt
+- `appendStepLog` called from `memory-agent.ts` `step_complete` handler (already wired, verified)
+
+### FIX 10 — Planner single-file HTML deliverable rule (`core/planner.ts`)
+
+- `SINGLE-FILE HTML RULE` block added to planner prompt: produce ONE self-contained HTML file with CSS/JS inline; use `content_writer` with `format:"html"` then `file_writer`; no separate `.css` / `.js` files unless explicitly requested
+
+### New Transparency Events
+
+`verification_snapshot`, `milestone_revision_skipped`, `post_flight_complete`, `how_pr_skipped`, `memory_context_filtered`, `decomposition_repair`
+
+### New Schemas (`core/schemas.ts`)
+
+`MilestoneRevisionSchema`, `PostFlightSchema`, `PostFlightResult`, `postFlightJsonSchema`
+
+### Test Results
+
+- 858/858 tests pass (34 new in `tests/log-fixes/fixes.test.ts`)
+- 8/8 stress tests pass (`pnpm stress:critical`)
+- Build: zero TypeScript errors
+- Tag: `log-fixes-complete`
+
+---
+
+## Log Analysis Fix Sprint #2 (COMPLETE)
+
+8 fixes derived from two transparency log analyses plus independent Gemini review. Addresses
+the "fake execution" hallucination bug and 7 structural gaps. 888/888 tests pass. Build clean.
+Tag: `log2-fixes-complete`.
+
+### FIX 0 — Plan Confirmation State Machine (`core/agent.ts`)
+
+- `pendingConfirmationPlan` module-level variable stores plan when `needsConfirmation: true`
+- Top-of-`processMessage` intercept: checks pending plan BEFORE intake/decomposition
+- `isUserConfirmation()` / `isUserRejection()` — deterministic regex, no LLM
+- Confirmation → execute plan immediately via `executeConfirmedPlan()` (router.ts), clear state
+- Rejection → clear state, inform user
+- Ambiguous → re-prompt, keep plan pending
+- Prevents the "fake execution" hallucination where the conversational LLM fabricates
+  completion after reading chat history
+
+### FIX 1 — content_writer `context` input (`core/skills/tools/content_writer.ts`, `core/planner.ts`)
+
+- Optional `context` input parameter for existing content to modify
+- Modification-specific system prompt when context provided
+- Planner prompt updated with CONTENT MODIFICATION RULES
+
+### FIX 2 — `code` format for content_writer (`core/skills/tools/content_writer.ts`, `core/planner.ts`)
+
+- `code` format with "Output ONLY source code" system prompt
+- FORMAT_FLOORS.code = 4000; MIN_OUTPUT_LENGTHS.code = 80
+- Balanced-brace check always fires for `code` format
+
+### FIX 3 — Deduplicate intake transparency event (`core/agent.ts`)
+
+- Single emit per intake classification
+
+### FIX 4 — Multi-file cross-reference coherence (DEFERRED)
+
+- Known limitation logged
+
+### FIX 5 — Decomposition normalization for garbage output (`core/decomposition.ts`)
+
+- Pre-validation: bare primitives (numbers, booleans, invalid strings) filtered from units
+- Stringified JSON objects parsed to objects
+
+### FIX 6 — Session cache terminal PLAN.EX gate (`core/memory/session-cache.ts`)
+
+- Store rejects entries with nb=PLAN, type=EX, status∈{complete,failed}
+- Emits `session_cache_skip` transparency event on rejection
+
+### FIX 7 — Decomposition retry with few-shot examples (`core/decomposition.ts`)
+
+- On garbage output (no valid units after normalization), retry once with 2 few-shot examples
+- Single retry only; failed retry falls back to heuristic repair
+- `decomposition_retry` transparency event emitted
+
+### New Transparency Events
+
+`plan_confirmation_pending`, `plan_confirmed`, `plan_rejected`,
+`plan_confirmation_ambiguous`, `session_cache_skip`, `decomposition_retry`
+
+### Test Results
+
+- 888/888 tests pass (28 new in `tests/log2-fixes/fixes.test.ts`)
+- Build: zero TypeScript errors
+- Tag: `log2-fixes-complete`
+
+---
+
+## Permission-Aware Planner Sprint (COMPLETE)
+
+3 fixes derived from transparency log analysis of a Street-of-Rage game task in `workspace-write`
+mode. The planner was listing blocked skills, the revision prompt omitted failures, and the
+decomposition model kept hallucinating flat arrays. 909/909 tests pass. Build clean.
+Tag: `permission-aware-planner-complete`.
+
+### FIX 1 — Permission-Aware Planner (`core/skills/registry.ts`, `core/router.ts`, `core/planner.ts`, `core/query-loop.ts`)
+
+- `getSkillsByPermission(mode)` filters registry by `LEVEL_RANK` comparison
+- `getSkillDescriptionsForPermission(mode)` builds formatted skill list for allowed skills only
+- Router passes `permissionMode` and `blockedSkillNames` to planner context
+- Planner prompt includes RUNTIME CONTEXT block listing permission mode, skill count, and blocked skill names
+- QueryLoop system prompt also uses permission-filtered skill list
+- Runtime enforcement in `runner.ts` unchanged (defense in depth)
+
+### FIX 2 — Failure-Aware Plan Revision (`core/executor.ts`, `core/schemas.ts`)
+
+- `reviseRemainingMilestones` now accepts optional `failedSteps` parameter
+- When failures exist, revision prompt includes FAILED section with step ID, skill name, and error message
+- `MilestoneRevisionSchema` extended with optional `abort: boolean` field
+- Revision returning `abort: true` causes executor to stop and report the reason
+- Both revision call sites (REVISE response path + reactive revision) pass failure context
+
+### FIX 3 — Decomposition Few-Shot Hardening (`core/decomposition.ts`)
+
+- 3 few-shot examples added to decomposition system prompt (agentic, conversational, query)
+- WRONG/RIGHT format enforcement block directly addresses the flat-array hallucination pattern
+- Heuristic repair preserved as safety net
+- `_decompositionRepairCount` counter continues tracking across session
+
+### Test Results
+
+- 909/909 tests pass (21 new in `tests/permission-planner/fixes.test.ts`)
+- Build: zero TypeScript errors
+- Tag: `permission-aware-planner-complete`
+
+---
+
+## QueryLoop Efficiency Fix Sprint (COMPLETE)
+
+7 fixes derived from transparency log analysis of a "milky way 3D simulation" task that took
+12 iterations (~48s) when it should have taken 1-2 (~8s). 933/933 tests pass. Build clean.
+Tag: `queryloop-efficiency-fixes`.
+
+### FIX 1 — Single-File HTML Rule in QueryLoop (`core/query-loop.ts`)
+
+- Added `SINGLE-FILE HTML RULE` to queryLoop system prompt (was only in planner prompt)
+- Inline `<style>` and `<script>` tags; load libraries via CDN
+- Prevents multi-file splits with broken cross-references
+
+### FIX 2 — Generate-First Rule (`core/query-loop.ts`)
+
+- Added `GENERATE-FIRST RULE` — skip web_search for tasks where the model has sufficient knowledge
+- Warns against fetching GitHub blob pages (return HTML wrappers, not source)
+
+### FIX 3 — Description Quality Rule (`core/query-loop.ts`)
+
+- Added `DESCRIPTION QUALITY RULE` — generate_and_save_file descriptions must be detailed specs
+- Specifies CDN URLs, visual features, interaction model, algorithms (100-300 words)
+
+### FIX 4 — Suppress Self-Read After Generation (`core/query-loop.ts`)
+
+- After successful `generate_and_save_file`, appends hint: "Do not re-read files you just generated"
+- Conditional on success only — failure results don't get the hint
+
+### FIX 5 — Permission-Filtered Skill List (already done in previous sprint)
+
+- `getSkillDescriptionsForPermission(getActivePermissionMode())` already in queryLoop
+- `run_bash` and `implement_and_test` hidden in `workspace-write` mode
+
+### FIX 6 — MEMORY.md Relevance Filtering (`core/query-loop.ts`)
+
+- `filterPointerIndex(fullIndex, goal, maxEntries)` scores entries by keyword overlap with goal
+- Relevant entries kept first; remaining slots filled with most recent entries
+- Reduces ~50 irrelevant entries to ~15 goal-relevant ones per LLM call
+
+### FIX 7 — GitHub Blob URL Auto-Rewrite (`core/skills/tools/web_fetch.ts`)
+
+- `rewriteGitHubBlobUrl()` converts `/blob/` URLs to `raw.githubusercontent.com`
+- Transparent to the agent — gets raw source content instead of GitHub UI chrome
+
+### Test Results
+
+- 933/933 tests pass (24 new in `tests/queryloop-efficiency/efficiency.test.ts`)
+- Build: zero TypeScript errors
+- Tag: `queryloop-efficiency-fixes`
+
+---
+
+## Known Limitations (Tracked)
+
+### Multi-file cross-reference coherence
+When the planner generates multiple content_writer steps that produce separate files (e.g.
+HTML + JS + CSS), element IDs, class names, and variable names are not shared between steps.
+Each content_writer call is stateless. Mitigated by the single-file HTML rule for browser
+deliverables. Full fix requires a shared-context registry in the planner — deferred to a
+future phase.
+
+---
+
+## Phase 18 — New Skills, Coding Route, Context Mode (COMPLETE)
+
+981 tests pass. Build clean.
+
+### Upgrade 1 — `patch_file` skill (`core/skills/tools/patch_file.ts`)
+
+- `patch_file`, permissionLevel: `workspace-write`
+- Input: `{ filepath, search_string, replace_string }`
+- Boundary + symlink guard (same pattern as file_writer/file_reader)
+- Returns error if search_string not found or appears more than once (ambiguity)
+- Single replacement via `str.slice` — empty replace_string deletes the block
+- Max file size 10 MB
+- Registered in `core/skills/registry.ts`
+
+### Upgrade 2 — `grep_workspace` and `list_dir` skills
+
+**`grep_workspace`** (`core/skills/tools/grep_workspace.ts`), permissionLevel: `read-only`
+- Walks `PATHS.workspace` recursively, skips `node_modules`, `.git`, `dist`
+- `file_glob` filter via simple suffix/glob matching
+- Case-insensitive search; regex fallback if valid
+- Skips binary files (NUL byte in first 8 KB)
+- Default max_results: 50; appends truncation note when exceeded
+- WORKSPACE_ROOT resolved via `realpathSync` to handle macOS `/tmp` → `/private/tmp`
+
+**`list_dir`** (`core/skills/tools/list_dir.ts`), permissionLevel: `read-only`
+- Non-recursive: returns `{ dirs: string[], files: string[] }` as JSON
+- Recursive: flat list of all file paths relative to given path (skips node_modules, .git, dist)
+- Max recursive entries: 500 with truncation note
+- Boundary + symlink guard; WORKSPACE_ROOT resolved via `realpathSync`
+
+### Upgrade 3 — `taskType` field + coding route + context mode
+
+**3A** — `taskType?: 'coding' | 'general'` added to `DecomposedUnit` in `core/types.ts`
+
+**3B** — `prompts/decomposition.md` updated with taskType instruction; `DECOMPOSITION_RESPONSE_SCHEMA` in `core/decomposition.ts` includes `taskType` as optional enum field
+
+**3C** — Coding route in `core/router.ts` (`handleAgenticUnits`): if any unit has `taskType === 'coding'`, emits `coding_route_selected` event and runs `runQueryLoop` instead of the planner pipeline
+
+**3D** — `contextMode?: ContextMode` added to `buildContext()` in `core/context.ts`. When `'agentic_coding'`: soft limit 8000 tokens, hard ceiling 16000 tokens, compaction threshold 5600. Emits `context_mode_applied` transparency event.
+
+**3E** — Two new transparency events added to `core/transparency.ts`:
+- `coding_route_selected`: `{ unitIds, complexity, reason }`
+- `context_mode_applied`: `{ mode, softLimit, hardCeiling }`
+
+### Upgrade 4 — Deprecate `generate_and_save_file`
+
+- JSDoc `@deprecated` comment added at file top
+- `console.warn('[generate_and_save_file] DEPRECATED — prefer content_writer + file_writer')` at start of `execute()`
+- Description string updated to note `[DEPRECATED: prefer content_writer + file_writer]`
+
+### Test Results
+
+- 981/981 tests pass (33 new Phase 18 tests)
+- Build: zero TypeScript errors
+- Tags: `phase-18-complete`
+
+---
+
+## Phase 18F — Query Retrieval Fixes + Memory Body Format (COMPLETE)
+
+### Root Causes Fixed
+Three consecutive user queries ("tell me all plans about the tennis 3d game", "tell me all
+contacts in your memory", "tell me all projects you're working on") returned zero results
+despite entries existing in memory. Root causes: intake signal parser mapping wrong types,
+unit-search strategy ignoring project signals, listing queries hitting BM25 with no keywords,
+intake signals not passed to unit-search.
+
+### FIX 1 — Intake Signal Parser (`core/intake.ts`)
+- `IntakeSignals.personSignal` changed from `{ name, confidence }` to `string | null`
+- `IntakeSignals.projectSignal` changed from `{ name, confidence }` to `string | null`
+- `IntakeSignals.timeSignal` changed from `{ description }` to `string | null`
+- Confidence threshold (> 0.7) applied inline during signal construction
+- `querySignal` and `agenticSignal` now use `=== true` (strict boolean check)
+- `intake_signals` transparency event emitted with resolved string values
+
+### FIX 2 — Strategy Priority (`core/memory/unit-search.ts`)
+- `projectSignal` from options short-circuits all content heuristics (top priority)
+- `personSignal` from options fires before content-based person detection
+- Temporal language no longer overrides project signal when options.projectSignal is set
+- `searchProjectByName()` helper added — searches PLAN.PJ + WHAT by name
+
+### FIX 3 — Listing Fast Path (`core/memory/unit-search.ts`)
+- `detectListingQuery()` — detects "all contacts / projects / tasks / etc" patterns
+- Returns `strategy: 'type_scan'` → `queryEntries({ nb, type, status: 'active' })`
+- Fires before BM25 path; no keyword matching needed; returns empty array not error
+- `UnitSearchStrategy` type extended with `'type_scan'` in `core/types.ts`
+
+### FIX 4 — Signal Passthrough (`core/memory/unit-search.ts`, `core/agent.ts`)
+- `UnitSearchOptions` interface: `{ projectSignal?, personSignal?, timeSignal? }`
+- `searchMemoryForUnits()` accepts optional third argument `UnitSearchOptions`
+- `core/agent.ts` passes intake signals from `intakeResult.signals` into unit-search
+
+### FIX 5 — PLAN.PJ Body Format (`core/memory/project.ts`)
+- `ProjectEntry` interface extended with optional: `initialPrompt`, `goal`, `decisions[]`, `conclusions`
+- Body template now includes `## Initial Request`, `## Goal`, `## Key Decisions`, `## Conclusions`
+- `initialPrompt` stores verbatim user request that started the project
+
+### FIX 6 — WHAT.PJ Body + Task Relationships (`core/router.ts`, `core/memory/memory-agent.ts`)
+- WHAT.PJ bodies created in `persistFactualAssertions` now include structured sections:
+  `## Description`, `## Initial Request`, `## Tasks`, `## Status`
+- `contains` relationship written from WHAT.PJ → NOW.TD in `memory-agent.ts` `new_code` handler
+  (fires when executor creates a NOW.TD and working memory has a projectCode)
+
+### Transparency Events Added (`core/transparency.ts`)
+- `intake_signals`: `{ personSignal, projectSignal, querySignal, agenticSignal }`
+- `unit_search_strategy`: `{ strategy, projectName, confidence, codes }`
+
+### Test Results
+- 18 new tests in `tests/retrieval-fixes/retrieval.test.ts` — all pass
+- 999/999 total tests pass (zero regressions)
+- Build: zero TypeScript errors
+- Tag: `phase-18-retrieval-memory-complete`
+
+---
+
+## Phase 18G — Listing Wiring + Memory Quality (COMPLETE)
+
+### Root Causes Fixed
+Five memory quality issues causing silent failures or data pollution:
+1. `detectListingQuery()` was unreachable in some code paths — listing queries fell through to BM25
+2. Empty memory bodies (WHO.CT, WHAT.PJ) stored blank markdown with no structure
+3. WHAT.KN near-duplicates (e.g. "Favorite Color" / "Favorite Vericolor") slipping through dedup
+4. Completed PLAN.EX entries resurfacing as `status: active` in type_scan results
+5. NOW.LOG entries using `status: active` polluting todo and active-entry scans
+
+### FIX 1 — Listing Fast-Path Confirmed Wiring (`core/memory/unit-search.ts`)
+- `detectListingQuery()` verified to run FIRST in `searchUnit()` — before all signal guards
+- Works purely from content; no signals required
+- Regression test added: "tell me a list of all your contacts" with no options → `type_scan`
+
+### FIX 2 — Body Templates (`core/memory/write.ts`)
+- `defaultBodyFor(nb, type)` — returns scaffold markdown for WHO.CT and WHAT.PJ
+- WHO.CT template: `## Role / Relationship`, `## Communication`, `## Notes`
+- WHAT.PJ template: `## Initial Request`, `## Tasks`, `## Status`
+- Applied only when `body.trim().length < 10` (custom bodies used as-is)
+
+### FIX 3 — Near-Duplicate Prevention (`core/memory/write.ts`)
+- `computeNameSimilarity(a, b)` — Jaccard word-overlap + substring bonus
+  - `wa !== wb` guard prevents exact-match words from double-counting in substring bonus
+- `DEDUP_SIMILARITY_TYPES = new Set(['WHAT.KN'])` — scoped to KN only (WHO.CT has its own dedup)
+- `APPEND_ONLY_TYPES = new Set(['NOW.LOG', 'WHEN.EV', 'WHEN.RF', 'PLAN.EX', 'WHEN.HX', 'NOW.RP'])` — never similarity-checked
+- Pre-upsert similarity check fires before `createEntry` for eligible types
+
+### FIX 4 — PLAN.EX Terminal Status (`core/memory/plan-ex.ts`, `core/memory/unit-search.ts`)
+- `loadActivePlanEX()` excludes entries with `status: 'complete'` or `status: 'failed'`
+- `type_scan` fast-path uses `status='active'` filter — terminal PLAN.EX entries excluded automatically
+
+### FIX 5 — NOW.LOG Status Default (`core/memory/write.ts`, `core/memory/index.ts`)
+- `resolvedStatus` logic: NOW.LOG entries default to `status: 'logged'` (not `'active'`)
+- Migration in `initDatabase()`: `UPDATE ... SET status='logged' WHERE nb='NOW' AND type='LOG' AND status='active'`
+- Prevents log entries from appearing in active-item scans and todo queries
+
+### Test Results
+- 16 new tests in `tests/phase18g/phase18g.test.ts` — all pass
+- 1016/1016 total tests pass (zero regressions)
+- Build: zero TypeScript errors
+- Tag: `phase-18G-complete`

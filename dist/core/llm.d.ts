@@ -29,6 +29,7 @@ type LLMRuntimeOverride = {
 };
 export declare function getPrimaryLLMProfile(): LLMProfile | null;
 export declare function getFallbackLLMProfile(): LLMProfile | null;
+export declare function getAnthropicCloudProfile(): LLMProfile | null;
 export declare function withLLMRuntime<T>(runtime: LLMRuntimeOverride, fn: () => Promise<T>): Promise<T>;
 /**
  * Strip model reasoning/thinking artifacts from LLM responses.

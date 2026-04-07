@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dark Mode To-Do List</title>
+    <style>
+        /* General body styling */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a; /* Main dark background */
+            color: #f0f0f0; /* Light text color */
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        /* Main container for the application */
+        .container {
+            background-color: #2c2c2c; /* Slightly lighter dark shade for container */
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            max-width: 700px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Header styling */
+        h1 {
+            text-align: center;
+            color: #f0f0f0;
+            margin-bottom: 30px;
+        }
+
+        /* Task input section layout */
+        .task-input-section {
+            display: flex;
+            flex-wrap: wrap; /* Allow items to wrap on smaller screens */
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+
+        /* Input field styling */
+        .task-input-section input[type="text"],
+        .task-input-section input[type="date"] {
+            flex: 1; /* Allow inputs to grow and shrink */
+            padding: 12px;
+            border: 1px solid #555; /* Darker border */
+            border-radius: 8px; /* Rounded corners */
+            background-color: #3a3a3a; /* Darker background for inputs */
+            color: #f0f0f0; /* Light text */
+            font-size: 1em;
+            min-width: 150px; /* Minimum width for inputs before wrapping */
+        }
+
+        /* Specific styling for date input to remove default browser appearance */
+        .task-input-section input[type="date"] {
+            -webkit-appearance: none;
+            appearance: none;
+            cursor: pointer;
+        }
+
+        /* Placeholder text color */
+        .task-input-section input::placeholder {
+            color: #bbb;
+        }
+
+        /* Add Task button styling */
+        .task-input-section button {
+            padding: 12px 20px;
+            background-color: #6200EE; /* Deep purple for add button */
+            color: #fff; /* White text */
+            border: none;
+            border-radius: 8px; /* Rounded corners */
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.2s ease; /* Smooth transition on hover */
+            flex-shrink: 0; /* Prevent button from shrinking */
+        }
+
+        .task-input-section button:hover {
+            background-color: #7c4dff; /* Lighter purple on hover */
+        }
+
+        /* Task list container */
+        .task-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* Individual task item styling */
+        .task-item {
+            background-color: #3a3a3a; /* Darker than container for task items */
+            padding: 15px 20px;
+            border-radius: 8px; /* Rounded corners */
+            display: flex;
+            flex-wrap: wrap; /* Allow content to wrap */
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            transition: background-color 0.2s ease;
+        }
+
+        /* Styling for completed tasks */
+        .task-item.completed {
+            background-color: #2c2c2c; /* Even darker for completed tasks */
+            opacity: 0.7; /* Slightly faded */
+        }
+
+        .task-item.completed .task-details h3 {
+            text-decoration: line-through; /* Strikethrough for completed task description */
+            color: #bbb; /* Faded text */
+        }
+
+        /* Task details section */
+        .task-details {
+            flex-grow: 1; /* Allow details to take available space */
+            margin-right: 15px;
+            min-width: 150px; /* Minimum width before wrapping */
+        }
+
+        .task-details h3 {
+            margin: 0 0 5px 0;
+            color: #f0f0f0;
+            font-size: 1.1em;
+        }
+
+        .task-details p {
+            margin: 0;
+            color: #bbb; /* Faded color for due date */
+            font-size: 0.9em;
+        }
+
+        /* Task actions (buttons) section */
+        .task-actions {
+            display: flex;
+            gap: 10px;
+            flex-shrink: 0; /* Prevent buttons from shrinking */
+        }
+
+        /* General button styling within task actions */
+        .task-actions button {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 8px; /* Rounded corners */
+            cursor: pointer;
+            font-size: 0.85em;
+            color: #fff;
+            transition: background-color 0.2s ease;
+        }
+
+        /* Complete button styling */
+        .task-actions .complete-btn {
+            background-color: #28a745; /* Green */
+        }
+
+        .task-actions .complete-btn:hover {
+            background-color: #218838; /* Darker green on hover */
+        }
+
+        /* Delete button styling */
+        .task-actions .delete-btn {
+            background-color: #dc3545; /* Red */
+        }
+
+        .task-actions .delete-btn:hover {
+            background-color: #c82333; /* Darker red on hover */
+        }
+
+        /* Responsive adjustments for smaller screens */
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                padding: 20px;
+                border-radius: 8px;
+            }
+
+            .task-input-section {
+                flex-direction: column; /* Stack inputs and button vertically */
+            }
+
+            .task-input-section input,
+            .task-input-section button {
+                width: 100%; /* Full width for stacked elements */
+                margin-bottom: 10px; /* Add space between stacked elements */
+            }
+            .task-input-section button {
+                margin-bottom: 0; /* No margin for the last button in the stack */
+            }
+
+            .task-item {
+                flex-direction: column; /* Stack task details and actions vertically */
+                align-items: flex-start; /* Align items to the start */
+                gap: 10px;
+            }
+
+            .task-details {
+                margin-right: 0;
+                width: 100%; /* Full width for task details */
+            }
+
+            .task-actions {
+                width: 100%; /* Full width for action buttons */
+                justify-content: flex-end; /* Align buttons to the right */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>My To-Do List</h1>
+
+        <div class="task-input-section">
+            <input type="text" id="taskDescription" placeholder="Task description" required>
+            <input type="date" id="taskDueDate">
+            <button id="addTaskBtn">Add Task</button>
+        </div>
+
+        <div id="taskList" class="task-list">
+            <!-- Tasks will be rendered here by JavaScript -->
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const taskDescriptionInput = document.getElementById('taskDescription');
+            const taskDueDateInput = document.getElementById('taskDueDate');
+            const addTaskBtn = document.getElementById('addTaskBtn');
+            const taskListDiv = document.getElementById('taskList');
+
+            let tasks = []; // Array to hold task objects
+
+            // Function to load tasks from localStorage
+            function loadTasks() {
+                const storedTasks = localStorage.getItem('tasks');
+                if (storedTasks) {
+                    tasks = JSON.parse(storedTasks);
+                }
+                renderTasks(); // Render tasks after loading
+            }
+
+            // Function to save tasks to localStorage
+            function saveTasks() {
+                localStorage.setItem('tasks', JSON.stringify(tasks));
+            }
+
+            // Function to render tasks to the DOM
+            function renderTasks() {
+                taskListDiv.innerHTML = ''; // Clear current list before re-rendering
+
+                if (tasks.length === 0) {
+                    taskListDiv.innerHTML = '<p style="text-align: center; color: #bbb;">No tasks yet. Add one above!</p>';
+                    return;
+                }
+
+                tasks.forEach(task => {
+                    const taskItem = document.createElement('div');
+                    taskItem.classList.add('task-item');
+                    if (task.completed) {
+                        taskItem.classList.add('completed');
+                    }
+
+                    // Format due date for display
+                    const dueDateFormatted = task.dueDate ? new Date(task.dueDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'No due date';
+
+                    taskItem.innerHTML = `
+                        <div class="task-details">
+                            <h3>${task.description}</h3>
+                            <p>Due: ${dueDateFormatted}</p>
+                        </div>
+                        <div class="task-actions">
+                            <button class="complete-btn" data-id="${task.id}">
+                                ${task.completed ? 'Uncomplete' : 'Complete'}
+                            </button>
+                            <button class="delete-btn" data-id="${task.id}">Delete</button>
+                        </div>
+                    `;
+
+                    // Add event listeners for buttons
+                    taskItem.querySelector('.complete-btn').addEventListener('click', () => toggleComplete(task.id));
+                    taskItem.querySelector('.delete-btn').addEventListener('click', () => deleteTask(task.id));
+
+                    taskListDiv.appendChild(taskItem);
+                });
+            }
+
+            // Function to add a new task
+            function addTask() {
+                const description = taskDescriptionInput.value.trim();
+                const dueDate = taskDueDateInput.value; // YYYY-MM-DD format
+
+                if (description === '') {
+                    alert('Task description cannot be empty!');
+                    return;
+                }
+
+                const newTask = {
+                    id: Date.now(), // Simple unique ID based on timestamp
+                    description,
+                    dueDate,
+                    completed: false
+                };
+
+                tasks.push(newTask);
+                saveTasks();
+                renderTasks();
+
+                taskDescriptionInput.value = ''; // Clear input field
+                taskDueDateInput.value = ''; // Clear date input field
+            }
+
+            // Function to toggle task completion status
+            function toggleComplete(id) {
+                const taskIndex = tasks.findIndex(task => task.id === id);
+                if (taskIndex > -1) {
+                    tasks[taskIndex].completed = !tasks[taskIndex].completed;
+                    saveTasks();
+                    renderTasks();
+                }
+            }
+
+            // Function to delete a task
+            function deleteTask(id) {
+                tasks = tasks.filter(task => task.id !== id); // Filter out the task to be deleted
+                saveTasks();
+                renderTasks();
+            }
+
+            // Event listener for the "Add Task" button
+            addTaskBtn.addEventListener('click', addTask);
+
+            // Initial load of tasks when the page loads
+            loadTasks();
+        });
+    </script>
+</body>
+</html>

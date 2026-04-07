@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OneNote Clone</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #f0f0f0;
+        }
+
+        #sidebar {
+            width: 250px;
+            background-color: #f8f8f8;
+            border-right: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            overflow-y: auto;
+            flex-shrink: 0; /* Prevent sidebar from shrinking */
+        }
+
+        #sidebar h2 {
+            margin-top: 0;
+            color: #333;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        #new-note-btn {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #0078d4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.2s;
+        }
+
+        #new-note-btn:hover {
+            background-color: #005a9e;
+        }
+
+        #notes-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            flex-grow: 1;
+        }
+
+        #notes-list li {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #333;
+        }
+
+        #notes-list li:last-child {
+            border-bottom: none;
+        }
+
+        #notes-list li:hover {
+            background-color: #e0e0e0;
+        }
+
+        #notes-list li.selected-note {
+            background-color: #cceeff;
+            font-weight: bold;
+            border-left: 3px solid #0078d4;
+            padding-left: 7px; /* Adjust padding due to border */
+        }
+
+        #main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            background-color: #fff;
+            overflow-y: auto;
+        }
+
+        #toolbar {
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        #toolbar button {
+            padding: 8px 12px;
+            background-color: #e9e9e9;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+
+        #toolbar button:hover:not(:disabled) {
+            background-color: #dcdcdc;
+            border-color: #bbb;
+        }
+
+        #toolbar button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        #note-title {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 15px;
+            font-size: 1.8em;
+            font-weight: bold;
+            border: none;
+            border-bottom: 1px solid #ddd;
+            outline: none;
+            color: #333;
+        }
+
+        #note-title:focus {
+            border-color: #0078d4;
+        }
+
+        #note-title:disabled {
+            background-color: #f9f9f9;
+            color: #888;
+            cursor: not-allowed;
+        }
+
+        #note-content {
+            flex-grow: 1;
+            border: 1px solid #ddd;
+            padding: 15px;
+            min-height: 200px;
+            overflow-y: auto;
+            font-size: 1em;
+            line-height: 1.6;
+            outline: none;
+            border-radius: 4px;
+            background-color: #fdfdfd;
+        }
+
+        #note-content:focus {
+            border-color: #0078d4;
+            box-shadow: 0 0 5px rgba(0, 120, 212, 0.2);
+        }
+
+        #note-content[contenteditable="false"] {
+            background-color: #f9f9f9;
+            color: #888;
+            cursor: not-allowed;
+        }
+
+        .actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .actions button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.2s;
+        }
+
+        .actions button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        #save-note-btn {
+            background-color: #28a745;
+            color: white;
+        }
+
+        #save-note-btn:hover:not(:disabled) {
+            background-color: #218838;
+        }
+
+        #delete-note-btn {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        #delete-note-btn:hover:not(:disabled) {
+            background-color: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <h2>Notes</h2>
+        <button id="new-note-btn">New Note</button>
+        <ul id="notes-list">
+            <!-- Note titles will be loaded here -->
+        </ul>
+    </div>
+
+    <div id="main-content">
+        <div id="toolbar">
+            <button data-command="bold"><b>B</b></button>
+            <button data-command="italic"><i>I</i></button>
+            <button data-command="underline"><u>U</u></button>
+            <button data-command="formatBlock" data-value="H1">H1</button>
+            <button data-command="formatBlock" data-value="H2">H2</button>
+        </div>
+        <input type="text" id="note-title" placeholder="Note Title">
+        <div id="note-content" contenteditable="true" placeholder="Start typing your note here..."></div>
+        <div class="actions">
+            <button id="save-note-btn">Save Note</button>
+            <button id="delete-note-btn">Delete Note</button>
+        </div>
+    </div>
+
+    <script>
+        let notes = [];
+        let currentNoteId = null;
+
+        const noteTitleInput = document.getElementById('note-title');
+        const noteContentDiv = document.getElementById('note-content');
+        const notesListUl = document.getElementById('notes-list');
+        const newNoteBtn = document.getElementById('new-note-btn');
+        const saveNoteBtn = document.getElementById('save-note-btn');
+        const deleteNoteBtn = document.getElementById('delete-note-btn');
+        const toolbar = document.getElementById('toolbar');
+
+        // Helper to generate a unique ID
+        function generateId() {
+            return crypto.randomUUID(); // Modern way to generate UUIDs
+        }
+
+        // Save notes array to localStorage
+        function saveNotes() {
+            localStorage.setItem('onenote_notes', JSON.stringify(notes));
+        }
+
+        // Load notes array from localStorage
+        function loadNotes() {
+            const storedNotes = localStorage.getItem('onenote_notes');
+            notes = storedNotes ? JSON.parse(storedNotes) : [];
+        }
+
+        // Render the list of notes in the sidebar
+        function renderNotesList() {
+            notesListUl.innerHTML = ''; // Clear existing list
+            notes.forEach(note => {
+                const li = document.createElement('li');
+                li.textContent = note.title || 'Untitled Note'; // Display a default title if empty
+                li.dataset.id = note.id;
+                if (note.id === currentNoteId) {
+                    li.classList.add('selected-note');
+                }
+                li.addEventListener('click', () => selectNote(note.id));
+                notesListUl.appendChild(li);
+            });
+        }
+
+        // Clear and disable the editor fields
+        function clearEditor() {
+            noteTitleInput.value = '';
+            noteContentDiv.innerHTML = '';
+            noteTitleInput.disabled = true;
+            noteContentDiv.contentEditable = false;
+            saveNoteBtn.disabled = true;
+            deleteNoteBtn.disabled = true;
+            toolbar.querySelectorAll('button').forEach(btn => btn.disabled = true);
+        }
+
+        // Enable the editor fields
+        function enableEditor() {
+            noteTitleInput.disabled = false;
+            noteContentDiv.contentEditable = true;
+            saveNoteBtn.disabled = false;
+            deleteNoteBtn.disabled = false;
+            toolbar.querySelectorAll('button').forEach(btn => btn.disabled = false);
+        }
+
+        // Select a note and load its content into the editor
+        function selectNote(id) {
+            currentNoteId = id;
+            const selectedNote = notes.find(note => note.id === id);
+
+            if (selectedNote) {
+                noteTitleInput.value = selectedNote.title;
+                noteContentDiv.innerHTML = selectedNote.content;
+                enableEditor();
+            } else {
+                clearEditor();
+            }
+            renderNotesList(); // Update selection highlighting
+        }
+
+        // Create a new empty note
+        function newNote() {
+            const newId = generateId();
+            const newNoteObj = {
+                id: newId,
+                title: 'New Note',
+                content: ''
+            };
+            notes.unshift(newNoteObj); // Add to the beginning
+            saveNotes();
+            renderNotesList();
+            selectNote(newId); // Select the new note immediately
+            noteTitleInput.focus(); // Focus on the title for immediate editing
+        }
+
+        // Save the current note's content
+        function saveCurrentNote() {
+            if (!currentNoteId) return;
+
+            const noteIndex = notes.findIndex(note => note.id === currentNoteId);
+            if (noteIndex > -1) {
+                notes[noteIndex].title = noteTitleInput.value;
+                notes[noteIndex].content = noteContentDiv.innerHTML;
+                saveNotes();
+                renderNotesList(); // Re-render in case title changed
+            }
+        }
+
+        // Delete the current note
+        function deleteCurrentNote() {
+            if (!currentNoteId) return;
+
+            notes = notes.filter(note => note.id !== currentNoteId);
+            saveNotes();
+            currentNoteId = null;
+            clearEditor();
+            renderNotesList();
+
+            // After deletion, select the first available note if any
+            if (notes.length > 0) {
+                selectNote(notes[0].id);
+            }
+        }
+
+        // Apply rich text formatting
+        function applyFormat(command, value = null) {
+            document.execCommand(command, false, value);
+            noteContentDiv.focus(); // Keep focus on the editable div
+        }
+
+        // Initialize the application
+        function init() {
+            loadNotes();
+            renderNotesList();
+            if (notes.length > 0) {
+                selectNote(notes[0].id); // Select the first note by default
+            } else {
+                clearEditor(); // Clear and disable editor if no notes
+            }
+
+            // Event Listeners
+            newNoteBtn.addEventListener('click', newNote);
+            saveNoteBtn.addEventListener('click', saveCurrentNote);
+            deleteNoteBtn.addEventListener('click', deleteCurrentNote);
+
+            // Toolbar event listeners
+            toolbar.addEventListener('click', (event) => {
+                const button = event.target.closest('button');
+                if (button && !button.disabled) {
+                    const command = button.dataset.command;
+                    const value = button.dataset.value;
+                    if (command) {
+                        applyFormat(command, value);
+                    }
+                }
+            });
+
+            // Auto-save on title/content change
+            noteTitleInput.addEventListener('input', saveCurrentNote);
+            noteContentDiv.addEventListener('input', saveCurrentNote);
+        }
+
+        // Run initialization when the DOM is fully loaded
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

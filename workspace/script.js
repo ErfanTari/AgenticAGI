@@ -1,10 +1,14 @@
-const display = document.getElementById('display');
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
-let displayValue = '0';
-let firstOperand = null;
-let waitingForSecondOperand = false;
-let operator = null;
+let scene, camera, renderer, controls, composer;
+let galaxyParticles = [];
 
-function updateDisplay() {
-  display.textContent = displayValue;
-}
+// Galaxy parameters
+const GALAXY_RADIUS = 1000; // Overall radius of the galaxy disk
+const GALAXY_THICKNESS = 50; // Thickness of the galaxy disk
+
+// Number of particles for each

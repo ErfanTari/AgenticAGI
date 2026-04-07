@@ -114,6 +114,7 @@ function getPrimaryWhoEntry(): IndexEntry | undefined {
 const memoryReadSkill: MCPSkill = {
   name: 'memory_read',
   description: 'Read memory entries by code, notebook filters, or semantic query. Use this first when a task must use existing memory content.',
+  permissionLevel: 'read-only',
   inputSchema: {
     type: 'object',
     properties: {

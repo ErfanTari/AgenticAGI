@@ -10,6 +10,7 @@ import {
   getSkill,
   getAllSkills,
   getSkillDescriptions,
+  _unfreezeRegistry,
 } from '../../core/skills/registry.js';
 import { buildContext } from '../../core/context.js';
 import type { MCPSkill } from '../../core/skills/types.js';
@@ -133,9 +134,12 @@ describe('skill registry', () => {
 
   // P5 echo skill test: adding a 4th skill requires only registerSkill call, no circular import
   it('adding a 4th skill (echo) requires only registerSkill call', async () => {
+    _unfreezeRegistry();
+
     const echoSkill: MCPSkill = {
       name: 'echo',
       description: 'Echo input back',
+      permissionLevel: 'read-only',
       inputSchema: {
         type: 'object',
         properties: { text: { type: 'string', description: 'text to echo' } },
@@ -258,13 +262,13 @@ describe('file_reader skill', () => {
   it('denies access to paths outside workspace', async () => {
     const result = await runSkill('file_reader', { path: '/etc/passwd' });
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Access denied: Path outside workspace');
+    expect(result.error).toContain('Access denied');
   });
 
   it('denies path traversal attempts', async () => {
     const result = await runSkill('file_reader', { path: path.join(WORKSPACE_ROOT, '..', 'package.json') });
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Access denied: Path outside workspace');
+    expect(result.error).toContain('Access denied');
   });
 });
 
@@ -310,9 +314,12 @@ describe('runSkill', () => {
   });
 
   it('never throws even on skill execution error', async () => {
+    _unfreezeRegistry();
+
     const throwingSkill: MCPSkill = {
       name: 'throwing_skill',
       description: 'Always throws',
+      permissionLevel: 'read-only',
       inputSchema: { type: 'object', properties: {}, required: [] },
       async execute() { throw new Error('BOOM'); },
     };

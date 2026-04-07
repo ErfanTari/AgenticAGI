@@ -153,6 +153,12 @@ export declare const LLM_FALLBACK_CONFIG: {
     apiKey: string;
     endpoint: string;
 } | null;
+export declare const ANTHROPIC_CLOUD_CONFIG: {
+    provider: "anthropic";
+    model: string;
+    apiKey: string;
+    endpoint: string;
+} | null;
 export declare const PLANNER_CONFIG: {
     endpoint: string;
     model: string;
@@ -166,6 +172,25 @@ export declare const EXECUTOR_CONFIG: {
     maxTokens: number;
     temperature: number;
     timeoutMs: number;
+};
+export declare const TOKEN_BUDGETS: {
+    readonly INTAKE: 800;
+    readonly DECOMPOSITION: 2000;
+    readonly PLANNER: 8192;
+    readonly MILESTONE_REVISION: 2000;
+    readonly POST_FLIGHT: 3000;
+    readonly QUERY_LOOP_ITER: 4096;
+    readonly QUERY_LOOP_NARRATE: 800;
+    readonly VERIFICATION: 1500;
+    readonly CONTENT_WRITER_HTML: 16000;
+    readonly CONTENT_WRITER_MARKDOWN: 8000;
+    readonly CONTENT_WRITER_PLAIN: 6000;
+    readonly CONTENT_WRITER_CODE: 8000;
+    readonly GENERATE_FILE_HTML: 16000;
+    readonly GENERATE_FILE_MARKDOWN: 8000;
+    readonly GENERATE_FILE_PLAIN: 6000;
+    readonly WORKING_MEMORY_SUMMARY: 800;
+    readonly RELATIONSHIP_INFER: 600;
 };
 export declare const EMBEDDING_CONFIG: {
     endpoint: string;

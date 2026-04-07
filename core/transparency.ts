@@ -39,6 +39,7 @@ export type TransparencyEvent =
   | { type: 'session_cache_hit'; data: { code: string } }
   | { type: 'session_cache_miss'; data: { code: string } }
   | { type: 'session_cache_store'; data: { code: string } }
+  | { type: 'session_cache_skip'; data: { code: string; reason: string; status: string } }
   | { type: 'project_brain_hit'; data: { projectCode: string } }
   | { type: 'project_brain_miss'; data: { projectCode: string } }
   | { type: 'project_brain_rebuilt'; data: { projectCode: string } }
@@ -51,7 +52,27 @@ export type TransparencyEvent =
   | { type: 'query_loop_skill_result'; data: { skill: string; success: boolean; error?: string } }
   | { type: 'query_loop_end'; data: { reason: string; iterations: number } }
   // Phase 16 Usability — routing decision
-  | { type: 'route'; data: { level: string; reason: string; path: string } };
+  | { type: 'route'; data: { level: string; reason: string; path: string } }
+  // Fix 5 — decomposition repair telemetry
+  | { type: 'decomposition_repair'; data: { message: string; repairCount: number; reason: string } }
+  | { type: 'decomposition_retry'; data: { message: string; repairCount: number; reason: string } }
+  // Log-fixes sprint
+  | { type: 'verification_snapshot'; data: { files: Array<{ path: string; exists: boolean; sizeBytes: number }>; memory: Array<{ code: string; exists: boolean }> } }
+  | { type: 'milestone_revision_skipped'; data: { milestoneId: string; reason: string } }
+  | { type: 'post_flight_complete'; data: { verified: boolean; confidence: number; issueCount: number; summaryLength: number } }
+  | { type: 'how_pr_skipped'; data: { milestoneId: string; reason: string; skills: string[] } }
+  | { type: 'memory_context_filtered'; data: { code: string; reason: string; status: string } }
+  // FIX 0 — Plan confirmation state machine
+  | { type: 'plan_confirmation_pending'; data: { goal: string; stepCount: number } }
+  | { type: 'plan_confirmed'; data: { goal: string } }
+  | { type: 'plan_rejected'; data: { goal: string } }
+  | { type: 'plan_confirmation_ambiguous'; data: { userMessage: string } }
+  // Phase 18 — Coding route + context mode
+  | { type: 'coding_route_selected'; data: { unitIds: string[]; complexity: string; reason: string } }
+  | { type: 'context_mode_applied'; data: { mode: string; softLimit: number; hardCeiling: number } }
+  // Phase 18F — Retrieval fixes
+  | { type: 'intake_signals'; data: { personSignal: string | null; projectSignal: string | null; querySignal: boolean; agenticSignal: boolean } }
+  | { type: 'unit_search_strategy'; data: { strategy: string; projectName: string | null; confidence: number; codes: string[] } };
 
 type TransparencyHandler = (event: TransparencyEvent) => void;
 

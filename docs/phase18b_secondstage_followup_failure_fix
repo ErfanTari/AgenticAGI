@@ -1,0 +1,177 @@
+You are fixing second-stage execution issues in a TypeScript autonomous agent system (Zaraban). The first-stage generation pipeline is already stable. Your goal is to fix follow-up task execution (editing, modifying, continuing work).
+
+---
+
+## 1. Fix Tool Call Formatting (CRITICAL)
+
+### Problem
+
+LLM outputs invalid tool calls like:
+<|tool_call>call:file_reader:{...}
+
+System only accepts strict JSON:
+{"action":"file_reader","input":{...}}
+
+### Required Fix
+
+Enforce HARD constraint in QueryLoop prompt:
+
+* Tool calls MUST be valid JSON
+* No tags, no wrappers, no prefixes
+* No `<|tool_call|>` or similar tokens allowed
+
+### Implementation
+
+Add guard:
+
+IF output does NOT start with "{"
+→ reject and reprompt with:
+
+"Invalid tool call format. You must respond ONLY with valid JSON:
+{"action":"...","input":{...}}"
+
+Retry up to 2 times before failure.
+
+---
+
+## 2. Add “Edit Existing File” Path (CRITICAL)
+
+### Problem
+
+Agent tries to read file before editing, causing unnecessary steps and failures.
+
+### Required Behavior
+
+If:
+
+* A file was just created
+* AND user asks modification ("fix", "change", "update", "adjust")
+
+Then:
+→ DO NOT call file_reader
+→ DO NOT inspect file first
+
+Instead:
+→ directly regenerate using generate_and_save_file
+
+---
+
+## 3. Inject File Context into Next Turn
+
+### Problem
+
+Agent forgets what it created.
+
+### Required Fix
+
+After generate_and_save_file success:
+
+Inject into next prompt:
+
+FILES_WRITTEN:
+
+* solar_system.html
+
+LAST_ARTIFACT_CONTEXT:
+
+* type: HTML simulation
+* libraries: Three.js
+* contains: solar system, planets, orbit logic
+
+This must be visible to LLM in system or hidden context.
+
+---
+
+## 4. Add Regeneration Rule
+
+Add rule to system prompt:
+
+IF user asks to modify an existing generated file:
+→ Use generate_and_save_file again with improved description
+→ Overwrite same path
+→ Do NOT read file unless explicitly required
+
+---
+
+## 5. Improve Task Interpretation (Follow-up)
+
+Add heuristic:
+
+IF user message contains:
+["fix", "adjust", "improve", "change", "scale", "update"]
+
+AND previous artifact exists:
+→ treat as CONTINUATION of previous task
+
+NOT a new task
+
+---
+
+## 6. Prevent Early Loop Exit
+
+### Problem
+
+QueryLoop exits with `no_action` when tool call is malformed
+
+### Fix
+
+If:
+
+* model intent contains tool usage (detected via keywords or structure)
+* BUT parsing fails
+
+Then:
+→ trigger repair instead of ending loop
+
+---
+
+## 7. Optional: Lightweight Edit Mode (Recommended)
+
+Introduce internal flag:
+
+task_mode = "edit"
+
+Activated when:
+
+* follow-up request
+* existing file detected
+
+Behavior:
+
+* skip exploration
+* skip decomposition complexity
+* go directly to generation
+
+---
+
+## Expected Outcome
+
+After fix:
+
+User: "create solar system"
+→ file generated ✅
+
+User: "fix scale"
+→ system directly regenerates solar_system.html with corrected scale ✅
+
+NO:
+
+* file_reader call
+* malformed tool calls
+* loop termination errors
+
+---
+
+## Constraints
+
+* Do not change core architecture
+* Keep QueryLoop intact
+* Only modify:
+
+  * prompt constraints
+  * tool-call validation
+  * follow-up routing logic
+
+---
+
+Implement minimal, deterministic fixes. No heuristics that introduce randomness.

@@ -8,6 +8,7 @@ import type { MCPSkill, SkillResult } from '../types.js';
 const verifyStateSkill: MCPSkill = {
   name: 'verify_state',
   description: 'Verify that a file exists with expected content, a memory entry exists, or a bash command produces expected output.',
+  permissionLevel: 'workspace-write',
   inputSchema: {
     type: 'object',
     properties: {

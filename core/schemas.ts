@@ -63,7 +63,7 @@ export const TaskPlanSchema = z.object({
   steps: z.array(TaskStepSchema).min(1).max(8),
   goals: z.array(TaskGoalSchema).default([]),
   milestones: z.array(TaskMilestoneSchema).default([]),
-  complexity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'MAX']).default('LOW'),
+  complexity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'MAX', 'simple', 'complex']).default('LOW'),
   needsConfirmation: z.boolean().default(false),
   estimatedDuration: z.string().optional(),
 });
@@ -73,7 +73,7 @@ export type TaskPlan = {
   steps: TaskStep[];
   goals?: TaskGoal[];
   milestones?: TaskMilestone[];
-  complexity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'MAX';
+  complexity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'MAX' | 'simple' | 'complex';
   needsConfirmation?: boolean;
   estimatedDuration?: string;
   createdAt: string;
@@ -93,3 +93,39 @@ export const VerificationResultSchema = z.object({
 export type VerificationResult = z.infer<typeof VerificationResultSchema>;
 
 export const verificationJsonSchema = z.toJSONSchema(VerificationResultSchema) as Record<string, unknown>;
+
+// --- Milestone revision schema ---
+
+export const MilestoneRevisionSchema = z.object({
+  revised: z.boolean(),
+  milestones: z.array(z.object({
+    id: z.string(),
+    title: z.string(),
+    description: z.string(),
+    completionCriteria: z.string(),
+  })).optional(),
+  reason: z.string().optional(),
+  abort: z.boolean().optional(),
+});
+
+export type MilestoneRevision = z.infer<typeof MilestoneRevisionSchema>;
+
+// --- Post-flight synthesis schema ---
+
+export const PostFlightSchema = z.object({
+  verification: z.object({
+    verified: z.boolean(),
+    confidence: z.number().min(0).max(1),
+    issues: z.array(z.string()).default([]),
+    suggestion: z.string().optional(),
+  }),
+  summary: z.string().min(10),
+  reflection: z.object({
+    went_well: z.string(),
+    to_improve: z.string(),
+    learned: z.string(),
+  }),
+});
+
+export type PostFlightResult = z.infer<typeof PostFlightSchema>;
+export const postFlightJsonSchema = z.toJSONSchema(PostFlightSchema) as Record<string, unknown>;

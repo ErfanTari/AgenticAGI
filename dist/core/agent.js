@@ -4,7 +4,7 @@ import { buildContext } from './context.js';
 import { callLLM, stripThinkingTags } from './llm.js';
 import { getSkillsForIntent } from './skills/registry.js';
 import { decomposeMessage, isLikelyCompoundMessage } from './decomposition.js';
-import { routeDecomposedUnits } from './router.js';
+import { routeDecomposedUnits, executeConfirmedPlan } from './router.js';
 import { assessComplexity } from './planner.js';
 import { runQueryLoop } from './query-loop.js';
 import { searchMemoryForUnits } from './memory/unit-search.js';
@@ -144,6 +144,34 @@ Only include "relationships" if the user mentions a connection to an existing en
 Respond with ONLY the JSON object, no extra text.`;
 // FIX 1: Processing flag — heartbeat checks this to skip when agent is busy
 export let isProcessingMessage = false;
+// FIX 0: Plan confirmation state machine — prevents fake-execution hallucination
+let pendingConfirmationPlan = null;
+/** Exported for testing only. */
+export function _getPendingConfirmationPlan() {
+    return pendingConfirmationPlan;
+}
+/** Exported for testing only. */
+export function _setPendingConfirmationPlan(plan) {
+    pendingConfirmationPlan = plan;
+}
+export function isUserConfirmation(message) {
+    const normalized = message.toLowerCase().trim();
+    const confirmPatterns = [
+        /^(yes|yep|yeah|yup|sure|ok|okay|go|do it|proceed|confirm|confirmed|execute|run it|go ahead|let's go|let's do it|approved|approve)$/,
+        /\b(confirm|execute|proceed|go ahead|approved?)\b.*\b(plan|it)\b/,
+        /\b(yes|sure|ok)\b.*\b(execute|run|do|go)\b/,
+    ];
+    return confirmPatterns.some(p => p.test(normalized));
+}
+export function isUserRejection(message) {
+    const normalized = message.toLowerCase().trim();
+    const rejectPatterns = [
+        /^(no|nope|nah|cancel|stop|abort|don't|nevermind|never mind)$/,
+        /\b(cancel|abort|stop|don't)\b.*\b(plan|it)\b/,
+        /\b(no|nope)\b/,
+    ];
+    return rejectPatterns.some(p => p.test(normalized));
+}
 // FIX 1: Agent lifecycle
 export function startAgent() {
     startHeartbeat();
@@ -1012,6 +1040,44 @@ export async function processMessage(message, history, options) {
     recordActivity(); // Phase 16: track last activity for AutoDream idle detection
     let decomposition = null;
     try {
+        // === FIX 0: Plan Confirmation Intercept ===
+        // Must be the FIRST check — before intake, decomposition, or any routing.
+        // Prevents the "fake execution" hallucination where a confirmation message
+        // gets routed as conversational and the LLM fabricates plan completion.
+        if (pendingConfirmationPlan) {
+            const plan = pendingConfirmationPlan;
+            const handler = options?.llmHandler ?? callLLM;
+            if (isUserConfirmation(message)) {
+                pendingConfirmationPlan = null;
+                transparency.emit({ type: 'plan_confirmed', data: { goal: plan.goal } });
+                const result = await executeConfirmedPlan(plan, handler);
+                return {
+                    reply: result.reply,
+                    intent: 'planned_workflow',
+                    resolved: null,
+                };
+            }
+            else if (isUserRejection(message)) {
+                pendingConfirmationPlan = null;
+                transparency.emit({ type: 'plan_rejected', data: { goal: plan.goal } });
+                return {
+                    reply: 'Plan cancelled. What would you like me to do instead?',
+                    intent: 'general',
+                    resolved: null,
+                };
+            }
+            else {
+                // Ambiguous response — re-prompt without clearing the plan
+                transparency.emit({ type: 'plan_confirmation_ambiguous', data: { userMessage: message } });
+                const milestoneLines = (plan.milestones ?? []).map((m) => `- ${m.title}${m.description ? ': ' + m.description : ''}`);
+                return {
+                    reply: "I have a plan ready to execute. Please confirm with 'yes' or cancel with 'no'.\n\n" +
+                        milestoneLines.join('\n'),
+                    intent: 'general',
+                    resolved: null,
+                };
+            }
+        }
         const findingsPrefix = await buildFindingsPrefix();
         const handler = options?.llmHandler ?? callLLM;
         if (/^\/log\s+/i.test(message.trim())) {
@@ -1055,10 +1121,12 @@ export async function processMessage(message, history, options) {
         // FIX 4: Quick complexity pre-check for non-compound, clearly-agentic messages.
         // LOW/MEDIUM → skip intake+decomposition, go directly to queryLoop (saves ~15s).
         // HIGH/MAX   → fall through to full intake+decomposition pipeline.
-        // Excluded: greetings, memory entity ops, explicit skill patterns, memory query patterns.
+        // Excluded: greetings, questions, memory entity ops, explicit skill patterns, memory query patterns.
+        const startsWithQuestion = /^(what|who|when|where|how|why|which|is|are|can|does|do|tell\s+me\s+about|explain|describe|find|search|look|show|list|get|fetch|retrieve)\b/i.test(message.trim());
         if (!isLikelyCompoundMessage(message) &&
             !isCompoundEntityCreation(message) &&
             !GREETING_ONLY.test(message.trim()) &&
+            !startsWithQuestion &&
             buildSkillCompatibilityClassification(message) === null &&
             buildMemoryWriteCompatibilityClassification(message) === null &&
             buildQueryCompatibilityClassification(message) === null) {
@@ -1086,15 +1154,7 @@ export async function processMessage(message, history, options) {
             // Ensure memory agent is initialized (in case startAgent wasn't called)
             memoryAgent.init(db, handler);
             intakeResult = await runIntake(message, db, handler);
-            // Emit transparency event for intake signals
-            transparency.emit({
-                type: 'intake',
-                data: {
-                    summary: intakeResult.summary,
-                    signals: intakeResult.signals,
-                    resolvedCodes: intakeResult.resolvedContext.map(r => r.code),
-                },
-            });
+            // Intake event is emitted inside runIntake — no duplicate emit here.
         }
         catch {
             // Intake is advisory — never block processing
@@ -1120,8 +1180,13 @@ export async function processMessage(message, history, options) {
             }
         }
         // Phase 15 Conflict 1: pass intake resolved codes so searchUnit can serve from session cache
+        // Phase 18F FIX 4: also pass intake signals for project/person scoping in unit-search
         const alreadyResolvedCodes = intakeResult?.resolvedContext.map(e => e.code) ?? [];
-        const unitResults = await searchMemoryForUnits(decomposition.units, alreadyResolvedCodes.length > 0 ? alreadyResolvedCodes : undefined);
+        const unitResults = await searchMemoryForUnits(decomposition.units, alreadyResolvedCodes.length > 0 ? alreadyResolvedCodes : undefined, intakeResult ? {
+            projectSignal: intakeResult.signals.projectSignal,
+            personSignal: intakeResult.signals.personSignal,
+            timeSignal: intakeResult.signals.timeSignal,
+        } : undefined);
         // FIX E: Decomposed units are the source of truth for routing.
         // Legacy path allowed for: skill, memory_write (handled above), relationship_query, code_fetch, memory_query.
         // Removed: general-intent fallback for decomposed query units (those go through routeDecomposedUnits now).
@@ -1155,6 +1220,11 @@ export async function processMessage(message, history, options) {
             }
         }
         const routed = await routeDecomposedUnits(decomposition.units, unitResults, history, handler, workingMemory ?? undefined);
+        // FIX 0: If routing produced a plan that needs confirmation, store it and return the confirmation prompt
+        if (routed.plan?.needsConfirmation && !routed.execution) {
+            pendingConfirmationPlan = routed.plan;
+            transparency.emit({ type: 'plan_confirmation_pending', data: { goal: routed.plan.goal, stepCount: routed.plan.steps.length } });
+        }
         const agentReply = stripThinkingTags(routed.reply);
         return {
             reply: findingsPrefix + agentReply,

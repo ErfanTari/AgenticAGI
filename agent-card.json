@@ -33,7 +33,11 @@
       "relationship_write",
       "implement_and_test",
       "memory_history",
-      "verify_state"
+      "verify_state",
+      "generate_and_save_file",
+      "patch_file",
+      "grep_workspace",
+      "list_dir"
     ],
     "planning": {
       "max_steps": 8,

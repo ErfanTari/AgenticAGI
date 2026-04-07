@@ -17,6 +17,7 @@ function normalizeWorkspacePath(inputPath: string): string {
 export const fileWriter: MCPSkill = {
   name: 'file_writer',
   description: 'Write or edit a file in the workspace. Use when agent needs to create, save, or modify files as part of a task.',
+  permissionLevel: 'workspace-write',
 
   inputSchema: {
     type: 'object',
@@ -92,8 +93,21 @@ export const fileWriter: MCPSkill = {
         return {
           success: false,
           output: '',
-          error: 'Access denied: path outside workspace',
+          error: 'Access denied: path escapes workspace boundary',
         };
+      }
+
+      // Check parent directory for symlink escape (file may not exist yet)
+      const parentDir = path.dirname(resolved);
+      if (fs.existsSync(parentDir)) {
+        const realParent = fs.realpathSync(parentDir);
+        if (!realParent.startsWith(WORKSPACE_ROOT)) {
+          return {
+            success: false,
+            output: '',
+            error: 'Access denied: symlink escapes workspace boundary',
+          };
+        }
       }
 
       // Create parent directories if needed

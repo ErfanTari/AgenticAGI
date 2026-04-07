@@ -6,11 +6,12 @@ export interface DecomposedUnit {
     route: RouteKind;
     content: string;
     order: number;
+    taskType?: 'coding' | 'general';
 }
 export interface DecompositionResult {
     units: DecomposedUnit[];
 }
-export type UnitSearchStrategy = 'person' | 'project' | 'time' | 'procedure' | 'bm25' | 'vector_fallback';
+export type UnitSearchStrategy = 'person' | 'project' | 'time' | 'procedure' | 'type_scan' | 'bm25' | 'vector_fallback';
 export interface UnitMemoryResult {
     unitId: string;
     strategy: UnitSearchStrategy;

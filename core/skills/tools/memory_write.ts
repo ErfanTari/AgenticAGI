@@ -12,7 +12,7 @@ import { memoryAgent } from '../../memory/memory-agent.js';
 export const memoryWriteMCPSkill: MCPSkill = {
   name: 'memory_write',
   description: 'Create a new memory entry in the notebook system. Use for saving projects, contacts, todos, events, knowledge entries, procedures, and more.',
-
+  permissionLevel: 'workspace-write',
   inputSchema: {
     type: 'object',
     properties: {

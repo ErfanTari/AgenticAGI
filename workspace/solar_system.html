@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Solar System</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        let scene, camera, renderer, controls;
+        const planets = [];
+        const SUN_RADIUS = 695700; // km
+        const EARTH_RADIUS = 6371; // km
+        const AU = 149.6 * 10**6; // km
+
+        // Scaling factors
+        const SIZE_SCALE = 0.00005; // Scale for planet radii
+        const DISTANCE_SCALE = 0.0000005; // Scale for orbital distances
+        const ORBIT_SPEED_MULTIPLIER = 0.00001; // Adjust to make orbits visible
+
+        init();
+        animate();
+
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000); // Black background for space
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100000);
+            camera.position.set(0, 500 * DISTANCE_SCALE * AU, 1000 * DISTANCE_SCALE * AU); // Initial camera position
+            camera.lookAt(0, 0, 0);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setClearColor(0x000000); // Ensure black clear color
+            document.body.appendChild(renderer.domElement);
+
+            // OrbitControls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; // an animation loop is required when either damping or auto-rotation are enabled
+            controls.dampingFactor = 0.05;
+            controls.screenSpacePanning = false;
+            controls.maxDistance = 20000 * DISTANCE_SCALE * AU;
+            controls.minDistance = 10 * SIZE_SCALE * SUN_RADIUS;
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x333333); // Soft ambient light
+            scene.add(ambientLight);
+
+            const pointLight = new THREE.PointLight(0xffffff, 2, 0, 0); // Sun's light
+            pointLight.position.set(0, 0, 0);
+            scene.add(pointLight);
+
+            // Sun
+            const sunGeometry = new THREE.SphereGeometry(SUN_RADIUS * SIZE_SCALE, 32, 32);
+            const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xFDB813 }); // Yellow/orange for the sun
+            const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+            scene.add(sun);
+
+            // Planets data (radius in km, distance from Sun in AU, orbital period in Earth days)
+            const planetData = [
+                { name: 'Mercury', radius: 2440, distance: 0.39, period: 88, color: 0x888888 },
+                { name: 'Venus', radius: 6052, distance: 0.72, period: 225, color: 0xE6D8AD },
+                { name: 'Earth', radius: EARTH_RADIUS, distance: 1.0, period: 365, color: 0x0077BE },
+                { name: 'Mars', radius: 3390, distance: 1.52, period: 687, color: 0xC1440E },
+                { name: 'Jupiter', radius: 69911, distance: 5.2, period: 4333, color: 0xCC8844 },
+                { name: 'Saturn', radius: 58232, distance: 9.58, period: 10759, color: 0xDDC9A3 },
+                { name: 'Uranus', radius: 25362, distance: 19.22, period: 30687, color: 0xA7DBD8 },
+                { name: 'Neptune', radius: 24622, distance: 30.05, period: 60190, color: 0x3667E3 }
+            ];
+
+            planetData.forEach(data => {
+                const planetRadius = data.radius * SIZE_SCALE;
+                const planetDistance = data.distance * AU * DISTANCE_SCALE;
+
+                const planetGeometry = new THREE.SphereGeometry(planetRadius, 32, 32);
+                const planetMaterial = new THREE.MeshStandardMaterial({ color: data.color });
+                const planetMesh = new THREE.Mesh(planetGeometry, planetMaterial);
+
+                // Create an Object3D to act as the orbital parent
+                const planetOrbit = new THREE.Object3D();
+                planetOrbit.add(planetMesh);
+                scene.add(planetOrbit);
+
+                // Position the planet relative to its orbital parent
+                planetMesh.position.set(planetDistance, 0, 0);
+
+                planets.push({
+                    mesh: planetMesh,
+                    orbit: planetOrbit,
+                    distance: planetDistance,
+                    period: data.period // in Earth days
+                });
+
+                // Add Saturn's rings
+                if (data.name === 'Saturn') {
+                    const ringGeometry = new THREE.RingGeometry(planetRadius * 1.2, planetRadius * 2, 64);
+                    const ringMaterial = new THREE.MeshStandardMaterial({
+                        color: 0x887755,
+                        side: THREE.DoubleSide
+                    });
+                    const rings = new THREE.Mesh(ringGeometry, ringMaterial);
+                    rings.rotation.x = Math.PI / 2; // Rotate to be horizontal
+                    planetMesh.add(rings); // Add rings as a child of Saturn
+                }
+            });
+
+            // Starfield background
+            const starsGeometry = new THREE.BufferGeometry();
+            const starsMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5 });
+
+            const starVertices = [];
+            for (let i = 0; i < 10000; i++) {
+                const x = (Math.random() - 0.5) * 20000 * DISTANCE_SCALE * AU;
+                const y = (Math.random() - 0.5) * 20000 * DISTANCE_SCALE * AU;
+                const z = (Math.random() - 0.5) * 20000 * DISTANCE_SCALE * AU;
+                starVertices.push(x, y, z);
+            }
+            starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+            const stars = new THREE.Points(starsGeometry, starsMaterial);
+            scene.add(stars);
+
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = Date.now() * ORBIT_SPEED_MULTIPLIER;
+
+            planets.forEach(planet => {
+                // Calculate angle based on orbital period
+                // 1 Earth day = 1 unit of time for period calculation
+                // Angle = (time / period) * 2 * PI
+                const angle = (time / planet.period) * Math.PI * 2;
+                planet.orbit.rotation.y = angle;
+            });
+
+            controls.update(); // only required if controls.enableDamping or controls.autoRotate are set to true
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>

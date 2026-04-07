@@ -54,7 +54,7 @@ export function resolveTypeKey(nb: string, type: string): NotebookType | undefin
 
 function getTimeoutForModel(modelName: string): number {
   const lower = modelName.toLowerCase();
-  if (/72b|70b|80b|35b|32b|20b/.test(lower)) return 90000;
+  if (/72b|70b|80b|35b|32b|26b|20b/.test(lower)) return 90000;   // 26b added: Gemma 4 26B
   if (/7b|8b|13b|14b/.test(lower)) return 20000;
   if (/1b|2b|3b|4b/.test(lower)) return 10000;
   return 20000;
@@ -65,7 +65,7 @@ const _llmModel = process.env.LLM_MODEL ?? '';
 export const LLM_CONFIG = {
   endpoint: process.env.LLM_ENDPOINT ?? '',
   model: _llmModel,
-  maxTokens: 512,
+  maxTokens: 8000,
   temperature: 0.3,
   timeoutMs: getTimeoutForModel(_llmModel),
 };
@@ -90,6 +90,16 @@ export const LLM_FALLBACK_CONFIG = process.env.LLM_FALLBACK_PROVIDER
     }
   : null;
 
+// --- Anthropic cloud config (independent of fallback, selectable via UI) ---
+export const ANTHROPIC_CLOUD_CONFIG = process.env.ANTHROPIC_API_KEY
+  ? {
+      provider: 'anthropic' as const,
+      model: process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6',
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      endpoint: process.env.ANTHROPIC_ENDPOINT ?? 'https://api.anthropic.com/v1/messages',
+    }
+  : null;
+
 // --- Planner + Executor LLM configs ---
 const _plannerModel = process.env.PLANNER_MODEL || _llmModel;
 const _executorModel = process.env.EXECUTOR_MODEL || _llmModel;
@@ -97,7 +107,7 @@ const _executorModel = process.env.EXECUTOR_MODEL || _llmModel;
 export const PLANNER_CONFIG = {
   endpoint: process.env.LLM_ENDPOINT ?? '',
   model: _plannerModel,
-  maxTokens: 1024,
+  maxTokens: 8000,
   temperature: 0.2,
   timeoutMs: getTimeoutForModel(_plannerModel),
 };
@@ -105,10 +115,38 @@ export const PLANNER_CONFIG = {
 export const EXECUTOR_CONFIG = {
   endpoint: process.env.LLM_ENDPOINT ?? '',
   model: _executorModel,
-  maxTokens: 512,
+  maxTokens: 8000,
   temperature: 0.3,
   timeoutMs: getTimeoutForModel(_executorModel),
 };
+
+// --- Token Budgets (Phase 18) ---
+export const TOKEN_BUDGETS = {
+  // Structural LLM calls (JSON output required)
+  INTAKE:              800,
+  DECOMPOSITION:      2000,
+  PLANNER:            8192,
+  MILESTONE_REVISION: 2000,
+  POST_FLIGHT:        3000,
+  QUERY_LOOP_ITER:    4096,
+  QUERY_LOOP_NARRATE:  800,
+  VERIFICATION:       1500,
+
+  // Content generation (these are minimums — callers may request more)
+  CONTENT_WRITER_HTML:     16000,
+  CONTENT_WRITER_MARKDOWN:  8000,
+  CONTENT_WRITER_PLAIN:     6000,
+  CONTENT_WRITER_CODE:      8000,
+
+  // File generation (generate_and_save_file direct LLM call)
+  GENERATE_FILE_HTML:      16000,
+  GENERATE_FILE_MARKDOWN:   8000,
+  GENERATE_FILE_PLAIN:      6000,
+
+  // Memory and background ops
+  WORKING_MEMORY_SUMMARY:    800,
+  RELATIONSHIP_INFER:        600,
+} as const;
 
 // --- Embedding (Step 5 search only) ---
 export const EMBEDDING_CONFIG = process.env.EMBEDDING_ENDPOINT

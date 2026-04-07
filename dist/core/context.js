@@ -250,7 +250,17 @@ function formatSkills(skills) {
         return '';
     return 'Available capabilities: ' + skills.map(s => s.description).join('; ');
 }
-export async function buildContext(userMessage, resolved, history, skills, intent, skillOutput, llmHandler) {
+export async function buildContext(userMessage, resolved, history, skills, intent, skillOutput, llmHandler, contextMode) {
+    // Phase 18 — contextMode overrides token limits for coding tasks
+    const effectiveMaxTokens = contextMode === 'agentic_coding' ? 8000 : MAX_TOKENS;
+    const effectiveHardCeiling = contextMode === 'agentic_coding' ? 16000 : HARD_CEILING;
+    const effectiveCompactionThreshold = contextMode === 'agentic_coding' ? 5600 : Math.floor(MAX_TOKENS * 0.7);
+    if (contextMode === 'agentic_coding') {
+        transparency.emit({
+            type: 'context_mode_applied',
+            data: { mode: contextMode, softLimit: effectiveMaxTokens, hardCeiling: effectiveHardCeiling },
+        });
+    }
     const systemParts = [SYSTEM_PROMPT];
     // Inject owner persona from WHO.CT (cached, non-throwing)
     const persona = fetchOwnerPersona();
@@ -316,7 +326,8 @@ export async function buildContext(userMessage, resolved, history, skills, inten
     // Context compaction at 70% of token budget (P5)
     // Pinned messages (content starting with [PINNED]) are immune to compaction
     let tokens = estimateTokens(messages);
-    if (tokens > MAX_TOKENS * 0.7 && llmHandler && history.length > 4 && _compactionFailures < COMPACTION_MAX_FAILURES) {
+    let alreadyCompacted = false;
+    if (tokens > effectiveCompactionThreshold && llmHandler && history.length > 4 && _compactionFailures < COMPACTION_MAX_FAILURES) {
         // Compact non-pinned history
         const nonPinned = recentHistory.filter(m => !m.content.startsWith('[PINNED]'));
         const pinned = recentHistory.filter(m => m.content.startsWith('[PINNED]'));
@@ -345,6 +356,7 @@ export async function buildContext(userMessage, resolved, history, skills, inten
                 transparency.emit({ type: 'context_compacted', data: { before: tokens, after: afterTokens } });
                 tokens = afterTokens;
                 _compactionFailures = 0; // reset on success
+                alreadyCompacted = true;
             }
             catch (err) {
                 _compactionFailures++;
@@ -357,16 +369,56 @@ export async function buildContext(userMessage, resolved, history, skills, inten
             }
         }
     }
+    // Auto-compact token threshold trigger (100K)
+    const AUTO_COMPACT_THRESHOLD = 100_000;
+    if (tokens > AUTO_COMPACT_THRESHOLD && llmHandler && _compactionFailures < COMPACTION_MAX_FAILURES && !alreadyCompacted) {
+        const nonPinned = recentHistory.filter(m => !m.content.startsWith('[PINNED]'));
+        const pinned = recentHistory.filter(m => m.content.startsWith('[PINNED]'));
+        if (nonPinned.length > 2) {
+            try {
+                const summaryPrompt = [
+                    {
+                        role: 'system',
+                        content: 'Summarize this conversation history in 2-3 sentences. Keep key facts and decisions.',
+                    },
+                    {
+                        role: 'user',
+                        content: nonPinned.map(m => `${m.role}: ${m.content}`).join('\n\n'),
+                    },
+                ];
+                const compactedSummary = await llmHandler(summaryPrompt, { maxTokens: 150 });
+                const compactedContent = messages[0].content + '\n\n## Compacted History\n' + compactedSummary.trim();
+                messages[0] = { role: 'system', content: compactedContent };
+                recentHistory = [...pinned];
+                messages.length = 1;
+                messages[0] = { role: 'system', content: compactedContent };
+                messages.push(...recentHistory);
+                messages.push({ role: 'user', content: userMessage });
+                tokens = estimateTokens(messages);
+                transparency.emit({ type: 'context_compacted', data: { before: AUTO_COMPACT_THRESHOLD, after: tokens } });
+                _compactionFailures = 0; // reset on success
+            }
+            catch (err) {
+                _compactionFailures++;
+                if (_compactionFailures >= COMPACTION_MAX_FAILURES) {
+                    console.warn(`[context] Compaction circuit open after ${_compactionFailures} consecutive failures — skipping compaction`);
+                }
+                else {
+                    console.warn(`[context] Auto-compaction failed (${_compactionFailures}/${COMPACTION_MAX_FAILURES}):`, err);
+                }
+            }
+        }
+    }
     // Token ceiling guard (BUG 5)
     tokens = estimateTokens(messages);
     // Warn if context exceeds 80% of budget
-    if (tokens > WARNING_THRESHOLD && tokens <= MAX_TOKENS) {
-        console.warn(`[context] Context at ${tokens}/${MAX_TOKENS} tokens (${Math.round(tokens / MAX_TOKENS * 100)}%) — approaching limit`);
+    if (tokens > WARNING_THRESHOLD && tokens <= effectiveMaxTokens) {
+        console.warn(`[context] Context at ${tokens}/${effectiveMaxTokens} tokens (${Math.round(tokens / effectiveMaxTokens * 100)}%) — approaching limit`);
     }
-    if (tokens > MAX_TOKENS) {
+    if (tokens > effectiveMaxTokens) {
         // Step 1: Token-budget-aware history trim (keep as many turns as fit in budget)
         messages.length = 1; // keep system prompt
-        const historyBudget = Math.floor(MAX_TOKENS * 0.4);
+        const historyBudget = Math.floor(effectiveMaxTokens * 0.4);
         const tokenTrimmed = trimHistoryToTokenBudget(history, historyBudget);
         // Fallback to 3-turn limit if trimmer returns nothing
         recentHistory = tokenTrimmed.length > 0 ? tokenTrimmed : history.slice(-6);
@@ -374,7 +426,7 @@ export async function buildContext(userMessage, resolved, history, skills, inten
         messages.push({ role: 'user', content: userMessage });
         tokens = estimateTokens(messages);
     }
-    if (tokens > MAX_TOKENS) {
+    if (tokens > effectiveMaxTokens) {
         // Step 2: Trim memory to summaries only, truncate large skill output
         const summaryResolved = formatResolved(resolved, true);
         const trimParts = [SYSTEM_PROMPT, summaryResolved, formatSkills(skills)];
@@ -390,13 +442,13 @@ export async function buildContext(userMessage, resolved, history, skills, inten
         messages[0] = { role: 'system', content: trimmedSystem };
         tokens = estimateTokens(messages);
     }
-    if (tokens > MAX_TOKENS) {
+    if (tokens > effectiveMaxTokens) {
         // Step 3: Drop all history, keep only system + user message
         messages.length = 1; // keep only system
         messages.push({ role: 'user', content: userMessage });
         tokens = estimateTokens(messages);
     }
-    if (tokens > HARD_CEILING) {
+    if (tokens > effectiveHardCeiling) {
         // Final: Truncate user input to fit under ceiling
         const lastIdx = messages.length - 1;
         const userContent = messages[lastIdx].content;

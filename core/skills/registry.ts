@@ -1,5 +1,6 @@
 import type { Intent } from '../types.js';
-import type { Skill, MCPSkill } from './types.js';
+import type { Skill, MCPSkill, PermissionLevel } from './types.js';
+import { LEVEL_RANK } from '../permission.js';
 import { memoryReadSkill } from './memory_read.js';
 import { memoryWriteSkill } from './memory_write.js';
 
@@ -18,13 +19,36 @@ import { relationshipWriteSkill } from './tools/relationship_write.js';
 import { implementAndTestSkill } from './tools/implement_and_test.js';
 import memoryHistorySkill from './tools/memory_history.js';
 import verifyStateSkill from './tools/verify_state.js';
+import generateAndSaveFileSkill from './tools/generate_and_save_file.js';
+import patchFileSkill from './tools/patch_file.js';
+import grepWorkspaceSkill from './tools/grep_workspace.js';
+import listDirSkill from './tools/list_dir.js';
 
 // --- MCP Skill Registry (Map-based) ---
 
 const registry = new Map<string, MCPSkill>();
+let _frozen = false;
 
 export function registerSkill(skill: MCPSkill): void {
+  if (_frozen) {
+    console.warn(`[registry] Attempted to register '${skill.name}' after registry was frozen. Ignored.`);
+    return;
+  }
   registry.set(skill.name, skill);
+}
+
+function freezeRegistry(): void {
+  _frozen = true;
+}
+
+export function _resetRegistry(): void {
+  registry.clear();
+  _frozen = false;
+}
+
+// Lift the freeze without clearing built-in skills — for tests that only need to add a test skill
+export function _unfreezeRegistry(): void {
+  _frozen = false;
 }
 
 export function getSkill(name: string): MCPSkill | undefined {
@@ -35,10 +59,74 @@ export function getAllSkills(): MCPSkill[] {
   return [...registry.values()];
 }
 
+function placeholderValue(property: { type: string; enum?: string[] }): string | number | boolean | [] | Record<string, never> {
+  if (property.enum && property.enum.length > 0) {
+    return property.enum[0];
+  }
+
+  switch (property.type) {
+    case 'number':
+    case 'integer':
+      return 1;
+    case 'boolean':
+      return true;
+    case 'array':
+      return [];
+    case 'object':
+      return {};
+    case 'string':
+    default:
+      return '<string>';
+  }
+}
+
+function buildSkillSchemaExample(skill: MCPSkill): string {
+  const entries = Object.entries(skill.inputSchema.properties);
+  const required = new Set(skill.inputSchema.required);
+  const exampleEntries = entries.filter(([name]) => required.has(name));
+  const source = exampleEntries.length > 0 ? exampleEntries : entries.slice(0, 2);
+
+  const input = Object.fromEntries(
+    source.map(([name, property]) => [name, placeholderValue(property)]),
+  );
+
+  return JSON.stringify({ action: skill.name, input });
+}
+
 export function getSkillDescriptions(): string {
-  return getAllSkills()
-    .map(s => `${s.name}: ${s.description}`)
-    .join('\n');
+  return formatSkillList(getAllSkills());
+}
+
+export function getSkillsByPermission(mode: PermissionLevel): MCPSkill[] {
+  const allowed: MCPSkill[] = [];
+  for (const skill of registry.values()) {
+    if (LEVEL_RANK[skill.permissionLevel] <= LEVEL_RANK[mode]) {
+      allowed.push(skill);
+    }
+  }
+  return allowed;
+}
+
+export function getSkillDescriptionsForPermission(mode: PermissionLevel): string {
+  return formatSkillList(getSkillsByPermission(mode));
+}
+
+function formatSkillList(skills: MCPSkill[]): string {
+  return skills
+    .map(skill => {
+      const optionalFields = Object.keys(skill.inputSchema.properties)
+        .filter(name => !skill.inputSchema.required.includes(name));
+      const optionalLine = optionalFields.length > 0
+        ? `\nOptional fields: ${optionalFields.join(', ')}`
+        : '';
+
+      return [
+        `${skill.name}: ${skill.description}`,
+        `Schema: ${buildSkillSchemaExample(skill)}`,
+        optionalLine.trim(),
+      ].filter(Boolean).join('\n');
+    })
+    .join('\n\n');
 }
 
 // Register built-in skills once, after all imports resolved
@@ -56,6 +144,13 @@ registerSkill(relationshipWriteSkill);
 registerSkill(implementAndTestSkill);
 registerSkill(memoryHistorySkill);
 registerSkill(verifyStateSkill);
+registerSkill(generateAndSaveFileSkill);
+registerSkill(patchFileSkill);
+registerSkill(grepWorkspaceSkill);
+registerSkill(listDirSkill);
+
+// Freeze the registry after all built-in skills are registered
+freezeRegistry();
 
 // --- Legacy skill loading (used by context builder) ---
 

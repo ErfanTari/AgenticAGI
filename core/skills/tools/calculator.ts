@@ -4,6 +4,7 @@ import type { MCPSkill, SkillResult } from '../types.js';
 const calculatorSkill: MCPSkill = {
   name: 'calculator',
   description: 'Calculate mathematical expressions. Use for any arithmetic, percentages, conversions.',
+  permissionLevel: 'read-only',
   inputSchema: {
     type: 'object',
     properties: {

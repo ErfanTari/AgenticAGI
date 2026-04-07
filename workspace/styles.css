@@ -1,0 +1,116 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: #000;
+    color: #fff;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+canvas {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1; /* Canvas should be behind info text but above loading screen */
+}
+
+.info {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    color: #fff;
+    font-size: 14px;
+    text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+    z-index: 2; /* Info text should be on top */
+    pointer-events: none; /* Allow interaction with canvas underneath */
+    line-height: 1.6;
+    background-color: rgba(0, 0, 0, 0.3);
+    padding: 8px 12px;
+    border-radius: 5px;
+    max-width: 250px;
+    opacity: 0.9;
+}
+
+.info.bottom-right {
+    top: auto;
+    bottom: 10px;
+    left: auto;
+    right: 10px;
+    text-align: right;
+}
+
+.info h3 {
+    font-size: 16px;
+    margin-bottom: 5px;
+    color: #88ccff;
+}
+
+.info p {
+    margin-bottom: 3px;
+}
+
+.info p:last-child {
+    margin-bottom: 0;
+}
+
+.info .key {
+    display: inline-block;
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 12px;
+    margin: 0 2px;
+    color: #eee;
+}
+
+.loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.95);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: #fff;
+    font-size: 24px;
+    z-index: 1000; /* Loading screen should be on top of everything */
+    transition: opacity 1s ease-out, visibility 1s ease-out;
+}
+
+.loading-screen.hidden {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.loading-text {
+    margin-bottom: 20px;
+    font-size: 1.2em;
+    color: #aaa;
+}
+
+.loader {
+    border: 8px solid #333;
+    border-top: 8px solid #88ccff; /* Blue color for the spinner */
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

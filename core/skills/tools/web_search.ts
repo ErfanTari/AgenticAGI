@@ -33,6 +33,7 @@ function buildOfflineFallback(query: string): SkillResult {
 const webSearchSkill: MCPSkill = {
   name: 'web_search',
   description: 'Search the web. Use when user asks to search, find online, look up current information.',
+  permissionLevel: 'read-only',
   inputSchema: {
     type: 'object',
     properties: {

@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { runWithRetry, repairSkillInput } from '../../core/react.js';
-import { registerSkill } from '../../core/skills/registry.js';
+import { registerSkill, _unfreezeRegistry } from '../../core/skills/registry.js';
 import { processMessage } from '../../core/agent.js';
 import type { MCPSkill } from '../../core/skills/types.js';
 import type { Message, LLMHandler } from '../../core/types.js';
@@ -47,6 +47,7 @@ function createFlakeySkill(name: string, failCount: number): MCPSkill {
   return {
     name,
     description: `Fails ${failCount} times then succeeds`,
+    permissionLevel: 'read-only',
     inputSchema: {
       type: 'object',
       properties: { value: { type: 'string', description: 'input value' } },
@@ -79,6 +80,7 @@ const noopLLM: LLMHandler = async () => 'no-op response';
 
 describe('ReAct self-correction loop', () => {
   it('P1A: skill fails once, repair fixes input, succeeds on retry', async () => {
+    _unfreezeRegistry();
     const skill = createFlakeySkill('flakey_once', 1);
     registerSkill(skill);
 
@@ -92,6 +94,7 @@ describe('ReAct self-correction loop', () => {
   // --- P1B: Skill fails 3 times, returns final error (no infinite loop) ---
 
   it('P1B: skill fails max retries, returns final error', async () => {
+    _unfreezeRegistry();
     const skill = createFlakeySkill('flakey_always', 100); // never succeeds
     registerSkill(skill);
 
@@ -105,9 +108,11 @@ describe('ReAct self-correction loop', () => {
   // --- P1C: Successful skill on first try — zero retries ---
 
   it('P1C: successful skill on first try has zero retries', async () => {
+    _unfreezeRegistry();
     const skill: MCPSkill = {
       name: 'instant_success',
       description: 'Always succeeds',
+      permissionLevel: 'read-only',
       inputSchema: {
         type: 'object',
         properties: { value: { type: 'string', description: 'input value' } },
@@ -195,6 +200,7 @@ describe('ReAct self-correction loop', () => {
     const alwaysOkSkill: MCPSkill = {
       name: 'retries_check_skill',
       description: 'Always succeeds for retries check',
+      permissionLevel: 'read-only',
       inputSchema: {
         type: 'object',
         properties: { expression: { type: 'string', description: 'math expression' } },

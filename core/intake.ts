@@ -9,12 +9,19 @@ import type { IndexEntry } from './memory/types.js';
 import type Database from 'better-sqlite3';
 import { sessionCache } from './memory/session-cache.js';
 import { transparency } from './transparency.js';
+import { extractFirstJsonObject } from './structured.js';
+import { stripThinkingTags } from './llm.js';
+import { promptLoader } from './prompt-loader.js';
+import { TOKEN_BUDGETS } from '../config/agent.config.js';
 
 export interface IntakeSignals {
   summary: string;
-  personSignal: { name: string; confidence: number } | null;
-  projectSignal: { name: string; confidence: number } | null;
-  timeSignal: { description: string } | null;
+  /** Name string when confidence > 0.7, otherwise null */
+  personSignal: string | null;
+  /** Name string when confidence > 0.7, otherwise null */
+  projectSignal: string | null;
+  /** Description string, otherwise null */
+  timeSignal: string | null;
   agenticSignal: boolean;
   procedureSignal: boolean;
   querySignal: boolean;
@@ -34,29 +41,10 @@ export interface IntakeResult {
   projectCode: string | null;
 }
 
-const INTAKE_SYSTEM_PROMPT = `You are a message intake classifier. Analyze the message and return ONLY a JSON object.
-
-Return this structure:
-{
-  "summary": "one-sentence summary of what the message is about",
-  "person": { "name": "person name if mentioned or implied", "confidence": 0.0-1.0 } or null,
-  "project": { "name": "project name if referenced", "confidence": 0.0-1.0 } or null,
-  "time": { "description": "time component description" } or null,
-  "agentic": true/false,
-  "procedure": true/false,
-  "query": true/false
+// Loaded at call time from prompts/intake.md via promptLoader
+function getIntakeSystemPrompt(): string {
+  return promptLoader.load('intake');
 }
-
-Questions to answer:
-1. One-sentence summary: what is this message about?
-2. Is a specific person mentioned or implied? (confidence > 0.7 means clearly identified)
-3. Is a specific project referenced (by name or pronoun)? (confidence > 0.7 means clearly identified)
-4. Is there a time component (deadline, date, scheduling)?
-5. Is there an action requested that requires planning? (agentic = true)
-6. Is there a procedure or method being described? (procedure = true)
-7. Is this asking about something already in memory? (query = true)
-
-Return ONLY the JSON object, no extra text.`;
 
 function parseIntakeResponse(response: string): {
   summary: string;
@@ -68,10 +56,15 @@ function parseIntakeResponse(response: string): {
   query: boolean;
 } | null {
   try {
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    return JSON.parse(jsonMatch[0]);
-  } catch {
+    const clean = stripThinkingTags(response);
+    const block = extractFirstJsonObject(clean);
+    if (!block) {
+      console.warn(`[zaraban][intake] No JSON object found in response. Length: ${response.length}`);
+      return null;
+    }
+    return JSON.parse(block);
+  } catch (err) {
+    console.warn(`[zaraban][intake] JSON parse error:`, err);
     return null;
   }
 }
@@ -104,27 +97,40 @@ export async function runIntake(
 ): Promise<IntakeResult> {
   // Call LLM for classification
   const classifyMessages: Message[] = [
-    { role: 'system', content: INTAKE_SYSTEM_PROMPT },
+    { role: 'system', content: getIntakeSystemPrompt() },
     { role: 'user', content: message },
   ];
 
   let parsed: ReturnType<typeof parseIntakeResponse> = null;
   try {
-    const response = await llm(classifyMessages, { maxTokens: 256, temperature: 0 });
+    const response = await llm(classifyMessages, { maxTokens: TOKEN_BUDGETS.INTAKE, temperature: 0 });
     parsed = parseIntakeResponse(response);
+    if (!parsed) {
+      console.warn(`[zaraban][intake] Schema validation failed. Raw length: ${response.length}. Falling back.`);
+    }
   } catch {
     // LLM call failed — use empty signals
   }
 
   const signals: IntakeSignals = {
     summary: parsed?.summary ?? message.slice(0, 100),
-    personSignal: parsed?.person ?? null,
-    projectSignal: parsed?.project ?? null,
-    timeSignal: parsed?.time ?? null,
-    agenticSignal: parsed?.agentic ?? false,
-    procedureSignal: parsed?.procedure ?? false,
-    querySignal: parsed?.query ?? false,
+    personSignal: (parsed?.person?.confidence ?? 0) > 0.7 ? (parsed!.person!.name) : null,
+    projectSignal: (parsed?.project?.confidence ?? 0) > 0.7 ? (parsed!.project!.name) : null,
+    timeSignal: parsed?.time?.description ?? null,
+    agenticSignal: parsed?.agentic === true,
+    procedureSignal: parsed?.procedure === true,
+    querySignal: parsed?.query === true,
   };
+
+  transparency.emit({
+    type: 'intake_signals',
+    data: {
+      personSignal: signals.personSignal,
+      projectSignal: signals.projectSignal,
+      querySignal: signals.querySignal,
+      agenticSignal: signals.agenticSignal,
+    },
+  });
 
   // Parallel memory lookups based on signals
   const resolvedContext: ResolvedEntry[] = [];
@@ -133,10 +139,10 @@ export async function runIntake(
   const lookups: Array<Promise<void>> = [];
 
   // Person lookup
-  if (signals.personSignal && signals.personSignal.confidence > 0.7) {
+  if (signals.personSignal) {
     lookups.push((async () => {
       try {
-        const entries = fuzzyNameSearch(db, signals.personSignal!.name, 'WHO');
+        const entries = fuzzyNameSearch(db, signals.personSignal!, 'WHO');
         for (const entry of entries) {
           if (!resolvedContext.some(r => r.code === entry.code)) {
             resolvedContext.push({
@@ -152,11 +158,11 @@ export async function runIntake(
   }
 
   // Project lookup
-  if (signals.projectSignal && signals.projectSignal.confidence > 0.7) {
+  if (signals.projectSignal) {
     lookups.push((async () => {
       try {
         // Search WHAT.PJ
-        const whatEntries = fuzzyNameSearch(db, signals.projectSignal!.name, 'WHAT', 'PJ');
+        const whatEntries = fuzzyNameSearch(db, signals.projectSignal!, 'WHAT', 'PJ');
         for (const entry of whatEntries) {
           if (!resolvedContext.some(r => r.code === entry.code)) {
             resolvedContext.push({
@@ -170,7 +176,7 @@ export async function runIntake(
         }
 
         // Search PLAN.PJ (project brains)
-        const planEntries = fuzzyNameSearch(db, signals.projectSignal!.name, 'PLAN', 'PJ');
+        const planEntries = fuzzyNameSearch(db, signals.projectSignal!, 'PLAN', 'PJ');
         for (const entry of planEntries) {
           if (!resolvedContext.some(r => r.code === entry.code)) {
             resolvedContext.push({

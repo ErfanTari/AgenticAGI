@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   buildContext: vi.fn(),
   decomposeTask: vi.fn(),
-  assessComplexity: vi.fn(),
   executePlan: vi.fn(),
   verifyExecution: vi.fn(),
+  runPostFlightSynthesis: vi.fn(),
   buildUserReport: vi.fn(),
   hybridSearch: vi.fn(),
   queryEntries: vi.fn(),
@@ -24,12 +24,13 @@ vi.mock('../../core/context.js', () => ({
 
 vi.mock('../../core/planner.js', () => ({
   decomposeTask: mocks.decomposeTask,
-  assessComplexity: mocks.assessComplexity,
+  resolveTemplates: vi.fn((input: Record<string, unknown>) => input),
 }));
 
 vi.mock('../../core/executor.js', () => ({
   executePlan: mocks.executePlan,
   verifyExecution: mocks.verifyExecution,
+  runPostFlightSynthesis: mocks.runPostFlightSynthesis,
   buildUserReport: mocks.buildUserReport,
 }));
 
@@ -52,6 +53,13 @@ vi.mock('../../core/memory/relationships.js', () => ({
 
 vi.mock('../../core/skills/registry.js', () => ({
   getSkillDescriptions: mocks.getSkillDescriptions,
+  getSkillDescriptionsForPermission: mocks.getSkillDescriptions,
+  getSkillsByPermission: vi.fn(() => []),
+  getAllSkills: vi.fn(() => []),
+}));
+
+vi.mock('../../core/permission.js', () => ({
+  getActivePermissionMode: vi.fn(() => 'workspace-write'),
 }));
 
 vi.mock('../../core/skills/runner.js', () => ({
@@ -68,8 +76,7 @@ describe('Phase 13: route dispatcher', () => {
       { role: 'user', content: 'context user' },
     ]);
     mocks.getSkillDescriptions.mockReturnValue('file_writer: write files');
-    // Phase 16: always return HIGH so tests use the existing decomposeTask+executePlan path
-    mocks.assessComplexity.mockResolvedValue({ level: 'HIGH', reason: 'test', estimatedSteps: 4 });
+    // Route to the full executor path: plan self-assesses as HIGH (complex)
     mocks.decomposeTask.mockResolvedValue({
       goal: 'Build app',
       steps: [{ id: 'step1', description: 'Write file', skill: 'file_writer', input: { path: 'app.ts' }, dependsOn: [] }],
@@ -82,7 +89,7 @@ describe('Phase 13: route dispatcher', () => {
         completionCriteria: 'File written',
         steps: [{ id: 'step1', description: 'Write file', skill: 'file_writer', input: { path: 'app.ts' }, dependsOn: [] }],
       }],
-      complexity: 'LOW',
+      complexity: 'HIGH',
       needsConfirmation: false,
       estimatedDuration: '1m',
       createdAt: '2026-03-06T00:00:00.000Z',
@@ -102,6 +109,11 @@ describe('Phase 13: route dispatcher', () => {
       linkedCodes: [],
     });
     mocks.verifyExecution.mockResolvedValue({ verified: true, confidence: 0.9, issues: [] });
+    mocks.runPostFlightSynthesis.mockResolvedValue({
+      verification: { verified: true, confidence: 0.9, issues: [] },
+      summary: 'Done.',
+      reflection: { went_well: 'good', to_improve: '', learned: '' },
+    });
     mocks.buildUserReport.mockReturnValue('agentic reply');
     mocks.hybridSearch.mockResolvedValue([]);
     mocks.queryEntries.mockReturnValue([]);

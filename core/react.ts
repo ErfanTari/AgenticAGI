@@ -2,6 +2,25 @@ import type { LLMHandler, Message } from './types.js';
 import type { SkillResult } from './skills/types.js';
 import { runSkill } from './skills/runner.js';
 
+function isRepairableSkillInputError(error: string): boolean {
+  const normalized = error.trim();
+  if (!normalized) return false;
+
+  return (
+    /^Invalid input:/i.test(normalized) ||
+    /\binvalid value\b/i.test(normalized) ||
+    /\bmissing (required )?(field|parameter|property)\b/i.test(normalized) ||
+    /\bmust be (a|an|valid)\b/i.test(normalized) ||
+    /\bmalformed json\b/i.test(normalized) ||
+    /\bjson (parse|syntax)\b/i.test(normalized) ||
+    /\bunexpected token\b/i.test(normalized) ||
+    /\bschema validation\b/i.test(normalized) ||
+    /\bzod\b/i.test(normalized) ||
+    /\binvalid notebook\+type\b/i.test(normalized) ||
+    /\bnotebook .* does not support type\b/i.test(normalized)
+  );
+}
+
 /**
  * Repair prompt builder: asks the LLM to fix a failed skill input.
  */
@@ -34,7 +53,7 @@ export async function repairSkillInput(
 ): Promise<Record<string, unknown>> {
   try {
     const messages = buildRepairMessages(skillName, input, error);
-    const response = await handler(messages, { maxTokens: 200 });
+    const response = await handler(messages, { maxTokens: 2048 });
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return input;
     const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
@@ -67,6 +86,13 @@ export async function runWithRetry(
     // Match only the registry-miss format: "Skill 'X' not found" (not filesystem errors like "File not found").
     const errorMsg = result.error ?? '';
     if (/^Skill\s+'.+'\s+not found$/i.test(errorMsg)) {
+      return { ...result, retries: attempt };
+    }
+
+    // Only input/schema/JSON-shape failures are eligible for JSON repair.
+    // Execution/output/runtime failures must return to the main agent so it can
+    // retry the skill intentionally or choose a different action.
+    if (!isRepairableSkillInputError(errorMsg)) {
       return { ...result, retries: attempt };
     }
 

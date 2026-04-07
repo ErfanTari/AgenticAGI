@@ -67,7 +67,7 @@ function resolveEntity(nameOrCode: string): string | null {
 export const relationshipWriteSkill: MCPSkill = {
   name: 'relationship_write',
   description: 'Create a relationship between two memory entries. Accepts entry codes (e.g. WHO.CT-000001) or entry names. Prefer codes from storeResultAs over raw names.',
-
+  permissionLevel: 'workspace-write',
   inputSchema: {
     type: 'object',
     properties: {

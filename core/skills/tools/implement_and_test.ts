@@ -438,7 +438,7 @@ Return the full corrected contents for both files.`,
 export const implementAndTestSkill: MCPSkill = {
   name: 'implement_and_test',
   description: 'Write or reuse code, run tests, repair implementation or tests, retry until passing or max attempts. Use for coding task loops: write/check -> run -> verify -> fix. Returns final working code + test output. Automatically writes HOW.PR entry on success.',
-
+  permissionLevel: 'full-access',
   inputSchema: {
     type: 'object',
     properties: {

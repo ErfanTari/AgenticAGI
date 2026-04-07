@@ -54,6 +54,7 @@ function createPersianPoetryLLM(): LLMHandler {
       const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>PersianPoetry</title></head><body><main><h1>PersianPoetry</h1><p>Hafiz poems with Persian and English translations side by side.</p><article><h2>Sample Poem</h2><p>Persian: الا يا ايها الساقي</p><p>English: O cupbearer, bring the wine.</p></article></main></body></html>';
       return JSON.stringify({
         goal: 'Create the PersianPoetry starter project and prototype',
+        complexity: 'HIGH',
         steps: [
           {
             id: 'step1',

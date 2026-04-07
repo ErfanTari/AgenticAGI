@@ -322,6 +322,11 @@ export function initDatabase(dbPath) {
     db.prepare("INSERT OR IGNORE INTO counters (type, current) VALUES ('embedding_model_hash', 0)").run();
     // Phase 10: Run embedding migration check async — never blocks init
     import('./search.js').then(s => s.checkEmbeddingMigration().catch(() => { })).catch(() => { });
+    // Phase 18G FIX 5: Migrate existing NOW.LOG entries from status='active' to 'logged'
+    try {
+        db.prepare("UPDATE index_entries SET status = 'logged' WHERE nb = 'NOW' AND type = 'LOG' AND status = 'active'").run();
+    }
+    catch { /* migration is best-effort */ }
     return db;
 }
 export function getDb() {

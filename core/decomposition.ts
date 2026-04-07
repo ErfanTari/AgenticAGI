@@ -2,8 +2,19 @@ import { applyRepairPasses, extractFirstJsonObject } from './structured.js';
 import { transparency } from './transparency.js';
 import type { DecompositionResult, DecomposedUnit, LLMHandler, Message, RouteKind } from './types.js';
 import type { ResolvedEntry } from './intake.js';
+import { promptLoader } from './prompt-loader.js';
+import { TOKEN_BUDGETS } from '../config/agent.config.js';
+import { localDateString } from './utils/date.js';
+import { stripThinkingTags } from './llm.js';
 
 const ROUTES: RouteKind[] = ['conversational', 'agentic', 'query'];
+
+// Session-scoped counter — tracks how many times the heuristic repair path fires.
+// Exported for test isolation.
+let _decompositionRepairCount = 0;
+export function _resetDecompositionCounter(): void {
+  _decompositionRepairCount = 0;
+}
 
 const DECOMPOSITION_RESPONSE_SCHEMA = {
   name: 'decomposition',
@@ -21,6 +32,7 @@ const DECOMPOSITION_RESPONSE_SCHEMA = {
           properties: {
             route: { type: 'string', enum: ROUTES },
             content: { type: 'string' },
+            taskType: { type: 'string', enum: ['coding', 'general'] },
           },
         },
       },
@@ -58,11 +70,17 @@ const AGENTIC_PATTERNS = [
 
 const GREETING_ONLY = /^\s*(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy|greetings)\s*[!.?]*\s*$/i;
 
-function stripThinking(raw: string): string {
-  return raw
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-    .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
-    .trim();
+// Use the full stripThinkingTags from llm.ts which covers Gemma 4's
+// <|channel>thought...  tags in addition to <think> and <thought>.
+const stripThinking = (raw: string): string => stripThinkingTags(raw);
+
+/**
+ * Sanitize assistant responses before storing in conversation history.
+ * CRITICAL: Gemma 4 documents that thinking content MUST NOT be stored in
+ * conversation history — doing so causes KV cache eviction cascades.
+ */
+export function sanitizeForHistory(content: string): string {
+  return stripThinkingTags(content);
 }
 
 function validateRoute(value: unknown): value is RouteKind {
@@ -73,6 +91,48 @@ function validateUnits(value: unknown): DecomposedUnit[] {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
   const units = (value as { units?: unknown }).units;
   if (!Array.isArray(units)) return [];
+
+  // FIX 5: Normalize stringified units — Qwen sometimes emits {"units": ["{\"route\":...}"]}
+  // Also filter bare primitives (numbers, booleans) which are garbage output.
+  let stringifiedCount = 0;
+  let filteredCount = 0;
+  for (let i = 0; i < units.length; i++) {
+    if (typeof units[i] === 'number' || typeof units[i] === 'boolean') {
+      units[i] = null;
+      filteredCount++;
+    } else if (typeof units[i] === 'string') {
+      try { units[i] = JSON.parse(units[i] as string); stringifiedCount++; } catch { units[i] = null; filteredCount++; }
+    }
+  }
+  if (filteredCount > 0) {
+    console.debug(`[decomposition] filtered ${filteredCount} bare primitive(s)`);
+  }
+  if (stringifiedCount > 0) {
+    console.debug(`[decomposition] normalized ${stringifiedCount} stringified unit(s)`);
+  }
+
+  // Gemma 4 flat-key reconstruction:
+  // Gemma 4 small sometimes emits {"units": ["route", "agentic", "content", "do the thing"]}
+  // — key-value pairs flattened into adjacent string elements instead of objects.
+  // Attempt to reconstruct objects before discarding.
+  const allStrings = units.length >= 4 && units.every(u => typeof u === 'string' || u === null);
+  if (allStrings) {
+    const reconstructed: Array<{ route: string; content: string }> = [];
+    for (let i = 0; i + 3 < units.length; i += 4) {
+      const k1 = units[i] as string;
+      const v1 = units[i + 1] as string;
+      const k2 = units[i + 2] as string;
+      const v2 = units[i + 3] as string;
+      if (k1 === 'route' && k2 === 'content' && ROUTES.includes(v1 as RouteKind)) {
+        reconstructed.push({ route: v1, content: v2 });
+      }
+    }
+    if (reconstructed.length > 0) {
+      console.debug(`[decomposition] Gemma 4 flat-key reconstruction: recovered ${reconstructed.length} unit(s)`);
+      // Replace the flat array with the reconstructed objects so validation passes
+      units.splice(0, units.length, ...reconstructed);
+    }
+  }
 
   const normalized: DecomposedUnit[] = [];
   for (let i = 0; i < units.length; i++) {
@@ -226,47 +286,88 @@ export async function decomposeMessage(
       ).join('\n')}`
     : '';
 
-  const prompt: Message[] = [
-    {
-      role: 'system',
-      content: `You decompose one user message into semantic intent units.
-Return ONLY JSON with this shape: {"units":[{"route":"conversational|agentic|query","content":"exact original meaning for that unit"}]}.
+  const systemPrompt = promptLoader.load('decomposition', {
+    current_date: localDateString(),
+    context_block: contextBlock,
+  });
 
-Rules:
-- Preserve meaning exactly.
-- Do not correct grammar.
-- Do not paraphrase.
-- Remove filler only when it is not part of the user's meaning.
-- Keep units in original order.
-- A unit must be self-contained.
-- Use "conversational" for discussion or questions expecting a response.
-- Use "agentic" for requests to perform actions or create/modify things.
-- Use "query" for requests to retrieve information from memory, history, or project context.
-- If the whole message is one unit, return one unit.${contextBlock}`,
-    },
+  const prompt: Message[] = [
+    { role: 'system', content: systemPrompt },
     { role: 'user', content: message },
   ];
 
   try {
     const raw = await llmHandler(prompt, {
       responseSchema: DECOMPOSITION_RESPONSE_SCHEMA as unknown as Record<string, unknown>,
-      maxTokens: 600,
+      maxTokens: TOKEN_BUDGETS.DECOMPOSITION,
     });
 
     const cleaned = stripThinking(raw);
     const jsonText = extractFirstJsonObject(cleaned) ?? extractFirstJsonObject(applyRepairPasses(cleaned));
     if (!jsonText) {
+      console.warn(`[zaraban][decomposition] No JSON object found in response. Length: ${raw.length}. Falling back.`);
       const fallback = buildSingleUnitFallback(message);
       transparency.emit({ type: 'decomposition', data: fallback });
       return fallback;
     }
 
     const parsed = JSON.parse(applyRepairPasses(jsonText)) as unknown;
-    const units = validateUnits(parsed);
+    let units = validateUnits(parsed);
+
+    // FIX 7: If first attempt returned no valid units (garbage output), retry once
+    // with few-shot examples before falling back to heuristic repair.
     if (units.length === 0) {
-      const repaired = isLikelyCompoundMessage(message)
-        ? (await retryCompoundDecomposition(message, llmHandler)) ?? buildHeuristicCompoundDecomposition(message)
-        : null;
+      console.warn('[decomposition] first attempt returned no valid units, retrying with few-shot examples');
+      transparency.emit({ type: 'decomposition_retry', data: { message: message.slice(0, 100), repairCount: 1, reason: 'no_valid_units' } });
+
+      const retryPrompt: Message[] = [
+        {
+          role: 'system',
+          content: `You decompose one user message into semantic intent units.
+Return ONLY JSON with this shape: {"units":[{"route":"conversational|agentic|query","content":"..."}]}.
+Rules: route must be "conversational", "agentic", or "query". content must be a non-empty string.`,
+        },
+        { role: 'user', content: "Save John's phone number and remind me to call him tomorrow" },
+        { role: 'assistant', content: '{"units":[{"route":"agentic","content":"Save John\'s phone number"},{"route":"agentic","content":"remind me to call him tomorrow"}]}' },
+        { role: 'user', content: 'What is my todo list?' },
+        { role: 'assistant', content: '{"units":[{"route":"query","content":"What is my todo list?"}]}' },
+        { role: 'user', content: message },
+      ];
+
+      try {
+        const retryRaw = await llmHandler(retryPrompt, {
+          responseSchema: DECOMPOSITION_RESPONSE_SCHEMA as unknown as Record<string, unknown>,
+          maxTokens: TOKEN_BUDGETS.DECOMPOSITION,
+        });
+        const retryCleaned = stripThinking(retryRaw);
+        const retryJson = extractFirstJsonObject(retryCleaned) ?? extractFirstJsonObject(applyRepairPasses(retryCleaned));
+        if (retryJson) {
+          const retryParsed = JSON.parse(applyRepairPasses(retryJson)) as unknown;
+          const retryUnits = validateUnits(retryParsed);
+          if (retryUnits.length > 0) {
+            units = retryUnits;
+          }
+        }
+      } catch {
+        // Retry failed — fall through to heuristic repair below
+      }
+    }
+
+    if (units.length === 0) {
+      let repaired: DecompositionResult | null = null;
+      if (isLikelyCompoundMessage(message)) {
+        const llmRepaired = await retryCompoundDecomposition(message, llmHandler);
+        repaired = llmRepaired ?? buildHeuristicCompoundDecomposition(message);
+        if (!llmRepaired && repaired) {
+          // Heuristic fired — log and track
+          _decompositionRepairCount++;
+          console.warn(`[decomposition] heuristic repair fired (session total: ${_decompositionRepairCount})`);
+          transparency.emit({ type: 'decomposition_repair', data: { message: message.slice(0, 100), repairCount: _decompositionRepairCount, reason: 'model returned empty units' } });
+          if (_decompositionRepairCount >= 3) {
+            console.warn('[decomposition] WARNING: heuristic repair has fired 3+ times this session. The decomposition prompt may need review.');
+          }
+        }
+      }
       if (repaired) {
         transparency.emit({ type: 'decomposition', data: repaired });
         return repaired;
@@ -278,7 +379,17 @@ Rules:
     }
 
     if (units.length === 1 && isLikelyCompoundMessage(message)) {
-      const repaired = (await retryCompoundDecomposition(message, llmHandler)) ?? buildHeuristicCompoundDecomposition(message);
+      const llmRepaired = await retryCompoundDecomposition(message, llmHandler);
+      const repaired = llmRepaired ?? buildHeuristicCompoundDecomposition(message);
+      if (!llmRepaired && repaired) {
+        // Heuristic fired — log and track
+        _decompositionRepairCount++;
+        console.warn(`[decomposition] heuristic repair fired (session total: ${_decompositionRepairCount})`);
+        transparency.emit({ type: 'decomposition_repair', data: { message: message.slice(0, 100), repairCount: _decompositionRepairCount, reason: 'model returned single unit for compound message' } });
+        if (_decompositionRepairCount >= 3) {
+          console.warn('[decomposition] WARNING: heuristic repair has fired 3+ times this session. The decomposition prompt may need review.');
+        }
+      }
       if (repaired) {
         transparency.emit({ type: 'decomposition', data: repaired });
         return repaired;

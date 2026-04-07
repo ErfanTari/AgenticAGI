@@ -6,10 +6,11 @@ import { fileURLToPath } from 'node:url';
 import type { IncomingMessage } from 'node:http';
 import { createServer, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
+import 'dotenv/config.js';
 
 import { LLM_CONFIG, PLANNER_CONFIG, EXECUTOR_CONFIG } from '../config/agent.config.js';
 import { processMessage, startAgent, stopAgent } from '../core/agent.js';
-import { getFallbackLLMProfile, getPrimaryLLMProfile, type LLMProfile, withLLMRuntime } from '../core/llm.js';
+import { getFallbackLLMProfile, getPrimaryLLMProfile, getAnthropicCloudProfile, type LLMProfile, withLLMRuntime } from '../core/llm.js';
 import { initDatabase } from '../core/memory/mod.js';
 import { loadActivePlanEX, type PlanEXEntry } from '../core/memory/plan-ex.js';
 import { loadWorkingMemory } from '../core/memory/working-memory.js';
@@ -22,14 +23,18 @@ type ClientMessage =
   | { type: 'chat'; text: string }
   | { type: 'set_provider_mode'; mode: ProviderMode }
   | { type: 'set_local_model'; model: string }
+  | { type: 'set_cloud_model'; model: string }
   | { type: 'ping' };
 
 type ProviderMode = 'local' | 'cloud';
+type CloudModelId = 'gemini' | 'claude';
 type ProviderStatus = {
   mode: ProviderMode;
   primaryLabel: string;
   fallbackLabel?: string;
   availableModes: ProviderMode[];
+  activeCloudModel?: CloudModelId;
+  availableCloudModels?: CloudModelId[];
 };
 
 type NodeStatus = 'pending' | 'running' | 'done' | 'failed';
@@ -114,7 +119,28 @@ const clients = new Set<ClientConnection>();
 const startupTime = Date.now();
 let lastPlanSnapshot: PlanSnapshot | null = null;
 const localPrimaryProfile = getPrimaryLLMProfile();
-const cloudPrimaryProfile = getFallbackLLMProfile();
+const geminiCloudProfile = getFallbackLLMProfile();
+const anthropicCloudProfile = getAnthropicCloudProfile();
+
+// Debug: log which profiles are available
+console.log('[startup] Profiles loaded:');
+console.log('  Local:', localPrimaryProfile?.model ?? 'NOT CONFIGURED');
+console.log('  Gemini:', geminiCloudProfile?.model ?? 'NOT CONFIGURED');
+console.log('  Anthropic:', anthropicCloudProfile?.model ?? 'NOT CONFIGURED');
+
+// Track which cloud model is active per-server (shared across connections)
+let activeCloudModel: CloudModelId = geminiCloudProfile ? 'gemini' : (anthropicCloudProfile ? 'claude' : 'gemini');
+
+function getActiveCloudProfile(): LLMProfile | null {
+  return activeCloudModel === 'claude' ? anthropicCloudProfile : geminiCloudProfile;
+}
+
+function getAvailableCloudModels(): CloudModelId[] {
+  const models: CloudModelId[] = [];
+  if (geminiCloudProfile) models.push('gemini');
+  if (anthropicCloudProfile) models.push('claude');
+  return models;
+}
 
 function cloneProfile(profile: LLMProfile | null, label: string): LLMProfile | null {
   if (!profile) return null;
@@ -124,7 +150,7 @@ function cloneProfile(profile: LLMProfile | null, label: string): LLMProfile | n
 function getAvailableProviderModes(): ProviderMode[] {
   const modes: ProviderMode[] = [];
   if (localPrimaryProfile) modes.push('local');
-  if (cloudPrimaryProfile) modes.push('cloud');
+  if (getActiveCloudProfile()) modes.push('cloud');
   return modes;
 }
 
@@ -133,16 +159,17 @@ function getDefaultProviderMode(): ProviderMode {
 }
 
 function getProviderRuntime(mode: ProviderMode) {
-  if (mode === 'cloud' && cloudPrimaryProfile) {
+  const cloudProfile = getActiveCloudProfile();
+  if (mode === 'cloud' && cloudProfile) {
     return {
-      primary: cloneProfile(cloudPrimaryProfile, 'cloud-primary'),
+      primary: cloneProfile(cloudProfile, 'cloud-primary'),
       fallback: cloneProfile(localPrimaryProfile, 'local-fallback'),
     };
   }
 
   return {
     primary: cloneProfile(localPrimaryProfile, 'local-primary'),
-    fallback: cloneProfile(cloudPrimaryProfile, 'cloud-fallback'),
+    fallback: cloneProfile(cloudProfile, 'cloud-fallback'),
   };
 }
 
@@ -158,6 +185,8 @@ function getProviderStatus(mode: ProviderMode): ProviderStatus {
     primaryLabel: describeProfile(runtime.primary),
     fallbackLabel: runtime.fallback ? describeProfile(runtime.fallback) : undefined,
     availableModes: getAvailableProviderModes(),
+    activeCloudModel,
+    availableCloudModels: getAvailableCloudModels(),
   };
 }
 
@@ -601,6 +630,19 @@ function handleClientMessage(connection: ClientConnection, raw: string) {
     if (localPrimaryProfile) localPrimaryProfile.model = model;
     for (const c of clients) sendProviderStatus(c);
     console.log('[ui] Local model switched to:', model);
+    return;
+  }
+
+  if (parsed.type === 'set_cloud_model') {
+    const model = parsed.model as CloudModelId;
+    const available = getAvailableCloudModels();
+    if (!available.includes(model)) {
+      sendJson(connection, { type: 'error', message: `Cloud model '${model}' is not configured.` });
+      return;
+    }
+    activeCloudModel = model;
+    for (const c of clients) sendProviderStatus(c);
+    console.log('[ui] Cloud model switched to:', model);
     return;
   }
 

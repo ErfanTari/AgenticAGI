@@ -1,9 +1,17 @@
 import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { promptLoader } from './prompt-loader.js';
+import { TOKEN_BUDGETS } from '../config/agent.config.js';
 import type { LLMHandler, Message } from './types.js';
 import type { TaskMilestone, TaskPlan, TaskStep, VerificationResult } from './schemas.js';
 import type { WorkingMemory } from './memory/working-memory.js';
 import { updatePlan } from './memory/working-memory.js';
-import { VerificationResultSchema, verificationJsonSchema } from './schemas.js';
+import { VerificationResultSchema, MilestoneRevisionSchema, PostFlightSchema, verificationJsonSchema, postFlightJsonSchema } from './schemas.js';
+import type { PostFlightResult } from './schemas.js';
+import { extractFirstJsonObject } from './structured.js';
+import { stripThinkingTags } from './llm.js';
+import { PATHS } from '../config/agent.config.js';
 import { runWithRetry } from './react.js';
 import { resolveTemplates } from './planner.js';
 import { transparency } from './transparency.js';
@@ -31,6 +39,34 @@ function flattenInput(input: Record<string, unknown>): Record<string, unknown> {
   }
 
   return flattened;
+}
+
+// --- JSON parsing helper (FIX 2) ---
+
+function safeParseJson<T>(
+  raw: string,
+  schema: { safeParse: (v: unknown) => { success: boolean; data?: T } },
+  callSite: string,
+  fallback: T,
+): T {
+  try {
+    const clean = stripThinkingTags(raw);
+    const block = extractFirstJsonObject(clean);
+    if (!block) {
+      console.warn(`[zaraban][${callSite}] No JSON object found in response. Length: ${raw.length}`);
+      return fallback;
+    }
+    const parsed = JSON.parse(block) as unknown;
+    const result = schema.safeParse(parsed);
+    if (!result.success) {
+      console.warn(`[zaraban][${callSite}] Schema validation failed. Raw length: ${raw.length}. Falling back.`);
+      return fallback;
+    }
+    return result.data!;
+  } catch (err) {
+    console.warn(`[zaraban][${callSite}] JSON parse error:`, err);
+    return fallback;
+  }
 }
 
 // --- Adaptive Execution — Phase 15, Section 3 ---
@@ -296,7 +332,13 @@ export async function writeMilestoneMemoryCycle(
     // Event write is best-effort inside the cycle.
   }
 
-  if (completedSteps.length >= 2) {
+  // FIX 8: HOW.PR gate — only write when milestone contains a run_bash or implement_and_test step.
+  // Writing procedures for content_writer / file_writer milestones adds noise without reusable value.
+  const hasExecutableStep = completedSteps.some(s => s.skill === 'run_bash' || s.skill === 'implement_and_test');
+  if (!hasExecutableStep) {
+    transparency.emit({ type: 'how_pr_skipped', data: { milestoneId: milestone.id, reason: 'no_executable_step', skills: completedSteps.map(s => s.skill) } });
+  }
+  if (completedSteps.length >= 2 && hasExecutableStep) {
     try {
       const procedureName = `Milestone Pattern: ${milestone.title}`.slice(0, 80);
       const procedureBody = [
@@ -350,6 +392,7 @@ async function reviseRemainingMilestones(
   completedMilestones: string[],
   currentIndex: number,
   llmHandler: LLMHandler,
+  failedSteps?: FailedStep[],
 ): Promise<TaskMilestone[]> {
   const remaining = milestones.slice(currentIndex + 1);
 
@@ -374,33 +417,32 @@ async function reviseRemainingMilestones(
       .map(m => `- ${m.id}: ${m.title} — ${m.description}`)
       .join('\n');
 
+    // FIX 2: Include failure context when milestone had failed steps
+    const failedSection = failedSteps && failedSteps.length > 0
+      ? `\n\nFAILED in current milestone (${completedMilestone.id}: ${completedMilestone.title}):\n${failedSteps.map(s => `- Step ${s.stepId} [${s.skill}]: ${s.error}`).join('\n')}`
+      : '';
+
     const prompt: Message[] = [
       {
         role: 'system',
-        content: [
-          'You are a plan revision assistant.',
-          'Given completed milestones and remaining milestones, determine if the remaining milestones are still valid.',
-          'Return ONLY a JSON object:',
-          '{"revised": false} if no changes needed,',
-          'OR {"revised": true, "milestones": [{"id": "...", "title": "...", "description": "...", "completionCriteria": "..."}], "reason": "why"}',
-          'Only return revised:true if a significant change is needed. When in doubt, return revised:false.',
-        ].join(' '),
+        content: promptLoader.load('milestone-revision'),
       },
       {
         role: 'user',
-        content: `Completed milestones:\n${completedSummary}\n\nRemaining milestones to validate:\n${remainingSummary}\n\nAre the remaining milestones still valid given what was completed?`,
+        content: `Completed milestones:\n${completedSummary}${failedSection}\n\nRemaining milestones to validate:\n${remainingSummary}\n\nGiven the above, should the remaining milestones be revised, reordered, or should the task be aborted?`,
       },
     ];
 
-    const response = await llmHandler(prompt, { maxTokens: 512 });
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return milestones;
+    const response = await llmHandler(prompt, { maxTokens: TOKEN_BUDGETS.MILESTONE_REVISION });
+    const parsed = safeParseJson(response, MilestoneRevisionSchema, 'reviseRemainingMilestones', { revised: false });
 
-    const parsed = JSON.parse(jsonMatch[0]) as {
-      revised: boolean;
-      milestones?: Array<{ id: string; title: string; description: string; completionCriteria: string }>;
-      reason?: string;
-    };
+    // FIX 2: Handle abort recommendation from revision LLM
+    if (parsed.abort) {
+      const reason = parsed.reason ?? 'Task cannot be completed with available resources';
+      console.warn(`[executor] revision recommends abort: ${reason}`);
+      // Signal abort by returning empty milestones array — caller checks length
+      return [];
+    }
 
     if (!parsed.revised) return milestones;
     if (!Array.isArray(parsed.milestones) || parsed.milestones.length === 0) return milestones;
@@ -542,6 +584,18 @@ async function executeSingleStep(
   if (process.env.DEBUG_DEEP === 'true') {
     const inputPreview = JSON.stringify(resolvedInput).slice(0, 400);
     console.log(`[executor:DEEP] step=${step.id} skill=${step.skill} input=${inputPreview}`);
+  }
+
+  // Safety: skip pure mkdir steps — file_writer creates directories automatically.
+  // These steps should never be in a plan, but if the model generates one anyway,
+  // skip it rather than failing on a run_bash permission denied error.
+  if (step.skill === 'run_bash') {
+    const cmd = String(resolvedInput.command ?? '').trim();
+    if (/^mkdir\b/.test(cmd)) {
+      console.log(`[executor] Skipping mkdir step '${step.id}' — file_writer handles directory creation automatically`);
+      state.completed.push({ stepId: step.id, skill: step.skill, output: 'Directory creation skipped (file_writer handles this automatically)', display: undefined, retries: 0 });
+      return null;
+    }
   }
 
   transparency.emit({ type: 'step_start', data: { step } });
@@ -759,7 +813,22 @@ export async function executePlan(
           subGoalAttempts.set(milestone.id, { ...milestoneAttempt, revisions: milestoneAttempt.revisions + 1 });
 
           // Revise remaining milestones given the failure context
-          milestones = await reviseRemainingMilestones(milestones, completedMilestones, milestoneIndex, llmHandler);
+          const milestoneFailedSteps = state.failed.slice(failedStart);
+          milestones = await reviseRemainingMilestones(milestones, completedMilestones, milestoneIndex, llmHandler, milestoneFailedSteps);
+
+          // FIX 2: If revision recommends abort, stop execution
+          if (milestones.length === 0) {
+            return {
+              success: false,
+              completed: state.completed,
+              failed: state.failed,
+              abortReason: 'Revision recommended abort: task cannot be completed with available resources',
+              milestoneResults,
+              escalated: true,
+              escalationMessage: 'Plan revision recommended aborting the task. The required capabilities may not be available.',
+              taskCompleteEnqueued: false,
+            };
+          }
 
           // Update working memory plan with revised milestones
           if (wm) {
@@ -871,7 +940,22 @@ export async function executePlan(
       data: { id: milestone.id, title: milestone.title, success: true, index: milestoneIndex + 1, total: milestones.length },
     });
 
-    milestones = await reviseRemainingMilestones(milestones, completedMilestones, milestoneIndex, llmHandler);
+    // FIX 5: Reactive revision — only call the LLM if there were failures or suspicious output.
+    // On a happy path, this saves ~2-3s per milestone with zero benefit.
+    const milestoneFailures = state.failed.slice(failedStart);
+    const milestoneHadFailures = milestoneFailures.length > 0;
+    const remainingSteps = milestones.slice(milestoneIndex + 1).flatMap(m => m.steps);
+    const milestoneHadSuspiciousOutput = completedInMilestone.some(step => {
+      const dependedOnByFuture = remainingSteps.some(
+        rs => JSON.stringify(rs.input ?? {}).includes(`{{${step.stepId}}}`)
+      );
+      return dependedOnByFuture && step.output.length < 50;
+    });
+    if (milestoneHadFailures || milestoneHadSuspiciousOutput) {
+      milestones = await reviseRemainingMilestones(milestones, completedMilestones, milestoneIndex, llmHandler, milestoneHadFailures ? milestoneFailures : undefined);
+    } else {
+      transparency.emit({ type: 'milestone_revision_skipped', data: { milestoneId: milestone.id, reason: 'no_failures' } });
+    }
   }
 
   try {
@@ -927,12 +1011,61 @@ export async function executePlan(
 
 // --- Execution Verification (Priority 5) ---
 
+export function buildGroundTruthSnapshot(completed: CompletedStep[]): { text: string; fileStates: Array<{ path: string; exists: boolean; sizeBytes: number }>; memoryStates: Array<{ code: string; exists: boolean }> } {
+  const workspaceRoot = path.resolve(process.cwd(), PATHS.workspace ?? 'workspace');
+  const fileStates: Array<{ path: string; exists: boolean; sizeBytes: number }> = [];
+  const memoryStates: Array<{ code: string; exists: boolean }> = [];
+  const lines: string[] = [];
+
+  for (const step of completed) {
+    if (step.skill === 'file_writer' || step.skill === 'generate_and_save_file') {
+      // Extract path from output "Written to X" or "Generated and saved to X"
+      const pathMatch = step.output.match(/(?:Written to|Generated and saved to|Appended to)\s+(.+)/i);
+      const filePath = pathMatch?.[1]?.trim();
+      if (filePath) {
+        const resolved = path.resolve(workspaceRoot, filePath);
+        try {
+          const stat = fs.statSync(resolved);
+          fileStates.push({ path: filePath, exists: true, sizeBytes: stat.size });
+          lines.push(`- ${filePath}: EXISTS (${stat.size} bytes, modified ${stat.mtime.toISOString()})`);
+        } catch {
+          fileStates.push({ path: filePath, exists: false, sizeBytes: 0 });
+          lines.push(`- ${filePath}: NOT FOUND (file_writer reported success but file missing)`);
+        }
+      }
+    } else if (step.skill === 'memory_write') {
+      const codeMatch = step.output.match(/([A-Z]+\.[A-Z]+-\d+)/);
+      if (codeMatch) {
+        const code = codeMatch[1];
+        try {
+          const db = getDb();
+          const row = db.prepare('SELECT code, name, status FROM index_entries WHERE code = ?').get(code) as { code: string; name: string; status: string } | undefined;
+          memoryStates.push({ code, exists: Boolean(row) });
+          if (row) {
+            lines.push(`- ${code} in index_entries: EXISTS (name: "${row.name}", status: ${row.status})`);
+          } else {
+            lines.push(`- ${code} in index_entries: NOT FOUND (memory_write reported success but row missing)`);
+          }
+        } catch {
+          memoryStates.push({ code, exists: false });
+        }
+      }
+    }
+  }
+
+  transparency.emit({ type: 'verification_snapshot', data: { files: fileStates, memory: memoryStates } });
+  return { text: lines.length > 0 ? lines.join('\n') : '(no file_writer or memory_write steps)', fileStates, memoryStates };
+}
+
 export async function verifyExecution(
   plan: TaskPlan,
   result: ExecutionResult,
   llmHandler: LLMHandler,
 ): Promise<VerificationResult> {
+  const fallback: VerificationResult = { verified: result.success, confidence: result.success ? 0.7 : 0.3, issues: [], suggestion: undefined };
   try {
+    const snapshot = buildGroundTruthSnapshot(result.completed);
+
     const completedSummary = result.completed
       .map(s => `- [DONE] ${s.stepId} (${s.skill}): ${s.output.slice(0, 200)}`)
       .join('\n');
@@ -952,7 +1085,10 @@ Return ONLY a JSON object: {"verified": true/false, "confidence": 0.0-1.0, "issu
         content: `Goal: ${plan.goal}
 Plan had ${plan.steps.length} steps.
 
-Completed steps:
+GROUND TRUTH STATE (verified from filesystem and database):
+${snapshot.text}
+
+EXECUTOR LOG (what the agent reported):
 ${completedSummary || '(none)'}
 
 Failed steps:
@@ -964,22 +1100,90 @@ Was the goal achieved?`,
 
     const response = await llmHandler(prompt, {
       responseSchema: verificationJsonSchema,
-      maxTokens: 300,
+      maxTokens: 500,
     });
 
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return { verified: result.success, confidence: result.success ? 0.7 : 0.3, issues: [], suggestion: undefined };
-    }
-
-    const raw = JSON.parse(jsonMatch[0]);
-    const parsed = VerificationResultSchema.safeParse(raw);
-    if (parsed.success) return parsed.data;
-
-    return { verified: result.success, confidence: result.success ? 0.7 : 0.3, issues: [], suggestion: undefined };
+    return safeParseJson(response, VerificationResultSchema, 'verifyExecution', fallback);
   } catch {
     // Verification is advisory — never block
     return { verified: result.success, confidence: 0.5, issues: ['Verification failed'], suggestion: undefined };
+  }
+}
+
+// --- Post-Flight Synthesis (FIX 6: merged single call) ---
+
+export async function runPostFlightSynthesis(
+  plan: TaskPlan,
+  result: ExecutionResult,
+  llmHandler: LLMHandler,
+): Promise<{ verification: VerificationResult; summary: string; reflection: PostFlightResult['reflection'] }> {
+  const fallbackVerification: VerificationResult = {
+    verified: result.success,
+    confidence: result.success ? 0.7 : 0.3,
+    issues: [],
+    suggestion: undefined,
+  };
+  const fallbackSummary = `Completed task: ${plan.goal.slice(0, 80)}`;
+  const fallbackReflection = { went_well: 'Steps completed', to_improve: '', learned: '' };
+
+  try {
+    const snapshot = buildGroundTruthSnapshot(result.completed);
+    const completedSummary = result.completed
+      .map(s => `- [DONE] ${s.stepId} (${s.skill}): ${s.output.slice(0, 200)}`)
+      .join('\n');
+    const failedSummary = result.failed
+      .map(s => `- [FAILED] ${s.stepId} (${s.skill}): ${s.error}`)
+      .join('\n');
+
+    const prompt: Message[] = [
+      {
+        role: 'system',
+        content: promptLoader.load('post-flight'),
+      },
+      {
+        role: 'user',
+        content: `GROUND TRUTH STATE (verified from filesystem and database):
+${snapshot.text}
+
+GOAL: ${plan.goal}
+
+COMPLETED STEPS (${result.completed.length} total):
+${completedSummary || '(none)'}
+
+FAILED STEPS:
+${failedSummary || '(none)'}
+
+Return ONLY a JSON object with fields: verification {verified, confidence, issues, suggestion}, summary (2-3 sentence string), reflection {went_well, to_improve, learned}.`,
+      },
+    ];
+
+    const response = await llmHandler(prompt, {
+      responseSchema: postFlightJsonSchema,
+      maxTokens: TOKEN_BUDGETS.POST_FLIGHT,
+    });
+
+    const parsed = safeParseJson(response, PostFlightSchema, 'postFlightSynthesis', null as unknown as PostFlightResult);
+    if (!parsed) {
+      return { verification: fallbackVerification, summary: fallbackSummary, reflection: fallbackReflection };
+    }
+
+    const verification: VerificationResult = {
+      verified: parsed.verification.verified,
+      confidence: parsed.verification.confidence,
+      issues: parsed.verification.issues ?? [],
+      suggestion: parsed.verification.suggestion,
+    };
+
+    transparency.emit({ type: 'post_flight_complete', data: {
+      verified: verification.verified,
+      confidence: verification.confidence,
+      issueCount: verification.issues.length,
+      summaryLength: parsed.summary.length,
+    } });
+
+    return { verification, summary: parsed.summary, reflection: parsed.reflection };
+  } catch {
+    return { verification: fallbackVerification, summary: fallbackSummary, reflection: fallbackReflection };
   }
 }
 
@@ -1001,21 +1205,37 @@ export function buildUserReport(
     lines.push('');
   }
 
-  // Primary: find content_writer output (the main content to show user)
-  const contentStep = result.completed.find(s => s.skill === 'content_writer');
+  // Show content_writer output only when it is synthesis text (report/comparison/summary).
+  // generate_and_save_file output is always "Generated and saved <path>" — show as a status line, not full content.
+  // Never show raw HTML/code in chat — if content_writer was used in a file-generation plan
+  // the file_writer step that follows it is the deliverable, not the content itself.
+  const synthesisStep = result.completed.find(s => s.skill === 'content_writer');
+  const fileGenStep   = result.completed.find(s => s.skill === 'generate_and_save_file');
 
-  if (
-    contentStep?.output &&
-    contentStep.output.length > 10 &&
-    !/^\d+$/.test(contentStep.output.trim())
-  ) {
-    // Valid content (not a count like "1" or "3")
-    lines.push(contentStep.output);
+  // Detect file-generation context: a file_writer step depending on content_writer output
+  const hasFollowingFileWrite = synthesisStep
+    ? result.completed.some(s => s.skill === 'file_writer')
+    : false;
+
+  const shouldShowSynthesis =
+    synthesisStep &&
+    synthesisStep.output.length > 10 &&
+    !/^\d+$/.test(synthesisStep.output.trim()) &&
+    !hasFollowingFileWrite;   // suppress when content_writer fed a file_writer
+
+  if (shouldShowSynthesis && synthesisStep) {
+    lines.push(synthesisStep.output);
+    lines.push('');
+  }
+
+  // Always show file generation status as a brief line (never full content)
+  if (fileGenStep?.output) {
+    lines.push(`**${fileGenStep.output}**`);
     lines.push('');
   }
 
   // Completed steps summary
-  if (result.completed.length > 0 && !contentStep) {
+  if (result.completed.length > 0 && !shouldShowSynthesis && !fileGenStep) {
     lines.push('**Completed:**');
     for (const step of result.completed) {
       const label = step.display ?? step.output;

@@ -122,13 +122,12 @@ describe('Phase 13: executor milestones', () => {
     off();
     transparency.disable();
 
+    // FIX 5: Reactive revision — revision is skipped on happy path (no failures).
+    // The revisingLLM is never called, so m2 stays as m2 (not m2-revised).
     expect(result.success).toBe(true);
-    expect(result.completedMilestones).toEqual(['m1', 'm2-revised']);
+    expect(result.completedMilestones).toEqual(['m1', 'm2']);
     expect(result.completed.map(step => step.stepId)).toEqual(['step1', 'step2']);
-    expect(revisedEvents).toEqual([{
-      milestoneId: 'm1',
-      revisedCount: 0,
-      reason: 'Adjust wording after milestone 1',
-    }]);
+    // No revision events fired — revision was skipped
+    expect(revisedEvents).toEqual([]);
   });
 });

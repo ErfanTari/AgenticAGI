@@ -1,16 +1,16 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { LLM_CONFIG, LLM_FALLBACK_CONFIG } from '../config/agent.config.js';
+import { LLM_CONFIG, LLM_FALLBACK_CONFIG, ANTHROPIC_CLOUD_CONFIG } from '../config/agent.config.js';
 import { transparency } from './transparency.js';
 const llmRuntimeStore = new AsyncLocalStorage();
 function getTimeoutForModel(modelName) {
     const lower = modelName.toLowerCase();
-    if (/72b|70b|80b|35b|32b|20b/.test(lower))
-        return 90000;
+    if (/72b|70b|80b|35b|32b|26b|20b/.test(lower))
+        return 180000;
     if (/7b|8b|13b|14b/.test(lower))
-        return 20000;
+        return 60000;
     if (/1b|2b|3b|4b/.test(lower))
-        return 10000;
-    return 20000;
+        return 30000;
+    return 180000; // unknown model — assume large, give full budget
 }
 function getDefaultApiKey() {
     return process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY;
@@ -54,6 +54,19 @@ export function getFallbackLLMProfile() {
         apiKey: LLM_FALLBACK_CONFIG.apiKey,
         maxTokens: LLM_CONFIG.maxTokens,
         timeoutMs: getTimeoutForModel(LLM_FALLBACK_CONFIG.model),
+    };
+}
+export function getAnthropicCloudProfile() {
+    if (!ANTHROPIC_CLOUD_CONFIG?.apiKey)
+        return null;
+    return {
+        kind: 'anthropic',
+        label: 'anthropic-cloud',
+        endpoint: ANTHROPIC_CLOUD_CONFIG.endpoint,
+        model: ANTHROPIC_CLOUD_CONFIG.model,
+        apiKey: ANTHROPIC_CLOUD_CONFIG.apiKey,
+        maxTokens: LLM_CONFIG.maxTokens,
+        timeoutMs: 60000,
     };
 }
 function getRuntimeOverride() {
@@ -109,6 +122,27 @@ export function stripThinkingTags(text) {
         const afterReasoning = result.replace(reasoningStart, '').trim();
         if (afterReasoning.length > 50)
             result = afterReasoning;
+    }
+    // 9. Post-think narration preambles — models sometimes emit a sentence after the think
+    //    block explaining what they're about to do, before the actual JSON/content.
+    //    Strip these only when they appear at the start of the result.
+    const PREAMBLE_PATTERNS = [
+        /^Here(?:'s| is) (?:the )?(?:JSON|output|result|response|answer|corrected|updated|revised)[^\n]*\n+/i,
+        /^Certainly[,!]?\s+here(?:'s| is)[^\n]*\n+/i,
+        /^Sure[,!]?\s+here(?:'s| is)[^\n]*\n+/i,
+        /^Of course[,!]?\s+here(?:'s| is)[^\n]*\n+/i,
+        /^I(?:'ll| will) (?:now |)(?:provide|return|give you|output)[^\n]*\n+/i,
+    ];
+    for (const pattern of PREAMBLE_PATTERNS) {
+        const trimmed = result.trimStart();
+        const m = trimmed.match(pattern);
+        if (m) {
+            const afterPreamble = trimmed.slice(m[0].length).trim();
+            if (afterPreamble.length > 0) {
+                result = afterPreamble;
+            }
+            break;
+        }
     }
     // Safety rule: if stripping left empty/whitespace and original was non-empty, return original
     const stripped = result.trim();
@@ -276,6 +310,7 @@ export async function callLLM(messages, options) {
         data: { system: systemMsg?.content ?? '', messages, schema: options?.responseSchema },
     });
     const runtime = getRuntimeOverride();
+    let lastError = 'no providers configured';
     if (runtime.primary) {
         const start = performance.now();
         try {
@@ -289,7 +324,13 @@ export async function callLLM(messages, options) {
         }
         catch (err) {
             const elapsed = Math.round(performance.now() - start);
-            console.warn('[llm] %s failed after %dms: %s — trying fallback', runtime.primary.label, elapsed, String(err));
+            lastError = String(err);
+            console.warn('[llm] %s failed after %dms: %s — trying fallback', runtime.primary.label, elapsed, lastError);
+            // Emit to transparency so the error is visible in the UI panel, not just console
+            transparency.emit({ type: 'error', data: {
+                    source: `llm:${runtime.primary.label}`,
+                    error: `${runtime.primary.model} failed after ${elapsed}ms: ${lastError}`,
+                } });
         }
     }
     if (runtime.fallback) {
@@ -305,8 +346,13 @@ export async function callLLM(messages, options) {
         }
         catch (err) {
             const elapsed = Math.round(performance.now() - start);
-            console.warn('[llm] %s failed after %dms: %s', runtime.fallback.label, elapsed, String(err));
+            lastError = String(err);
+            console.warn('[llm] %s failed after %dms: %s', runtime.fallback.label, elapsed, lastError);
+            transparency.emit({ type: 'error', data: {
+                    source: `llm:${runtime.fallback.label}`,
+                    error: `${runtime.fallback.model} failed after ${elapsed}ms: ${lastError}`,
+                } });
         }
     }
-    throw new Error('All LLM providers unreachable');
+    throw new Error(`All LLM providers unreachable. Last error: ${lastError}`);
 }
