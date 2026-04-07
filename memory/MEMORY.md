@@ -9,7 +9,7 @@ WHO.CT-000002: Bob Jones — Summary for Bob Jones
 WHO.CT-000003: Charlie — Summary for Charlie
 WHO.CT-000004: Dave — Updated summary
 PLAN.EX-000001: Create a file called hello.txt in workspace/TestProject with content "Hello World". — Execution state for: Create a file called hello.txt in workspace/TestProject with content "Hello Worl
-WHEN.RF-000002: Reflection: I started working on a new project today called Te [11:58:30] — Acknowledged.
+WHEN.RF-000002: Reflection: I started working on a new project today called Te [07:07:12] — Acknowledged.
 WHO.CT-000078: Alice — Contact: Alice
 WHO.CT-000079: Bob — Contact: Bob
 PLAN.PJ-000008: TestProject42 — Project: TestProject42
@@ -79,3 +79,41 @@ PLAN.EX-000062: Skill: file_writer — Create a Node.js server using Express at 
 WHEN.RF-000082: Reflection: Skill: file_writer — Create a Node.js server using [21:03:56] — Task "Skill: file_writer — Create a Node.js server using Express at workspace [2026-04-04T21:03]" co
 PLAN.EX-000002: Test execution — Test
 WHAT.PJ-000001: Test execution — Test
+NOW.LOG-000001: Log 2026-03-17 10:21 — just finished the session
+WHO.CT-000015: Farzad Hamadi — Software engineer from Tehran interested in AI; personal contact of ERFAN TARI
+WHY.MT-000013: Heartbeat — stale_project_brain — 6 project brain(s) not updated in 3+ days
+WHY.MT-000003: Heartbeat 2026-03-06 — stale_plan — 2 planning entry/entries stale for 7+ days
+HOW.PR-000032: Pattern: Search the web for latest news on AI agents and remember the — Auto-generated procedure for: search the web for latest news on AI agents and remember the key findings
+WHEN.EV-000100: Remember the last time the user asked to build a calculator. — Recall Calculator Task — success — Remember the last time the user asked to build a calculator.
+WHO.CT-000083: Alice Codex 115404 — Contact: Alice Codex 115404
+WHO.CT-000084: Alice Codex 120502 — Contact: Alice Codex 120502
+WHO.CT-000075: Sara Ahmadi — Machine learning engineer interested in agent memory systems
+WHO.CT-000076: Zaraban — Name meaning and origin: Zaban (Language) + Ravan (Mind), Heartbeat.
+WHO.CT-000077: Favorite Color Preference — User's favorite color preference recorded.
+WHO.CT-000085: Bob Codex 120502 — Contact: Bob Codex 120502
+WHO.CT-000086: Alice Codex 121623 — Contact: Alice Codex 121623
+WHO.CT-000087: Bob Codex 121623 — Contact: Bob Codex 121623
+WHO.CT-000088: Alice Codex 122608 — Contact: Alice Codex 122608
+WHO.CT-000089: Bob Codex 122608 — Contact: Bob Codex 122608
+WHO.CT-000090: Alice Codex 123337 — Contact: Alice Codex 123337
+WHO.CT-000091: Bob Codex 123337 — Contact: Bob Codex 123337
+WHO.CT-000092: Alice Codex 124110 — Contact: Alice Codex 124110
+WHAT.PJ-000074: Create Snake Game in HTML — Develop an HTML-based Snake game within a specified project folder.
+WHEN.EV-000095: Create an HTML Snake game in the specified directory. — Generate Game Content — success — Create an HTML Snake game in the specified directory. — Gene
+WHEN.EV-000096: Create an HTML Snake game in the specified directory. — Save Game Files — success — Create an HTML Snake game in the specified directory. — Save
+HOW.PR-000040: Create HTML Snake Game — Procedure to create a basic Snake game in a single HTML file.
+HOW.PR-000049: Milestone Pattern: Contacts and Project Created — Reusable pattern from Contacts and Project Created
+HOW.PR-000051: Milestone Pattern: Create contacts and project in memory — Reusable pattern from Create contacts and project in memory
+WHEN.EV-000103: Save Alice as a contact, Bob as a contact, and create a project called TestProject42 — Complete task — success — Save Alice as a contact, Bob as a contact, and create a proj
+WHEN.EV-000089: Create a program that does math — success — Create a program that does math
+WHEN.EV-000010: Skill: file_reader — read the file /this/does/not/exist.txt — failure — Skill: file_reader — read the file /this/does/not/exist.txt
+WHEN.RF-000005: Reflection: Create a program that does math — Thinking Process:
+WHAT.PJ-000021: AgenticAGI Landing Page — Create a simple landing page for AgenticAGI project with hero, features, and contact sections.
+HOW.PR-000050: Milestone Pattern: Create Express server file — Reusable pattern from Create Express server file
+WHO.CT-000095: John Smith — Test contact
+WHO.CT-000096: Jane Doe — Test contact 2
+WHAT.PJ-000078: Test Project — Project summary
+WHO.CT-000097: Integration Test Contact — Test contact for quick-resolve
+WHAT.PJ-000079: Tennis 3D Game — 3D tennis game project
+NOW.TD-000014: Buy groceries — Grocery shopping task
+WHEN.DL-000002: Zaraban Project Deadline — Critical deadline for the Zaraban project

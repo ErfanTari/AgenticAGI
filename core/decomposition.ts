@@ -243,6 +243,7 @@ Rules:
     const raw = await llmHandler(prompt, {
       responseSchema: DECOMPOSITION_RESPONSE_SCHEMA as unknown as Record<string, unknown>,
       maxTokens: 700,
+      disableThinking: true,
     });
     const cleaned = stripThinking(raw);
     const jsonText = extractFirstJsonObject(cleaned) ?? extractFirstJsonObject(applyRepairPasses(cleaned));
@@ -300,6 +301,7 @@ export async function decomposeMessage(
     const raw = await llmHandler(prompt, {
       responseSchema: DECOMPOSITION_RESPONSE_SCHEMA as unknown as Record<string, unknown>,
       maxTokens: TOKEN_BUDGETS.DECOMPOSITION,
+      disableThinking: true,
     });
 
     const cleaned = stripThinking(raw);
@@ -338,6 +340,7 @@ Rules: route must be "conversational", "agentic", or "query". content must be a 
         const retryRaw = await llmHandler(retryPrompt, {
           responseSchema: DECOMPOSITION_RESPONSE_SCHEMA as unknown as Record<string, unknown>,
           maxTokens: TOKEN_BUDGETS.DECOMPOSITION,
+          disableThinking: true,
         });
         const retryCleaned = stripThinking(retryRaw);
         const retryJson = extractFirstJsonObject(retryCleaned) ?? extractFirstJsonObject(applyRepairPasses(retryCleaned));

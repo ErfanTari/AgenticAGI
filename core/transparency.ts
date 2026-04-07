@@ -72,7 +72,9 @@ export type TransparencyEvent =
   | { type: 'context_mode_applied'; data: { mode: string; softLimit: number; hardCeiling: number } }
   // Phase 18F — Retrieval fixes
   | { type: 'intake_signals'; data: { personSignal: string | null; projectSignal: string | null; querySignal: boolean; agenticSignal: boolean } }
-  | { type: 'unit_search_strategy'; data: { strategy: string; projectName: string | null; confidence: number; codes: string[] } };
+  | { type: 'unit_search_strategy'; data: { strategy: string; projectName: string | null; confidence: number; codes: string[] } }
+  // Phase 19 — Intake + query fix
+  | { type: 'list_intent_detected'; data: { unitContent: string; matched: { nb: string; type?: string }; resultCount: number } };
 
 type TransparencyHandler = (event: TransparencyEvent) => void;
 

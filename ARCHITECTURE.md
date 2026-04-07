@@ -766,7 +766,26 @@ Enable with `TRANSPARENT=true`.
 
 ---
 
-## 17. LLM Configuration
+## 17. LLM Configuration (Thinking Suppression)
+
+Per-call thinking suppression via `disableThinking: true` in LLMHandler options:
+
+```typescript
+// Suppress thinking on intake and decomposition
+const response = await llmHandler(messages, {
+  maxTokens: TOKEN_BUDGETS.INTAKE,
+  disableThinking: true  // Passes {"thinking":{"type":"disabled"}} to LM Studio
+});
+```
+
+- Only applied to local-primary LLM calls (LM Studio)
+- Prevents thinking blocks from consuming token budget on deterministic tasks
+- Gemma 4 emits `<|channel>thought` blocks; stripping required via `stripThinkingTags()`
+- Fallback to cloud providers (Gemini, Anthropic) continues without thinking suppression
+
+---
+
+## 19. LLM Configuration (Provider Selection)
 
 ```
 Primary:   LLM_ENDPOINT + LLM_MODEL (local LM Studio)
@@ -779,9 +798,52 @@ Fallback:  LLM_FALLBACK_PROVIDER + LLM_FALLBACK_MODEL (Gemini/Anthropic)
 
 ---
 
-## 18. Testing
+## 18. Quick-Resolve: Pre-Decomposition Memory Retrieval (`core/memory/quick-resolve.ts`)
 
-- **933 tests** across 80+ test files
+Early-exit path in `processMessage` for structurally obvious memory queries that don't need LLM decomposition:
+
+### Strategy 1: Code Lookup
+```
+Input:  "Show me WHO.CT-000001"
+→ extractCodes() finds WHO.CT-000001
+→ getEntryByCode() retrieves entry
+→ fetchByCode() loads markdown body
+→ Single LLM call answers user
+Time saved: ~2-3 seconds (skips decomposition + intake)
+```
+
+### Strategy 2: Name Search
+```
+Input:  "Tell me about Tennis 3D Game"
+→ extractSearchTerms() extracts "Tennis 3D Game"
+→ queryEntries({ name: "Tennis 3D Game" }) finds match
+→ Single LLM call with resolved memory
+Time saved: ~2-3 seconds
+```
+
+### Integration
+- Inserted in `processMessage` AFTER fast-paths (/log, /meeting, code fetch) but BEFORE intake/decomposition
+- Guards relationship queries (e.g., "what does X own?") to preserve `relationship_query` intent routing
+- Non-blocking: Returns `resolved: false` for unmatched queries; falls through to normal pipeline
+
+### Modules
+| File | Purpose |
+|------|---------|
+| `core/memory/quick-resolve.ts` | extractCodes, extractSearchTerms, quickResolve |
+| `core/agent.ts` | Integration: early-exit block before decomposition |
+| `tests/phase19/quick-resolve.test.ts` | 18 tests: code extraction, term extraction, integration |
+
+### Design Principles
+- **Deterministic**: Pure regex + SQLite name query — no LLM involved
+- **Composable**: Works alongside Phase 19's `detectListIntent()` listing detection
+- **Non-disruptive**: Falls through to normal routing if no match found
+- **Type-safe**: Skips for relationship queries; doesn't break existing intent classification
+
+---
+
+## 20. Testing
+
+- **1099 tests** across 88 test files (1081 core + 18 Phase 19c quick-resolve)
 - **Vitest** with ESM support
 - **Test isolation**: Each test overrides `PATHS.db` and `PATHS.memory` to a `tmpDir`
 - **Mock LLM**: `tests/mocks/MockLLMHandler.ts` for deterministic pipeline tests

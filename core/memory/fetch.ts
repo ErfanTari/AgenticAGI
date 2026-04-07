@@ -7,12 +7,14 @@ export function fetchByCode(code: string): FetchResult | undefined {
   // Phase 15: check session cache first
   const cached = sessionCache.getByCode(code);
   if (cached) {
+    // FIX B: Verify the cached entry's backing data still exists
     if (!fs.existsSync(cached.path)) {
-      console.warn(`Integrity warning: file missing for ${code} at ${cached.path}`);
-      return undefined;
+      console.warn(`[session-cache] Stale cache entry invalidated: ${code} (file missing: ${cached.path})`);
+      // Cache entry is stale — fall through to DB lookup below
+    } else {
+      const content = fs.readFileSync(cached.path, 'utf-8');
+      return { entry: cached, content };
     }
-    const content = fs.readFileSync(cached.path, 'utf-8');
-    return { entry: cached, content };
   }
 
   const entry = getEntryByCode(code);

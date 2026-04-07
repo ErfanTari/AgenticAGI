@@ -25,6 +25,15 @@ function toOptionalString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/**
+ * Strip leading `[` and trailing `]` that the model may copy from MEMORY.md
+ * pointer format (e.g. "[WHO.CT-000001]" → "WHO.CT-000001").
+ * Only outer brackets are removed; brackets in the middle are preserved.
+ */
+export function cleanCode(rawCode: string): string {
+  return rawCode.trim().replace(/^\[/, '').replace(/\]$/, '').trim();
+}
+
 function toOptionalBoolean(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'string') {
@@ -133,7 +142,9 @@ const memoryReadSkill: MCPSkill = {
   },
   async execute(input: Record<string, unknown>): Promise<SkillResult> {
     try {
-      const code = toOptionalString(input.code);
+      const code = toOptionalString(input.code) !== undefined
+        ? cleanCode(toOptionalString(input.code)!)
+        : undefined;
       const query = toOptionalString(input.query);
       const rawNb = toOptionalString(input.nb);
       const normalizedNb = rawNb?.toUpperCase();

@@ -35,7 +35,10 @@ export type UnitSearchStrategy =
   | 'time'
   | 'procedure'
   | 'type_scan'
+  | 'list_intent'
   | 'bm25'
+  | 'bm25_person_scoped'
+  | 'bm25_project_scoped'
   | 'vector_fallback';
 
 export interface UnitMemoryResult {
@@ -72,7 +75,7 @@ export interface ResolvedMemory {
   relationships: Relationship[];
 }
 
-export type LLMHandler = (messages: Message[], options?: { responseSchema?: Record<string, unknown>; maxTokens?: number; temperature?: number }) => Promise<string>;
+export type LLMHandler = (messages: Message[], options?: { responseSchema?: Record<string, unknown>; maxTokens?: number; temperature?: number; disableThinking?: boolean }) => Promise<string>;
 
 export interface AgentResponse {
   reply: string;

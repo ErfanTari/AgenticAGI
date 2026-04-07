@@ -440,7 +440,7 @@ async function handleConversationalUnits(
     arithmeticNotes.length > 0 ? arithmeticNotes.join('\n') : undefined,
     llmHandler,
   );
-  const reply = stripThinkingTags(await llmHandler(messages)).trim();
+  const reply = stripThinkingTags(await llmHandler(messages, { disableThinking: true })).trim();
 
   // FIX D: fire-and-forget factual assertion persistence (no-await, doesn't affect reply)
   persistFactualAssertions(units.map(unit => unit.content));

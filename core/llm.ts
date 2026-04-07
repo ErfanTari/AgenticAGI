@@ -6,6 +6,8 @@ import { transparency } from './transparency.js';
 type LLMCallOptions = {
   responseSchema?: Record<string, unknown>;
   maxTokens?: number;
+  temperature?: number;
+  disableThinking?: boolean;
 };
 
 export type OpenAICompatibleLLMProfile = {
@@ -195,6 +197,13 @@ export function stripThinkingTags(text: string): string {
     /^Sure[,!]?\s+here(?:'s| is)[^\n]*\n+/i,
     /^Of course[,!]?\s+here(?:'s| is)[^\n]*\n+/i,
     /^I(?:'ll| will) (?:now |)(?:provide|return|give you|output)[^\n]*\n+/i,
+    // Memory/search deferred actions
+    /^I(?:'ll| will) (?:search|look|check|find|retrieve|fetch|query|examine)[^\n]*\n+/i,
+    /^Let me (?:search|look|check|find|retrieve|fetch|query|examine)[^\n]*\n+/i,
+    /^I(?:'ll| will) (?:check|search) (?:my )?(?:memory|database|entries|records)[^\n]*\n+/i,
+    /^Let me (?:check|search) (?:my )?(?:memory|database|entries|records)[^\n]*\n+/i,
+    /^(?:Just|One) (?:a )?(?:moment|second)[,!]?\s+(?:let me|checking|searching)[^\n]*\n+/i,
+    /^(?:Checking|Searching|Looking|Retrieving|Fetching|Finding)[^\n]*\n+/i,
   ];
   for (const pattern of PREAMBLE_PATTERNS) {
     const trimmed = result.trimStart();
@@ -216,6 +225,179 @@ export function stripThinkingTags(text: string): string {
   }
 
   return stripped;
+}
+
+/**
+ * Sanitizes final output before returning to the user.
+ * Removes control tokens, thinking tags, and pseudo-tool narratives.
+ * Returns cleaned text.
+ *
+ * FIX D: Prevents leaked tool syntax and thinking text from appearing to the user.
+ */
+export function sanitizeFinalOutput(text: string): string {
+  let cleaned = stripThinkingTags(text);
+
+  // Remove model control tokens that should never appear in output
+  // Handles both "<|tool_call|>" style and "<tool_call|>" style variants seen in some local models.
+  cleaned = cleaned.replace(/<\|?(?:tool_call|tool_response|channel|im_start|im_end|endoftext|pad)[^>]*\|?>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response|channel)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response|channel)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response|channel)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response|channel)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response|channel)\|>/gi, '');
+  // Also strip the common closing-token fragments like "<tool_call|>" and "<tool_response|>"
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+
+  // Remove pseudo-tool-call narrative lines: lines that look like the model is narrating its own tool use
+  cleaned = cleaned.replace(/^(?:\*\*)?(?:Calling|Using|Executing|Running)\s+(?:tool|function|memory_read|memory_write)[:\s].+$/gm, '');
+
+  // Remove lines that are clearly internal thought preamble
+  cleaned = cleaned.replace(/^(?:Let me|I (?:should|need to|will|'ll)|I (?:search|look|check|find|query|read|retrieve|fetch))[^\n]*$/gm, '');
+  cleaned = cleaned.replace(/^(?:Checking|Searching|Looking|Retrieving|Fetching|Finding|One moment|Just a second)[^\n]*$/gm, '');
+
+  // Collapse multiple blank lines into at most two
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
+  return cleaned.trim();
 }
 
 /**
@@ -279,6 +461,16 @@ async function callOpenAICompatibleEndpoint(
     max_tokens: options?.maxTokens ?? defaultMaxTokens,
     temperature,
   };
+
+  // LM Studio / llama.cpp thinking suppression.
+  // Enabled when the call site passes disableThinking:true OR when DISABLE_THINKING=true
+  // in .env (global fallback). Only applied to primary/local calls — never to cloud fallback.
+  const shouldDisableThinking =
+    options?.disableThinking === true ||
+    (options?.disableThinking === undefined && process.env.DISABLE_THINKING === 'true');
+  if (shouldDisableThinking && (label === 'primary' || label === 'local-primary')) {
+    requestBody.thinking = { type: 'disabled' };
+  }
 
   // Only send response_format to non-primary (cloud/fallback) providers.
   // For the primary local model, inject schema as a prompt instruction instead.

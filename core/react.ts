@@ -53,7 +53,7 @@ export async function repairSkillInput(
 ): Promise<Record<string, unknown>> {
   try {
     const messages = buildRepairMessages(skillName, input, error);
-    const response = await handler(messages, { maxTokens: 2048 });
+    const response = await handler(messages, { maxTokens: 2048, disableThinking: true });
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return input;
     const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;

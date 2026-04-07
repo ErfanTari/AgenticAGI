@@ -2,10 +2,27 @@ import dotenv from 'dotenv';
 if (!process.env.VITEST)
     dotenv.config();
 // loads .env from project root before anything else (skipped in tests)
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
+// Walk up from __dirname until we find a directory containing package.json.
+// This ensures ROOT is always the real project root regardless of whether
+// we're running from source (config/), dist/config/, or .ui-runtime/config/.
+function findProjectRoot(startDir) {
+    let current = startDir;
+    for (let i = 0; i < 8; i++) {
+        if (fs.existsSync(path.join(current, 'package.json')))
+            return current;
+        const parent = path.dirname(current);
+        if (parent === current)
+            break;
+        current = parent;
+    }
+    // Fallback: preserve previous behaviour for single-level layouts.
+    return path.resolve(startDir, '..');
+}
+const ROOT = findProjectRoot(__dirname);
 export const PATHS = {
     root: ROOT,
     memory: path.join(ROOT, 'memory'),
@@ -108,7 +125,8 @@ export const EXECUTOR_CONFIG = {
 // --- Token Budgets (Phase 18) ---
 export const TOKEN_BUDGETS = {
     // Structural LLM calls (JSON output required)
-    INTAKE: 800,
+    INTAKE: 600,
+    INTAKE_TIMEOUT_MS: 20000,
     DECOMPOSITION: 2000,
     PLANNER: 8192,
     MILESTONE_REVISION: 2000,

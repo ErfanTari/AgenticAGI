@@ -6,6 +6,7 @@ import type { IndexEntry, QueryFilter } from './types.js';
 import { initFTS, indexContent } from './fts.js';
 import { initChunksTable, storeChunks } from './embeddings.js';
 import { chunkMarkdown } from './chunks.js';
+import { upsertPointerEntry } from './pointer-index.js';
 
 let db: Database.Database | null = null;
 
@@ -211,7 +212,90 @@ function bootstrapIndexFromMemoryFiles(): void {
     if (chunks.length > 0) {
       storeChunks(chunks);
     }
+    // FIX 2c: Keep MEMORY.md in sync after bootstrap
+    try {
+      upsertPointerEntry({
+        code: item.entry.code,
+        name: item.entry.name,
+        summary: item.entry.summary ?? '',
+        lastActive: item.entry.updated ?? '',
+      });
+    } catch { /* pointer index is best-effort */ }
   }
+}
+
+/**
+ * Scan all .md files under memory/ and index any that are missing from SQLite
+ * or whose file mtime is newer than their `updated` field in index_entries.
+ *
+ * Safe to call at every startup regardless of DB state.
+ * Catches files added outside the agent's own write path (git pull, manual edits).
+ */
+export function syncMemoryFilesToIndex(): { added: number; updated: number; errors: number } {
+  let added = 0; let updated = 0; let errors = 0;
+
+  const files = collectMarkdownFiles(PATHS.memory);
+
+  for (const filePath of files) {
+    try {
+      const parsed = parseDiskEntry(filePath);
+      if (!parsed) continue; // no code in frontmatter — not a memory entry
+
+      const { entry, operationalMeta, searchableText, markdown } = parsed;
+      const d = getDb();
+      const existing = d.prepare('SELECT * FROM index_entries WHERE code = ?').get(entry.code) as IndexEntry | undefined;
+
+      let shouldIndex = false;
+
+      if (!existing) {
+        // File exists on disk but not in SQLite — insert it
+        d.prepare(`
+          INSERT OR IGNORE INTO index_entries (
+            code, nb, type, name, status, updated, summary, path, due_date,
+            importance_score, utility_score, usage_count, decay_rate, active_page,
+            confidence, last_accessed, pinned, source
+          ) VALUES (
+            @code, @nb, @type, @name, @status, @updated, @summary, @path, @due_date,
+            @importance_score, @utility_score, @usage_count, @decay_rate, @active_page,
+            @confidence, @last_accessed, @pinned, @source
+          )
+        `).run({ ...entry, due_date: entry.due_date ?? null, ...operationalMeta });
+        shouldIndex = true;
+        added++;
+      } else {
+        // Check if file is newer than the indexed updated date (compare calendar days)
+        const mtimeDate = new Date(fs.statSync(filePath).mtimeMs).toISOString().split('T')[0];
+        const updatedDate = existing.updated ?? '1970-01-01';
+        if (mtimeDate > updatedDate) {
+          d.prepare(`
+            UPDATE index_entries SET
+              name = @name, status = @status, updated = @updated,
+              summary = @summary, path = @path, due_date = @due_date
+            WHERE code = @code
+          `).run({ code: entry.code, name: entry.name, status: entry.status, updated: entry.updated, summary: entry.summary ?? null, path: filePath, due_date: entry.due_date ?? null });
+          shouldIndex = true;
+          updated++;
+        }
+      }
+
+      if (shouldIndex) {
+        indexContent(entry.code, entry.nb, searchableText);
+        const chunks = chunkMarkdown(entry.code, markdown);
+        if (chunks.length > 0) storeChunks(chunks);
+        // Keep MEMORY.md in sync
+        try {
+          upsertPointerEntry({ code: entry.code, name: entry.name, summary: entry.summary ?? '', lastActive: entry.updated ?? '' });
+        } catch (err) {
+          console.warn(`[memory] Failed to update pointer index for ${entry.code}:`, err);
+        }
+      }
+    } catch (err) {
+      console.warn(`[memory] syncMemoryFilesToIndex error for ${filePath}:`, err);
+      errors++;
+    }
+  }
+
+  return { added, updated, errors };
 }
 
 export function initDatabase(dbPath?: string): Database.Database {
@@ -332,6 +416,10 @@ export function initDatabase(dbPath?: string): Database.Database {
   initFTS();
   initChunksTable();
   bootstrapIndexFromMemoryFiles();
+  const syncResult = syncMemoryFilesToIndex();
+  if (syncResult.added > 0 || syncResult.updated > 0) {
+    console.log(`[memory] Sync: ${syncResult.added} added, ${syncResult.updated} updated, ${syncResult.errors} errors`);
+  }
 
   // H2: Reconcile operational metadata from frontmatter for existing rows
   try { reconcileOperationalMetadata(); } catch { /* non-fatal */ }

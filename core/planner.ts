@@ -63,7 +63,7 @@ export async function assessComplexity(
         },
         { role: 'user', content: message },
       ];
-      const resp = await llmHandler(promptMsgs, { maxTokens: 200 });
+      const resp = await llmHandler(promptMsgs, { maxTokens: 200, disableThinking: true });
       const cleaned = resp.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
@@ -918,6 +918,7 @@ export async function decomposeTask(
     const response = await llmHandler(messages, {
       responseSchema: taskPlanJsonSchema,
       maxTokens: TOKEN_BUDGETS.PLANNER,
+      disableThinking: true,
     });
     unsubRaw();
     lastResponse = response;
@@ -1050,7 +1051,7 @@ export async function verifyPlanAssertions(
         },
       ];
 
-      const response = await llmHandler(messages, { maxTokens: 300 });
+      const response = await llmHandler(messages, { maxTokens: 300, disableThinking: true });
       const cleaned = response.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
 

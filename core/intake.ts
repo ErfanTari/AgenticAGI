@@ -103,7 +103,7 @@ export async function runIntake(
 
   let parsed: ReturnType<typeof parseIntakeResponse> = null;
   try {
-    const response = await llm(classifyMessages, { maxTokens: TOKEN_BUDGETS.INTAKE, temperature: 0 });
+    const response = await llm(classifyMessages, { maxTokens: TOKEN_BUDGETS.INTAKE, temperature: 0, disableThinking: true });
     parsed = parseIntakeResponse(response);
     if (!parsed) {
       console.warn(`[zaraban][intake] Schema validation failed. Raw length: ${response.length}. Falling back.`);

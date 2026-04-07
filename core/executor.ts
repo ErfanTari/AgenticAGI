@@ -433,7 +433,7 @@ async function reviseRemainingMilestones(
       },
     ];
 
-    const response = await llmHandler(prompt, { maxTokens: TOKEN_BUDGETS.MILESTONE_REVISION });
+    const response = await llmHandler(prompt, { maxTokens: TOKEN_BUDGETS.MILESTONE_REVISION, disableThinking: true });
     const parsed = safeParseJson(response, MilestoneRevisionSchema, 'reviseRemainingMilestones', { revised: false });
 
     // FIX 2: Handle abort recommendation from revision LLM
@@ -1101,6 +1101,7 @@ Was the goal achieved?`,
     const response = await llmHandler(prompt, {
       responseSchema: verificationJsonSchema,
       maxTokens: 500,
+      disableThinking: true,
     });
 
     return safeParseJson(response, VerificationResultSchema, 'verifyExecution', fallback);
@@ -1160,6 +1161,7 @@ Return ONLY a JSON object with fields: verification {verified, confidence, issue
     const response = await llmHandler(prompt, {
       responseSchema: postFlightJsonSchema,
       maxTokens: TOKEN_BUDGETS.POST_FLIGHT,
+      disableThinking: true,
     });
 
     const parsed = safeParseJson(response, PostFlightSchema, 'postFlightSynthesis', null as unknown as PostFlightResult);

@@ -2,6 +2,8 @@ import type { Message } from './types.js';
 type LLMCallOptions = {
     responseSchema?: Record<string, unknown>;
     maxTokens?: number;
+    temperature?: number;
+    disableThinking?: boolean;
 };
 export type OpenAICompatibleLLMProfile = {
     kind: 'openai-compatible';
@@ -36,6 +38,14 @@ export declare function withLLMRuntime<T>(runtime: LLMRuntimeOverride, fn: () =>
  * Applied to EVERY response before it touches any downstream logic.
  */
 export declare function stripThinkingTags(text: string): string;
+/**
+ * Sanitizes final output before returning to the user.
+ * Removes control tokens, thinking tags, and pseudo-tool narratives.
+ * Returns cleaned text.
+ *
+ * FIX D: Prevents leaked tool syntax and thinking text from appearing to the user.
+ */
+export declare function sanitizeFinalOutput(text: string): string;
 /**
  * Call LLM with automatic fallback.
  *

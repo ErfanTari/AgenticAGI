@@ -2,7 +2,7 @@ import type { AgentResponse, Classification, DecompositionResult, DecomposedUnit
 import { localDatePlusDays } from './utils/date.js';
 import { resolveQuery } from './resolver.js';
 import { buildContext } from './context.js';
-import { callLLM, stripThinkingTags } from './llm.js';
+import { callLLM, stripThinkingTags, sanitizeFinalOutput } from './llm.js';
 import { getSkillsForIntent } from './skills/registry.js';
 import { decomposeMessage, isLikelyCompoundMessage } from './decomposition.js';
 import { routeDecomposedUnits, executeConfirmedPlan } from './router.js';
@@ -24,6 +24,7 @@ import { memoryAgent } from './memory/memory-agent.js';
 import { writeEpisodicEvent, writeReflectionSync } from './memory/episodic.js';
 import { createPlanEX } from './memory/plan-ex.js';
 import { extractMemoryMetadata } from './memory/lifecycle.js';
+import { quickResolve } from './memory/quick-resolve.js';
 import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
 import type { TaskPlan } from './schemas.js';
 import { transparency } from './transparency.js';
@@ -713,7 +714,9 @@ function inferWriteData(message: string, classification: Classification): {
 }
 
 function cleanReply(reply: string): string {
-  return stripThinkingTags(reply).trim();
+  // FIX D: Use comprehensive sanitizeFinalOutput to strip control tokens, thinking text,
+  // and pseudo-tool narratives before returning to user
+  return sanitizeFinalOutput(reply).trim();
 }
 
 const DIRECT_SKILL_OUTPUT = new Set([
@@ -1273,6 +1276,68 @@ export async function processMessage(
         // Pre-check is advisory — fall through to normal flow on any error
       }
     }
+
+    // ── Quick-resolve: deterministic retrieval, no LLM call ──
+    // Checks for direct code lookups (WHO.CT-000001) and name matches
+    // before spending 2-5 seconds on intake + decomposition. Falls through
+    // to normal pipeline if quickResolve returns resolved: false.
+    // SKIP for relationship queries (e.g. "what does X own?") — those need special routing.
+    // NOTE: extractRelation() returns string | undefined (NOT null). Using `!== null`
+    // would incorrectly treat undefined as "has relation" and would skip quick-resolve
+    // for every message.
+    const hasRelationshipIntent = extractRelation(message) !== undefined;
+    const quickResult = !hasRelationshipIntent ? await quickResolve(message) : { resolved: false, entries: [], strategy: 'none' as const, bodies: [] };
+    if (quickResult.resolved && quickResult.entries.length > 0) {
+      // Quick-resolve found results — build context with them and respond
+      const resolvedEntries = quickResult.entries;
+      const resolvedBodies = quickResult.bodies;
+
+      // Format resolved entries for context injection
+      let memoryContext: string;
+      if (resolvedBodies.length > 0 && resolvedBodies.some(b => b.length > 0)) {
+        // We have full bodies — use them
+        memoryContext = resolvedEntries.map((entry, i) => {
+          const body = resolvedBodies[i] || '';
+          return `### ${entry.code}: ${entry.name}\n${body || entry.summary || '(no content)'}`;
+        }).join('\n\n');
+      } else {
+        // Summaries only
+        memoryContext = resolvedEntries.map(entry =>
+          `- **${entry.code}**: ${entry.name} — ${entry.summary || 'no summary'} [${entry.status}]`
+        ).join('\n');
+      }
+
+      // Single LLM call with resolved memory — skip decomposition entirely
+      const systemPrompt = `You are Zaraban, a personal AI assistant with persistent memory.
+The user asked a question and your memory system already found the relevant entries.
+Answer using ONLY the retrieved data below. Be concise and direct. Do not invent information.
+
+## Retrieved Memory (${quickResult.strategy}, ${quickResult.entries.length} entries)
+
+${memoryContext}
+
+## Grounding Rule
+The memory entries provided above are confirmed to exist in the database. You MUST NOT claim that any of these entries do not exist, are missing, or could not be found. Base your answer on the content of these entries.`;
+
+      const contextMessages: Message[] = [
+        { role: 'system', content: systemPrompt },
+        ...history.slice(-6),
+        { role: 'user', content: message },
+      ];
+
+      try {
+        const llmReply = await handler(contextMessages, { disableThinking: true });
+        const cleanedReply = cleanReply(llmReply);
+        return {
+          reply: findingsPrefix + cleanedReply,
+          intent: 'memory_query',
+          resolved: null,
+        };
+      } catch (error) {
+        // LLM call failed — fall through to normal pipeline
+      }
+    }
+    // ── End quick-resolve ──
 
     // Phase 15: Run intake classification before decomposition
     // (best-effort — never blocks if it fails)

@@ -83,7 +83,7 @@ End with a single clarifying question like "Review projects or proceed with [nex
       },
     ];
 
-    briefingText = await llmHandler(messages, { maxTokens: 400 });
+    briefingText = await llmHandler(messages, { maxTokens: 400, disableThinking: true });
     briefingText = briefingText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   } catch {
     briefingText = `Meeting Mode started.\n\n${context}\n\nWhat would you like to update?`;
@@ -124,7 +124,7 @@ export async function processMeetingResponse(
       },
     ];
 
-    const extracted = await llmHandler(messages, { maxTokens: 400 });
+    const extracted = await llmHandler(messages, { maxTokens: 400, disableThinking: true });
     const cleaned = extracted.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
     const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
 

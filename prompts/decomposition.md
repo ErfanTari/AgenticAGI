@@ -11,6 +11,8 @@ Rules:
 - Use "conversational" for discussion or questions expecting a response.
 - Use "agentic" for requests to perform actions or create/modify things.
 - Use "query" for requests to retrieve information from memory, history, or project context.
+- Use "query" when the message asks about a specific named person, project, or entity that may be stored in memory (WHO, WHAT, PLAN notebooks).
+- Use "conversational" only for general knowledge questions with no named entity (e.g. "what is photosynthesis", "how does TCP work").
 - If the whole message is one unit, return one unit.
 - Set taskType: "coding" when the unit involves writing/editing/debugging/running code, creating or modifying files, or fixing errors in code. Otherwise omit taskType or set "general".
 
@@ -19,8 +21,12 @@ User: "Create a calculator app and also remind me to call Sara tomorrow"
 Output: {"units":[{"route":"agentic","content":"Create a calculator app"},{"route":"agentic","content":"remind me to call Sara tomorrow"}]}
 
 EXAMPLE:
-User: "What is the capital of France?"
-Output: {"units":[{"route":"conversational","content":"What is the capital of France?"}]}
+User: "What is photosynthesis?"
+Output: {"units":[{"route":"conversational","content":"What is photosynthesis?"}]}
+
+EXAMPLE:
+User: "Who is Sara Ahmadi?"
+Output: {"units":[{"route":"query","content":"Who is Sara Ahmadi?"}]}
 
 EXAMPLE:
 User: "How's the Zaraban project going?"

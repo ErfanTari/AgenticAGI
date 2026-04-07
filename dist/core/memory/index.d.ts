@@ -1,5 +1,17 @@
 import Database from 'better-sqlite3';
 import type { IndexEntry, QueryFilter } from './types.js';
+/**
+ * Scan all .md files under memory/ and index any that are missing from SQLite
+ * or whose file mtime is newer than their `updated` field in index_entries.
+ *
+ * Safe to call at every startup regardless of DB state.
+ * Catches files added outside the agent's own write path (git pull, manual edits).
+ */
+export declare function syncMemoryFilesToIndex(): {
+    added: number;
+    updated: number;
+    errors: number;
+};
 export declare function initDatabase(dbPath?: string): Database.Database;
 export declare function getDb(): Database.Database;
 export declare function getSettingValue(d: Database.Database, key: string): string | null;

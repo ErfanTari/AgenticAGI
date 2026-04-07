@@ -2265,3 +2265,243 @@ Five memory quality issues causing silent failures or data pollution:
 - 1016/1016 total tests pass (zero regressions)
 - Build: zero TypeScript errors
 - Tag: `phase-18G-complete`
+
+---
+
+## Phase 19c — Quick-Resolve: Pre-Decomposition Memory Retrieval (COMPLETE)
+
+1099 tests pass (1081 existing + 18 new). Build clean. Tag: `phase-19c-quick-resolve`.
+
+### Overview
+
+Quick-resolve adds a deterministic early-exit path in `processMessage` for two structurally obvious memory queries that do not need an LLM decomposition call:
+1. **Code lookup** — "Show me WHO.CT-000001" — the code is in the text; fetch directly
+2. **Name search** — "Tell me about Tennis 3D Game" — proper noun matches entry name; query by name
+
+This saves 2-5 seconds per query by skipping the decomposition LLM call entirely. Listing queries ("show all contacts") remain handled by Phase 19's `detectListIntent()` inside `unit-search.ts`. Relationship queries ("what does X own?") fall through to normal routing to preserve intent classification.
+
+### Implementation
+
+**New module: `core/memory/quick-resolve.ts`**
+- `extractCodes(message)` — regex finds memory codes (WHO.CT-XXXXXX, WHAT.PJ-XXXXXX, etc.)
+- `extractSearchTerms(message)` — extracts quoted strings, capitalized phrases, longest non-stopword tokens
+- `quickResolve(message)` — main entry: tries code lookup → name search → returns `{ resolved: false }` if no match
+
+**Integration: `core/agent.ts`**
+- Quick-resolve inserted AFTER fast-paths (/log, /meeting, code fetch) but BEFORE intake/decomposition
+- Skips for relationship queries (preserves `relationship_query` intent routing)
+- Falls through to normal pipeline if `resolved: false` or `entries.length === 0`
+- Single LLM call answers user when results found (no decomposition needed)
+
+**Tests: `tests/phase19/quick-resolve.test.ts`**
+- 5 tests for `extractCodes` — single code, multiple codes, dedup, empty array, incomplete codes
+- 6 tests for `extractSearchTerms` — quoted strings, capitalized phrases, stopword filtering, dedup
+- 7 integration tests — code lookup, name search, greetings, agentic requests, missing codes
+
+### Design Rules Followed
+
+- ✅ **Deterministic**: Runs before any LLM call — pure regex + SQLite name query
+- ✅ **Non-blocking**: Returns `resolved: false` for unmatched queries; doesn't disrupt pipeline
+- ✅ **Composable**: Works alongside Phase 19's listing detection (different fast-paths)
+- ✅ **Type-safe**: Respects relationship query routing; skips if relation detected
+- ✅ **Backward compatible**: All 1081 existing tests pass; zero regressions
+
+### Execution Flow
+
+**Example 1: Code lookup**
+```
+Input: "Show me WHO.CT-000001"
+→ extractCodes() finds WHO.CT-000001
+→ getEntryByCode() retrieves entry
+→ fetchByCode() loads markdown body
+→ buildQuickResolvePrompt() + single LLM call
+→ User gets answer in ~1 second (instead of 3-5 seconds)
+```
+
+**Example 2: Name search**
+```
+Input: "Tell me about Tennis 3D Game"
+→ extractSearchTerms() finds "Tennis 3D Game"
+→ queryEntries({ name: "Tennis 3D Game" }) finds match
+→ Single LLM call with resolved memory
+→ User gets answer in ~1 second
+```
+
+**Example 3: No match (falls through)**
+```
+Input: "What is photosynthesis?"
+→ extractCodes() finds nothing
+→ extractSearchTerms() finds "photosynthesis" but queryEntries() returns empty
+→ quickResolve() returns { resolved: false }
+→ Normal decomposition + search pipeline executes (unchanged)
+```
+
+### Test Results
+
+- 18/18 new tests pass
+- 1099/1099 total tests pass (zero regressions)
+- Build: zero TypeScript errors
+- Tag: `phase-19c-quick-resolve`
+
+---
+
+## Phase 19e — WHO.CT-000076 Audit Response Sprint (COMPLETE)
+
+34 tests in `tests/phase19e/who-ct-audit.test.ts`. Build clean. Tag: `phase-19e-who-ct-audit`.
+
+Three manual tests on 2026-04-07 revealed six bugs not covered by Phase 19c/19d:
+
+### FIX A — Code Normalization for Suffixed Codes (`core/memory/quick-resolve.ts`)
+
+- `extractCodes()` regex no longer requires `\b` word boundary after digits
+- Uses `exec` loop with capture groups to reconstruct canonical code
+- Handles patterns like `WHO.CT-000076_zaraban` → extracts `WHO.CT-000076`
+- Signature: `export function extractCodes(message: string): string[]`
+
+### FIX B — Identity-First Routing (`core/memory/quick-resolve.ts`)
+
+- New function `extractIdentityTarget(message)` detects "who is X", "what is X", "tell me about X", "what does X do"
+- Strips embedded memory codes: `"who is WHO.CT-000076_zaraban"` → target is `"zaraban"`
+- `quickResolve()` runs identity routing (Strategy 1.5) between code lookup and general name search
+- Queries WHO notebook first via `queryEntries({ nb: 'WHO', name: identityTarget })`
+- Signature: `export function extractIdentityTarget(message: string): string | null`
+
+### FIX C — Notebook Scoping for Code-Derived Queries (`core/memory/unit-search.ts`)
+
+- New function `extractNotebookHint(query)` detects notebook prefix in query (e.g., `WHO.CT-000076` → "WHO")
+- Applied in `searchFallback()` post-filter: when a notebook hint is found and unscoped BM25 results exist, tries scoped results first
+- Prevents HOW.PR entries from polluting WHO.CT queries
+- Signature: `export function extractNotebookHint(query: string): string | null`
+
+### FIX D — Output Sanitization (`core/llm.ts`, `core/agent.ts`)
+
+- New function `sanitizeFinalOutput(text)` strips:
+  - Model control tokens: `<|tool_call|>`, `<|tool_response|>`, `<|channel>`, `<|im_start|>`, `<|im_end|>`, `<|endoftext|>`, `<|pad|>`
+  - Pseudo-tool narratives: "Calling tool", "Using function", "Executing"
+  - Thinking preambles: "Let me search", "I need to", "I should"
+  - Multiple blank lines (collapses to max 2)
+- Applied via `cleanReply()` in agent.ts (all LLM response return paths already use cleanReply)
+- Signature: `export function sanitizeFinalOutput(text: string): string`
+
+### FIX E — Grounding Guard (`core/agent.ts`)
+
+- System prompt for quick-resolve query response now includes:
+  ```
+  ## Grounding Rule
+  The memory entries provided above are confirmed to exist in the database. 
+  You MUST NOT claim that any of these entries do not exist, are missing, or 
+  could not be found. Base your answer on the content of these entries.
+  ```
+- Prevents LLM from contradicting known retrieved state
+
+### FIX F — Agentic Signal Tightening (`prompts/intake.md`)
+
+- Intake classifier prompt now explicitly lists identity patterns as QUERY, not AGENTIC:
+  ```
+  "who is X" → query: true, agentic: false
+  "what is X" → query: true, agentic: false
+  "tell me about X" → query: true, agentic: false
+  "what does X do" → query: true, agentic: false
+  ```
+- Added guidance: "agentic should ONLY be true when requesting CREATE/MODIFY/DELETE/BUILD/IMPLEMENT/EXECUTE/RUN — not for information retrieval"
+
+### Test Results
+
+- 34/34 new tests pass (organized into 7 test groups)
+- 1153/1153 total tests pass (zero regressions)
+- Build: zero TypeScript errors
+
+### Files Modified
+
+1. `core/memory/quick-resolve.ts` — Fixes A + B
+2. `core/memory/unit-search.ts` — Fix C
+3. `core/llm.ts` — Fix D
+4. `core/agent.ts` — Fixes D + E
+5. `prompts/intake.md` — Fix F
+6. `tests/phase19e/who-ct-audit.test.ts` — 34 new tests
+
+---
+
+## Phase 20 — Simplify: Pre-Fetch Gate (COMPLETE)
+
+27 tests in `tests/phase20/pre-fetch-gate.test.ts`. Build clean. Tag: `phase-20-simplify`.
+
+### Design Philosophy
+
+Replace 4-LLM-call pipeline (intake → decomposition → search → synthesis) with deterministic pre-fetch gate
+that handles 80% of real messages in **zero or one LLM call**:
+
+**Old path:** intake (LLM) → decomposition (LLM) → unit-search → synthesis (LLM) = 3 LLM calls
+**New path:** regex/SQLite extraction → pre-fetch bodies → synthesis (LLM) = **1 LLM call**
+
+Full decomposition → router → planner pipeline **preserved as fallback** for genuinely complex/agentic messages.
+
+### Pre-Fetch Gate Strategies (in `core/memory/quick-resolve.ts`)
+
+1. **Code lookup** — regex extracts memory codes (including suffixed like `WHO.CT-000076_zaraban`)
+2. **Identity question** — detects "who/what is X", "tell me about X" → WHO-first then all notebooks
+3. **Listing query** — detects "show all contacts", "list projects" → type scan via `queryEntries` (NEW in Phase 20)
+4. **Name search** — proper nouns and quoted strings → `queryEntries` by name
+
+### Listing Query Detection (`detectListingQuery` — NEW)
+
+- Moved from `unit-search.ts` into `quick-resolve.ts` for pre-decomposition gate
+- Detects listing language: `['all ', 'list ', 'show ', 'every ', 'what are my', 'tell me all', ...]`
+- Matches vocabulary: contacts, projects, todos, procedures, events, deadlines, etc.
+- Returns `{ nb: string; type: string }` for direct type-scan via `queryEntries`
+- Even zero results valid resolution ("you have no contacts" is a real answer)
+
+### Output Sanitization (Already Complete in Phase 19e)
+
+- `sanitizeFinalOutput()` strips control tokens, pseudo-tool narratives, thinking preambles
+- Applied to **all** LLM response return paths via `cleanReply()` in agent.ts
+
+### Grounding (Already Wired)
+
+- Pre-fetch synthesis prompt includes grounding instruction: retrieved entries are confirmed to exist
+- Prevents LLM from claiming entries are missing when data is right in the prompt
+
+### Pipeline Architecture After This Sprint
+
+```text
+User message
+  ↓
+[0] Plan confirmation intercept
+  ↓
+[1] Fast-path bypasses (/log, /meeting)
+  ↓
+[2] Pre-fetch gate (quickResolve) ← WIDENED in Phase 20
+  → Code lookup
+  → Identity question
+  → Listing query (NEW)
+  → Name search
+  ↓ resolved? → single LLM synthesis → sanitize → return
+  ↓ not resolved? ↓
+[3] Full pipeline: intake → decomposition → search → router
+  ↓
+[4] Sanitize → return
+```
+
+### Modified Files
+
+1. `core/memory/quick-resolve.ts`:
+   - Updated `QuickResolveResult.strategy` to include `'type_scan'`
+   - Added `detectListingQuery(message)` function with VOCABULARY map
+   - Expanded `quickResolve()` to handle Strategy 3 (listing queries)
+
+### New Files
+
+- `tests/phase20/pre-fetch-gate.test.ts` — 27 comprehensive tests:
+  - 6 tests for `extractCodes` (suffix handling)
+  - 6 tests for `extractIdentityTarget` (identity detection)
+  - 5 tests for `detectListingQuery` (listing detection)
+  - 5 tests for `quickResolve` integration
+  - 3 tests for `sanitizeFinalOutput`
+  - 2 tests for `extractSearchTerms`
+
+### Test Results
+
+- 27/27 new tests pass
+- 1180/1180 total tests pass (1153 → 1180, +27 new, zero regressions)
+- Build: zero TypeScript errors
+- Tag: `phase-20-simplify`

@@ -56,6 +56,13 @@ const PERSON_BLOCKLIST = new Set([
   'Update', 'Check', 'Test', 'Fix', 'Help', 'Please', 'Now', 'Today', 'Yesterday',
   'Next', 'Last', 'All', 'Any', 'New', 'Old', 'First', 'Final', 'Complete', 'Simple',
   'Complex', 'Basic', 'Full', 'Quick', 'Large', 'Small', 'Good', 'Best',
+  // Question words and auxiliary verbs (appear after title-case normalization)
+  'Who', 'What', 'How', 'When', 'Where', 'Why', 'Which',
+  'Is', 'Are', 'Was', 'Were', 'Does', 'Did',
+  'Can', 'Could', 'Would', 'Should', 'Will',
+  // Pronouns and prepositions that appear in query phrasing
+  'Me', 'My', 'Your', 'Their', 'Our', 'Its', 'Him', 'Her', 'Them',
+  'About', 'The', 'For', 'From', 'With', 'Into', 'And', 'Or', 'Not',
 ]);
 
 /** Remove terminal PLAN.EX entries — they confuse the planner into thinking work is already active */
@@ -91,20 +98,28 @@ function loadContents(entries: IndexEntry[]): string[] {
   return contents;
 }
 
-function detectPersonName(content: string): string | null {
+export function detectPersonName(content: string): string | null {
+  // Normalize to title case so regex matches lowercase input too
+  // e.g. "who is erfan tari" → "Who Is Erfan Tari"
+  const titleCased = content.replace(/\b([a-z])/g, (_, c: string) => c.toUpperCase());
+
   // 1. Multi-word capitalized sequence (2+ words): high confidence person signal
-  const multiWordMatch = content.match(PERSON_MULTI_WORD_PATTERN);
+  const multiWordMatch = titleCased.match(PERSON_MULTI_WORD_PATTERN);
   if (multiWordMatch?.[1]) {
-    const name = multiWordMatch[1].trim();
-    // Reject if all words are in the blocklist
-    const words = name.split(/\s+/);
-    if (!words.every(w => PERSON_BLOCKLIST.has(w))) {
-      return name;
+    const words = multiWordMatch[1].trim().split(/\s+/);
+    // Strip leading and trailing blocklist words (question words, verbs, common terms)
+    let start = 0;
+    let end = words.length;
+    while (start < end && PERSON_BLOCKLIST.has(words[start])) start++;
+    while (end > start && PERSON_BLOCKLIST.has(words[end - 1])) end--;
+    const filtered = words.slice(start, end);
+    if (filtered.length >= 2) {
+      return filtered.join(' ');
     }
   }
 
   // 2. Single capitalized word WITH relationship context: medium confidence
-  const singleContextMatch = content.match(PERSON_SINGLE_WITH_CONTEXT_PATTERN);
+  const singleContextMatch = titleCased.match(PERSON_SINGLE_WITH_CONTEXT_PATTERN);
   const candidate = singleContextMatch?.[1] ?? singleContextMatch?.[2];
   if (candidate && !PERSON_BLOCKLIST.has(candidate)) {
     return candidate.trim();
@@ -187,6 +202,16 @@ function computeBm25Confidence(query: string, entry: IndexEntry | undefined): nu
   return 0;
 }
 
+/**
+ * FIX C: Extracts a notebook hint from a query that contains a memory code prefix.
+ * Returns the notebook string (e.g., 'WHO') or null if none found.
+ * Exported for testing.
+ */
+export function extractNotebookHint(query: string): string | null {
+  const m = query.match(/\b(WHO|WHAT|WHEN|HOW|WHY|NOW|PLAN)\./i);
+  return m ? m[1].toUpperCase() : null;
+}
+
 function searchBM25Scoped(
   query: string,
   notebooks: string[] | undefined,
@@ -231,6 +256,54 @@ async function searchVectorsScoped(
     .slice(0, limit)
     .map(row => ({ entry: getEntryByCode(row.code), score: row.score }))
     .filter((item): item is { entry: IndexEntry; score: number } => Boolean(item.entry));
+}
+
+/**
+ * Vocabulary map: user-facing terms → notebook query parameters.
+ * Used to fast-path "list all X" queries before BM25.
+ */
+export const NOTEBOOK_VOCABULARY: Record<string, { nb: string; type?: string }> = {
+  // WHO notebook
+  contacts:      { nb: 'WHO', type: 'CT' },
+  contact:       { nb: 'WHO', type: 'CT' },
+  people:        { nb: 'WHO' },
+  person:        { nb: 'WHO' },
+  organizations: { nb: 'WHO', type: 'ORG' },
+  companies:     { nb: 'WHO', type: 'ORG' },
+  // WHAT notebook
+  projects:      { nb: 'WHAT', type: 'PJ' },
+  project:       { nb: 'WHAT', type: 'PJ' },
+  // NOW notebook
+  todos:         { nb: 'NOW' },
+  tasks:         { nb: 'NOW' },
+  // HOW notebook
+  procedures:    { nb: 'HOW', type: 'PR' },
+  skills:        { nb: 'HOW', type: 'SK' },
+  // WHEN notebook
+  events:        { nb: 'WHEN', type: 'EV' },
+  deadlines:     { nb: 'WHEN', type: 'EV' },
+  reminders:     { nb: 'WHEN', type: 'EV' },
+};
+
+/**
+ * Listing intent tokens: signals that the user wants ALL entries of a type.
+ */
+export const LIST_INTENT_TOKENS = ['all', 'list', 'every', 'show', 'give me', 'what are', 'tell me', 'show me'];
+
+/**
+ * Detect list-intent queries using NOTEBOOK_VOCABULARY.
+ * Returns notebook params when a listing token + vocabulary keyword are found.
+ */
+export function detectListIntent(content: string): { nb: string; type?: string } | null {
+  const lower = content.toLowerCase();
+  const hasListIntent = LIST_INTENT_TOKENS.some(token => lower.includes(token));
+  if (!hasListIntent) return null;
+  for (const [term, params] of Object.entries(NOTEBOOK_VOCABULARY)) {
+    if (lower.includes(term)) {
+      return params;
+    }
+  }
+  return null;
 }
 
 // FIX 3: Detect listing queries like "all contacts", "list all projects", "show me my todos"
@@ -342,9 +415,64 @@ function searchProcedure(content: string): UnitMemoryResult | null {
 
 async function searchFallback(
   unit: DecomposedUnit,
+  personSearchResult?: UnitMemoryResult | null,
+  projectSearchResult?: UnitMemoryResult | null,
 ): Promise<Omit<UnitMemoryResult, 'unitId'>> {
   const notebooks = getScopedNotebooks(unit.route);
-  const bm25 = searchBM25Scoped(unit.content, notebooks, DEFAULT_LIMIT);
+
+  // FIX C: If searchPerson found results but with LOW confidence (0 < conf < 0.7),
+  // try WHO-scoped BM25 to improve confidence and avoid cross-notebook contamination.
+  if (personSearchResult && personSearchResult.entries.length > 0 && personSearchResult.confidence < 0.7) {
+    const personName = personSearchResult.entries[0].name;
+    const whoScoped = searchBM25Scoped(personName, ['WHO'], DEFAULT_LIMIT);
+    if (whoScoped.length > 0) {
+      const topWho = whoScoped[0]?.entry;
+      const whoConfidence = computeBm25Confidence(personName, topWho);
+      const whoEntries = filterTerminalPlanEx(whoScoped.map(item => item.entry));
+      if (whoConfidence >= 0.5) {
+        return {
+          strategy: 'bm25_person_scoped',
+          confidence: whoConfidence,
+          entries: whoEntries,
+          contents: loadContents(whoEntries),
+        };
+      }
+    }
+  }
+
+  // FIX C: If searchProject found results but with LOW confidence (0 < conf < 0.7),
+  // try WHAT+PLAN-scoped BM25 to improve confidence.
+  if (projectSearchResult && projectSearchResult.entries.length > 0 && projectSearchResult.confidence < 0.7) {
+    const projectName = projectSearchResult.entries[0].name;
+    const whatScoped = searchBM25Scoped(projectName, ['WHAT', 'PLAN'], DEFAULT_LIMIT);
+    if (whatScoped.length > 0) {
+      const topWhat = whatScoped[0]?.entry;
+      const whatConfidence = computeBm25Confidence(projectName, topWhat);
+      const whatEntries = filterTerminalPlanEx(whatScoped.map(item => item.entry));
+      if (whatConfidence >= 0.5) {
+        return {
+          strategy: 'bm25_project_scoped',
+          confidence: whatConfidence,
+          entries: whatEntries,
+          contents: loadContents(whatEntries),
+        };
+      }
+    }
+  }
+
+  // FIX C: Apply notebook hint scoping to BM25 query if a code prefix is present
+  // When user searches for code like "WHO.CT-000076_zaraban", scope results to WHO notebook
+  const nbHint = extractNotebookHint(unit.content);
+
+  let bm25 = searchBM25Scoped(unit.content, notebooks, DEFAULT_LIMIT);
+  // If notebook hint exists and unscoped results exist, try scoped results first
+  if (nbHint && bm25.length > 0) {
+    const scopedBm25 = searchBM25Scoped(unit.content, [nbHint], DEFAULT_LIMIT);
+    if (scopedBm25.length > 0) {
+      bm25 = scopedBm25; // Use scoped results if they exist
+    }
+  }
+
   const topBm25 = bm25[0]?.entry;
   const bm25Confidence = computeBm25Confidence(unit.content, topBm25);
   const bm25Entries = filterTerminalPlanEx(bm25.map(item => item.entry));
@@ -432,11 +560,29 @@ async function searchUnit(unit: DecomposedUnit, alreadyResolved?: string[], opti
   // short-circuit before listing detection fires. Listing intent is unambiguous.
   const listingMatch = detectListingQuery(unit.content);
   if (listingMatch) {
-    const entries = uniqueByCode(queryEntries({ nb: listingMatch.nb, type: listingMatch.type, status: 'active' })).slice(0, 20);
+    const entries = uniqueByCode(queryEntries({ nb: listingMatch.nb, type: listingMatch.type })).slice(0, 20);
     const result: UnitMemoryResult = { unitId: unit.id, strategy: 'type_scan' as UnitMemoryResult['strategy'], confidence: entries.length > 0 ? 1 : 0, entries, contents: loadContents(entries) };
     transparency.emit({ type: 'unit_search_strategy', data: { strategy: 'type_scan', projectName: null, confidence: result.confidence, codes: entries.map(e => e.code) } });
     transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
     return result;
+  }
+
+  // FIX 2a/2b/2c: Vocabulary-based list-intent fast-path for terms not caught by detectListingQuery.
+  // Runs AFTER detectListingQuery to avoid breaking existing type_scan behavior.
+  // If entries found: return list_intent strategy. If empty: fall through to BM25.
+  const vocabMatch = detectListIntent(unit.content);
+  if (vocabMatch) {
+    const qParams = vocabMatch.type
+      ? { nb: vocabMatch.nb, type: vocabMatch.type }
+      : { nb: vocabMatch.nb };
+    const vocabEntries = uniqueByCode(queryEntries(qParams)).slice(0, 20);
+    transparency.emit({ type: 'list_intent_detected', data: { unitContent: unit.content, matched: vocabMatch, resultCount: vocabEntries.length } });
+    if (vocabEntries.length > 0) {
+      const result: UnitMemoryResult = { unitId: unit.id, strategy: 'list_intent', confidence: 1, entries: vocabEntries, contents: loadContents(vocabEntries) };
+      transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
+      return result;
+    }
+    // Empty notebook: fall through to BM25
   }
 
   // FIX 4+2: Intake projectSignal takes priority over content heuristics (non-listing queries)
@@ -496,7 +642,7 @@ async function searchUnit(unit: DecomposedUnit, alreadyResolved?: string[], opti
     return result;
   }
 
-  const fallback = await searchFallback(unit);
+  const fallback = await searchFallback(unit, person, project);
   const result = { ...fallback, unitId: unit.id };
   transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
   return result;

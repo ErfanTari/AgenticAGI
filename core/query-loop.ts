@@ -413,10 +413,25 @@ export async function runQueryLoop(
   transparency.emit({ type: 'query_loop_start', data: { goal } });
 
   for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
-    // Call the model
-    const raw = await llmHandler(messages, { maxTokens: loopMaxTokens ?? TOKEN_BUDGETS.QUERY_LOOP_ITER });
+    // Call the model — strip thinking BEFORE any parsing attempt.
+    // Gemma 4 sometimes wraps tool calls inside <|channel>thought blocks;
+    // parsing raw output would mistake those for completed tool executions.
+    const raw = await llmHandler(messages, { maxTokens: loopMaxTokens ?? TOKEN_BUDGETS.QUERY_LOOP_ITER, disableThinking: true });
     const reply = stripThinkingTags(raw).trim();
     lastReply = reply;
+
+    // Pure-thinking turn: model only thought, no actual output.
+    // Treat as no_action rather than entering the repair/tool-call paths.
+    if (!reply) {
+      transparency.emit({ type: 'query_loop_end', data: { reason: 'no_action', iterations: iteration } });
+      return {
+        reply: 'Task complete.',
+        iterations: iteration,
+        skillsUsed,
+        stoppedBecause: 'no_action',
+        artifactContext: sessionArtifact ?? undefined,
+      };
+    }
 
     transparency.emit({ type: 'query_loop_iteration', data: { iteration, reply: reply.slice(0, 200) } });
 
