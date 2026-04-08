@@ -5,7 +5,7 @@ import { buildContext } from './context.js';
 import { callLLM, stripThinkingTags, sanitizeFinalOutput } from './llm.js';
 import { getSkillsForIntent } from './skills/registry.js';
 import { decomposeMessage, isLikelyCompoundMessage } from './decomposition.js';
-import { routeDecomposedUnits } from './router.js';
+import { routeDecomposedUnits, executeConfirmedPlan } from './router.js';
 import { assessComplexity } from './planner.js';
 import { runQueryLoop } from './query-loop.js';
 import { searchMemoryForUnits } from './memory/unit-search.js';
@@ -1136,6 +1136,31 @@ async function handleCompatibilityExecution(
   return null;
 }
 
+/**
+ * Classify user response to a pending plan confirmation.
+ * Deterministic regex-based classification without LLM calls.
+ * @returns 'approve' | 'reject' | 'ambiguous'
+ */
+function classifyConfirmationResponse(message: string): 'approve' | 'reject' | 'ambiguous' {
+  const lower = message.trim().toLowerCase();
+  const first15 = lower.slice(0, 15);
+
+  // Approve patterns: yes, yeah, y, go, proceed, do it, execute, run, confirm, approved, okay, ok, sure, let's go, just do it
+  const approvePatterns = [/^(yes|yeah|yep|y|go|proceed|do\s+it|execute|run|confirm|confirmed|okay|ok|sure|let'?s\s+go|just\s+do\s+it|absolutely|definitely|sounds\s+good)/i];
+  if (approvePatterns.some(p => p.test(lower))) {
+    return 'approve';
+  }
+
+  // Reject patterns: no, nope, nah, cancel, stop, abort, don't, don't do it, never, skip, disagree, no thanks
+  const rejectPatterns = [/^(no|nope|nah|n|cancel|stop|abort|don't|do\s+not|never|skip|disagree|no\s+thanks|i\s+don't)/i];
+  if (rejectPatterns.some(p => p.test(lower))) {
+    return 'reject';
+  }
+
+  // Ambiguous: anything else
+  return 'ambiguous';
+}
+
 export async function processMessage(
   message: string,
   history: Message[],
@@ -1145,17 +1170,50 @@ export async function processMessage(
   recordActivity(); // Phase 16: track last activity for AutoDream idle detection
   let decomposition: DecompositionResult | null = null;
   try {
-    // === FIX 0: Plan Confirmation (LLM-driven) ===
-    // When a plan is pending confirmation, let the LLM read the user message
-    // and decide via the confirm_plan skill with decision: approve/reject/unclear.
-    // This prevents "fake execution" hallucinations by keeping confirmation LLM-driven.
-    const currentPendingPlan = _getPendingConfirmationPlan();
-    if (currentPendingPlan) {
-      // Will be injected into context and routing below; normal LLM flow will handle it
-    }
-
+    // === FIX 0: Plan Confirmation Interceptor (step [0]) ===
+    // Deterministic confirmation without LLM calls. Reads the user's raw message
+    // and classifies it as approval, rejection, or ambiguous.
     const findingsPrefix = await buildFindingsPrefix();
     const handler = options?.llmHandler ?? callLLM;
+    const currentPendingPlan = _getPendingConfirmationPlan();
+    if (currentPendingPlan) {
+      const decision = classifyConfirmationResponse(message);
+      if (decision === 'approve') {
+        // Execute the plan immediately
+        const executionResult = await executeConfirmedPlan(currentPendingPlan, handler);
+        _setPendingConfirmationPlan(null);
+        skillClearPendingPlan();
+        transparency.emit({ type: 'plan_confirmed', data: { goal: currentPendingPlan.goal ?? 'unknown' } });
+        return {
+          reply: findingsPrefix + executionResult.reply,
+          intent: 'planned_workflow',
+          resolved: null,
+        };
+      }
+      if (decision === 'reject') {
+        // Reject and clear the plan
+        _setPendingConfirmationPlan(null);
+        skillClearPendingPlan();
+        transparency.emit({ type: 'plan_rejected', data: { goal: currentPendingPlan.goal ?? 'unknown' } });
+        return {
+          reply: findingsPrefix + `Plan cancelled. Let me know what you'd like to do instead.`,
+          intent: 'general',
+          resolved: null,
+        };
+      }
+      // decision === 'ambiguous' — keep plan pending and re-prompt
+      transparency.emit({ type: 'plan_confirmation_ambiguous', data: { userMessage: message } });
+      const milestones = currentPendingPlan.milestones ?? [];
+      const nextMilestone = milestones.length > 0 ? milestones[0] : null;
+      const clarification = nextMilestone
+        ? `Could you clarify? The plan's first step is: "${nextMilestone.milestone || 'Unknown'}". Do you want me to proceed?`
+        : `Could you clarify? Do you want me to execute the plan?`;
+      return {
+        reply: findingsPrefix + clarification,
+        intent: 'general',
+        resolved: null,
+      };
+    }
 
     if (/^\/log\s+/i.test(message.trim())) {
       return await handleLogFastPath(message, findingsPrefix);
