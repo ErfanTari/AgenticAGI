@@ -66,18 +66,10 @@ export const TaskPlanSchema = z.object({
   complexity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'MAX', 'simple', 'complex']).default('LOW'),
   needsConfirmation: z.boolean().default(false),
   estimatedDuration: z.string().optional(),
+  createdAt: z.string(),
 });
 
-export type TaskPlan = {
-  goal: string;
-  steps: TaskStep[];
-  goals?: TaskGoal[];
-  milestones?: TaskMilestone[];
-  complexity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'MAX' | 'simple' | 'complex';
-  needsConfirmation?: boolean;
-  estimatedDuration?: string;
-  createdAt: string;
-};
+export type TaskPlan = z.infer<typeof TaskPlanSchema>;
 
 export const taskPlanJsonSchema = z.toJSONSchema(TaskPlanSchema) as Record<string, unknown>;
 
@@ -109,6 +101,102 @@ export const MilestoneRevisionSchema = z.object({
 });
 
 export type MilestoneRevision = z.infer<typeof MilestoneRevisionSchema>;
+
+// FIX 1: JSON schema for milestone revision (engine-level enforcement)
+export const milestoneRevisionJsonSchema = z.toJSONSchema(MilestoneRevisionSchema) as Record<string, unknown>;
+
+// FIX 1: Intake classification schema
+export const IntakeClassificationSchema = z.object({
+  summary: z.string(),
+  person: z.object({
+    name: z.string(),
+    confidence: z.number().min(0).max(1),
+  }).nullable(),
+  project: z.object({
+    name: z.string(),
+    confidence: z.number().min(0).max(1),
+  }).nullable(),
+  time: z.object({
+    description: z.string(),
+  }).nullable(),
+  agentic: z.boolean(),
+  procedure: z.boolean(),
+  query: z.boolean(),
+});
+
+export type IntakeClassification = z.infer<typeof IntakeClassificationSchema>;
+export const intakeJsonSchema = z.toJSONSchema(IntakeClassificationSchema) as Record<string, unknown>;
+
+// FIX 1: Plan assertions schema
+export const PlanAssertionSchema = z.object({
+  passed: z.boolean(),
+  failedAssertions: z.array(z.string()).default([]),
+  rewritePrompt: z.string().optional(),
+});
+
+export type PlanAssertion = z.infer<typeof PlanAssertionSchema>;
+export const planAssertionJsonSchema = z.toJSONSchema(PlanAssertionSchema) as Record<string, unknown>;
+
+// FIX 3: Plan referential integrity validation
+export interface PlanIntegrityResult {
+  valid: boolean;
+  orphanedSteps: string[];     // in root steps but not in any milestone
+  missingSteps: string[];      // referenced in milestones but not in root steps
+  brokenDependencies: string[]; // dependsOn references that don't exist
+}
+
+/**
+ * FIX 3: Validates that every step in the plan is properly referenced:
+ * - Every step in root `steps` array must appear in exactly ONE milestone's `steps` array
+ * - Every step referenced in a milestone must exist in root `steps` array
+ * - Every `dependsOn` reference must point to a step that exists in root `steps` array
+ *
+ * Note: milestone.steps is an array of TaskStep objects, not step IDs.
+ * We need to extract the IDs from them.
+ */
+export function validatePlanIntegrity(plan: TaskPlan): PlanIntegrityResult {
+  const rootStepIds = new Set(plan.steps.map(s => s.id));
+
+  // Collect all step IDs referenced inside milestones
+  const milestoneStepIds = new Set<string>();
+  if (plan.milestones && Array.isArray(plan.milestones)) {
+    for (const milestone of plan.milestones) {
+      if (milestone.steps && Array.isArray(milestone.steps)) {
+        for (const step of milestone.steps) {
+          // milestone.steps contains TaskStep objects, extract the id
+          if (typeof step === 'object' && step !== null && 'id' in step) {
+            milestoneStepIds.add((step as any).id);
+          }
+        }
+      }
+    }
+  }
+
+  // Orphaned: in root but not in any milestone
+  const orphanedSteps = [...rootStepIds].filter(id => !milestoneStepIds.has(id));
+
+  // Missing: referenced in milestone but not in root
+  const missingSteps = [...milestoneStepIds].filter(id => !rootStepIds.has(id));
+
+  // Broken dependencies: step.dependsOn references a step that doesn't exist
+  const brokenDependencies: string[] = [];
+  for (const step of plan.steps) {
+    if (step.dependsOn && Array.isArray(step.dependsOn)) {
+      for (const dep of step.dependsOn) {
+        if (typeof dep === 'string' && !rootStepIds.has(dep)) {
+          brokenDependencies.push(`${step.id} → ${dep}`);
+        }
+      }
+    }
+  }
+
+  return {
+    valid: orphanedSteps.length === 0 && missingSteps.length === 0 && brokenDependencies.length === 0,
+    orphanedSteps,
+    missingSteps,
+    brokenDependencies,
+  };
+}
 
 // --- Post-flight synthesis schema ---
 
