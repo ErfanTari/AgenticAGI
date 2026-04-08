@@ -140,15 +140,20 @@ function validateUnits(value: unknown): DecomposedUnit[] {
     if (!unit || typeof unit !== 'object' || Array.isArray(unit)) continue;
     const route = (unit as { route?: unknown }).route;
     const content = (unit as { content?: unknown }).content;
+    const taskType = (unit as { taskType?: unknown }).taskType;
     if (!validateRoute(route) || typeof content !== 'string') continue;
     const trimmed = content.trim();
     if (!trimmed) continue;
-    normalized.push({
+    const normalized_unit: DecomposedUnit = {
       id: `unit_${i + 1}`,
       route,
       content: trimmed,
       order: i,
-    });
+    };
+    if (taskType === 'coding' || taskType === 'general') {
+      normalized_unit.taskType = taskType;
+    }
+    normalized.push(normalized_unit);
   }
   return normalized;
 }
@@ -381,7 +386,18 @@ Rules: route must be "conversational", "agentic", or "query". content must be a 
       return fallback;
     }
 
-    if (units.length === 1 && isLikelyCompoundMessage(message)) {
+    // FIX 2: Compound Re-Trigger Bypass
+    // If first pass returned exactly one valid unit with both route and content fields,
+    // the message is semantically a single intent. The compound detection heuristic may
+    // fire on unusual punctuation (e.g., ". " in mid-sentence), but the message is not
+    // actually compound. Skip the expensive second decomposition pass.
+    const firstUnitIsComplete =
+      units.length === 1 &&
+      units[0].route !== undefined &&
+      units[0].content !== undefined &&
+      units[0].content.length > 0;
+
+    if (units.length === 1 && isLikelyCompoundMessage(message) && !firstUnitIsComplete) {
       const llmRepaired = await retryCompoundDecomposition(message, llmHandler);
       const repaired = llmRepaired ?? buildHeuristicCompoundDecomposition(message);
       if (!llmRepaired && repaired) {
@@ -397,6 +413,9 @@ Rules: route must be "conversational", "agentic", or "query". content must be a 
         transparency.emit({ type: 'decomposition', data: repaired });
         return repaired;
       }
+    } else if (firstUnitIsComplete) {
+      // FIX 2: Single valid unit from first pass — skip compound re-trigger
+      console.debug('[zaraban][decomposition] Single valid unit from first pass — skipping compound retry');
     }
 
     const result = { units };
