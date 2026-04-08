@@ -9,13 +9,6 @@ import { stripThinkingTags } from './llm.js';
 
 const ROUTES: RouteKind[] = ['conversational', 'agentic', 'query'];
 
-// Session-scoped counter — tracks how many times the heuristic repair path fires.
-// Exported for test isolation.
-let _decompositionRepairCount = 0;
-export function _resetDecompositionCounter(): void {
-  _decompositionRepairCount = 0;
-}
-
 const DECOMPOSITION_RESPONSE_SCHEMA = {
   name: 'decomposition',
   schema: {
@@ -275,10 +268,15 @@ export function buildSingleUnitFallback(message: string): DecompositionResult {
   };
 }
 
+export interface DecompositionRepairContext {
+  count: number;
+}
+
 export async function decomposeMessage(
   message: string,
   llmHandler: LLMHandler,
   resolvedContext?: ResolvedEntry[],
+  repairContext?: DecompositionRepairContext,
 ): Promise<DecompositionResult> {
   if (GREETING_ONLY.test(message)) {
     const fallback = buildSingleUnitFallback(message);
@@ -368,11 +366,16 @@ Rules: route must be "conversational", "agentic", or "query". content must be a 
         repaired = llmRepaired ?? buildHeuristicCompoundDecomposition(message);
         if (!llmRepaired && repaired) {
           // Heuristic fired — log and track
-          _decompositionRepairCount++;
-          console.warn(`[decomposition] heuristic repair fired (session total: ${_decompositionRepairCount})`);
-          transparency.emit({ type: 'decomposition_repair', data: { message: message.slice(0, 100), repairCount: _decompositionRepairCount, reason: 'model returned empty units' } });
-          if (_decompositionRepairCount >= 3) {
-            console.warn('[decomposition] WARNING: heuristic repair has fired 3+ times this session. The decomposition prompt may need review.');
+          if (repairContext) {
+            repairContext.count++;
+            console.warn(`[decomposition] heuristic repair fired (count: ${repairContext.count})`);
+            transparency.emit({ type: 'decomposition_repair', data: { message: message.slice(0, 100), repairCount: repairContext.count, reason: 'model returned empty units' } });
+            if (repairContext.count >= 3) {
+              console.warn('[decomposition] WARNING: heuristic repair has fired 3+ times this request. The decomposition prompt may need review.');
+            }
+          } else {
+            console.warn('[decomposition] heuristic repair fired but no repair context provided');
+            transparency.emit({ type: 'decomposition_repair', data: { message: message.slice(0, 100), repairCount: 1, reason: 'model returned empty units' } });
           }
         }
       }
@@ -402,11 +405,16 @@ Rules: route must be "conversational", "agentic", or "query". content must be a 
       const repaired = llmRepaired ?? buildHeuristicCompoundDecomposition(message);
       if (!llmRepaired && repaired) {
         // Heuristic fired — log and track
-        _decompositionRepairCount++;
-        console.warn(`[decomposition] heuristic repair fired (session total: ${_decompositionRepairCount})`);
-        transparency.emit({ type: 'decomposition_repair', data: { message: message.slice(0, 100), repairCount: _decompositionRepairCount, reason: 'model returned single unit for compound message' } });
-        if (_decompositionRepairCount >= 3) {
-          console.warn('[decomposition] WARNING: heuristic repair has fired 3+ times this session. The decomposition prompt may need review.');
+        if (repairContext) {
+          repairContext.count++;
+          console.warn(`[decomposition] heuristic repair fired (count: ${repairContext.count})`);
+          transparency.emit({ type: 'decomposition_repair', data: { message: message.slice(0, 100), repairCount: repairContext.count, reason: 'model returned single unit for compound message' } });
+          if (repairContext.count >= 3) {
+            console.warn('[decomposition] WARNING: heuristic repair has fired 3+ times this request. The decomposition prompt may need review.');
+          }
+        } else {
+          console.warn('[decomposition] heuristic repair fired but no repair context provided');
+          transparency.emit({ type: 'decomposition_repair', data: { message: message.slice(0, 100), repairCount: 1, reason: 'model returned single unit for compound message' } });
         }
       }
       if (repaired) {

@@ -9,7 +9,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { _unfreezeRegistry, _resetRegistry, getSkillsByPermission, getAllSkills } from '../../core/skills/registry.js';
 import { MilestoneRevisionSchema } from '../../core/schemas.js';
-import { _resetDecompositionCounter } from '../../core/decomposition.js';
 
 // ── Group 1: FIX 1 — Permission-aware planner ──────────────────────────────
 
@@ -192,12 +191,7 @@ describe('FIX 3: Decomposition few-shot hardening', () => {
       'utf-8'
     );
     expect(src).toContain('heuristic repair fired');
-    expect(src).toContain('_decompositionRepairCount');
-  });
-
-  it('decomposition repair counter tracks session-wide count', () => {
-    _resetDecompositionCounter();
-    // Counter exported and resettable — verify the function exists and runs
-    expect(typeof _resetDecompositionCounter).toBe('function');
+    expect(src).toContain('repairContext');
+    expect(src).toContain('DecompositionRepairContext');
   });
 });

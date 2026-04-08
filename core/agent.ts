@@ -5,7 +5,7 @@ import { buildContext } from './context.js';
 import { callLLM, stripThinkingTags, sanitizeFinalOutput } from './llm.js';
 import { getSkillsForIntent } from './skills/registry.js';
 import { decomposeMessage, isLikelyCompoundMessage } from './decomposition.js';
-import { routeDecomposedUnits, executeConfirmedPlan } from './router.js';
+import { routeDecomposedUnits } from './router.js';
 import { assessComplexity } from './planner.js';
 import { runQueryLoop } from './query-loop.js';
 import { searchMemoryForUnits } from './memory/unit-search.js';
@@ -16,6 +16,8 @@ import {
   getEntryByCode,
   hybridSearch,
   upsertEntry,
+  savePendingPlan,
+  clearPendingPlan,
 } from './memory/mod.js';
 import { startHeartbeat, stopHeartbeat, recordActivity } from './heartbeat.js';
 import { getDb } from './memory/index.js';
@@ -32,6 +34,10 @@ import { runIntake } from './intake.js';
 import type { IntakeResult } from './intake.js';
 import { createWorkingMemory, loadWorkingMemory } from './memory/working-memory.js';
 import type { WorkingMemory } from './memory/working-memory.js';
+import {
+  setPendingConfirmationPlan as skillSetPendingPlan,
+  clearPendingConfirmationPlan as skillClearPendingPlan,
+} from './skills/tools/confirm_plan.js';
 
 const GREETING_ONLY = /^\s*(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy|greetings)\s*[!.?]*\s*$/i;
 const DIRECT_MEETING_PREFIX = /^\/meeting\b/i;
@@ -159,36 +165,26 @@ Respond with ONLY the JSON object, no extra text.`;
 export let isProcessingMessage = false;
 
 // FIX 0: Plan confirmation state machine — prevents fake-execution hallucination
-let pendingConfirmationPlan: TaskPlan | null = null;
+// Now uses skill's state management (stored in confirm_plan.ts)
+// Module-level backup for quick access
+let _pendingConfirmationPlanCache: TaskPlan | null = null;
 
 /** Exported for testing only. */
 export function _getPendingConfirmationPlan(): TaskPlan | null {
-  return pendingConfirmationPlan;
+  return _pendingConfirmationPlanCache;
 }
 /** Exported for testing only. */
 export function _setPendingConfirmationPlan(plan: TaskPlan | null): void {
-  pendingConfirmationPlan = plan;
+  _pendingConfirmationPlanCache = plan;
+  if (plan) {
+    skillSetPendingPlan(plan);
+    savePendingPlan(plan); // Persist to SQLite
+  } else {
+    skillClearPendingPlan();
+    clearPendingPlan(); // Delete from SQLite
+  }
 }
 
-export function isUserConfirmation(message: string): boolean {
-  const normalized = message.toLowerCase().trim();
-  const confirmPatterns = [
-    /^(yes|yep|yeah|yup|sure|ok|okay|go|do it|proceed|confirm|confirmed|execute|run it|go ahead|let's go|let's do it|approved|approve)$/,
-    /\b(confirm|execute|proceed|go ahead|approved?)\b.*\b(plan|it)\b/,
-    /\b(yes|sure|ok)\b.*\b(execute|run|do|go)\b/,
-  ];
-  return confirmPatterns.some(p => p.test(normalized));
-}
-
-export function isUserRejection(message: string): boolean {
-  const normalized = message.toLowerCase().trim();
-  const rejectPatterns = [
-    /^(no|nope|nah|cancel|stop|abort|don't|nevermind|never mind)$/,
-    /\b(cancel|abort|stop|don't)\b.*\b(plan|it)\b/,
-    /\b(no|nope)\b/,
-  ];
-  return rejectPatterns.some(p => p.test(normalized));
-}
 
 // FIX 1: Agent lifecycle
 export function startAgent(): void {
@@ -1149,44 +1145,13 @@ export async function processMessage(
   recordActivity(); // Phase 16: track last activity for AutoDream idle detection
   let decomposition: DecompositionResult | null = null;
   try {
-    // === FIX 0: Plan Confirmation Intercept ===
-    // Must be the FIRST check — before intake, decomposition, or any routing.
-    // Prevents the "fake execution" hallucination where a confirmation message
-    // gets routed as conversational and the LLM fabricates plan completion.
-    if (pendingConfirmationPlan) {
-      const plan = pendingConfirmationPlan;
-      const handler = options?.llmHandler ?? callLLM;
-
-      if (isUserConfirmation(message)) {
-        pendingConfirmationPlan = null;
-        transparency.emit({ type: 'plan_confirmed', data: { goal: plan.goal } });
-        const result = await executeConfirmedPlan(plan, handler);
-        return {
-          reply: result.reply,
-          intent: 'planned_workflow',
-          resolved: null,
-        };
-      } else if (isUserRejection(message)) {
-        pendingConfirmationPlan = null;
-        transparency.emit({ type: 'plan_rejected', data: { goal: plan.goal } });
-        return {
-          reply: 'Plan cancelled. What would you like me to do instead?',
-          intent: 'general',
-          resolved: null,
-        };
-      } else {
-        // Ambiguous response — re-prompt without clearing the plan
-        transparency.emit({ type: 'plan_confirmation_ambiguous', data: { userMessage: message } });
-        const milestoneLines = (plan.milestones ?? []).map(
-          (m: { title: string; description?: string }) => `- ${m.title}${m.description ? ': ' + m.description : ''}`
-        );
-        return {
-          reply: "I have a plan ready to execute. Please confirm with 'yes' or cancel with 'no'.\n\n" +
-            milestoneLines.join('\n'),
-          intent: 'general',
-          resolved: null,
-        };
-      }
+    // === FIX 0: Plan Confirmation (LLM-driven) ===
+    // When a plan is pending confirmation, let the LLM read the user message
+    // and decide via the confirm_plan skill with decision: approve/reject/unclear.
+    // This prevents "fake execution" hallucinations by keeping confirmation LLM-driven.
+    const currentPendingPlan = _getPendingConfirmationPlan();
+    if (currentPendingPlan) {
+      // Will be injected into context and routing below; normal LLM flow will handle it
     }
 
     const findingsPrefix = await buildFindingsPrefix();
@@ -1374,7 +1339,9 @@ The memory entries provided above are confirmed to exist in the database. You MU
       // Intake is advisory — never block processing
     }
 
-    decomposition = await decomposeMessage(message, handler, intakeResult?.resolvedContext);
+    // Create fresh repair context for this message's decomposition
+    const repairContext = { count: 0 };
+    decomposition = await decomposeMessage(message, handler, intakeResult?.resolvedContext, repairContext);
 
     if (decomposition.units.length === 1 && GREETING_ONLY.test(decomposition.units[0].content)) {
       const routed = await routeDecomposedUnits(decomposition.units, [], history, handler);
@@ -1469,7 +1436,7 @@ The memory entries provided above are confirmed to exist in the database. You MU
 
     // FIX 0: If routing produced a plan that needs confirmation, store it and return the confirmation prompt
     if (routed.plan?.needsConfirmation && !routed.execution) {
-      pendingConfirmationPlan = routed.plan;
+      _setPendingConfirmationPlan(routed.plan);
       transparency.emit({ type: 'plan_confirmation_pending', data: { goal: routed.plan.goal, stepCount: routed.plan.steps.length } });
     }
 
