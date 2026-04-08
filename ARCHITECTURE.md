@@ -157,50 +157,59 @@ AgenticAGI/
 User Message
     │
     ▼
-[0] Plan confirmation intercept          ← core/agent.ts
+[0] Plan confirmation intercept          ← core/agent.ts (deterministic)
     │  If pendingConfirmationPlan exists:
-    │  ├── "yes"/"go"/"proceed" → executeConfirmedPlan() → done
-    │  ├── "no"/"cancel"        → clear plan, inform user → done
-    │  └── ambiguous            → re-prompt with milestones
+    │  ├── "yes"/"go"/"proceed" → executeConfirmedPlan() → return reply
+    │  ├── "no"/"cancel"        → clear plan, inform user → return
+    │  └── ambiguous            → re-prompt with milestones → return
     │
     ▼
 [1] Fast-path bypasses                   ← core/agent.ts
-    ├── /log ...       → NOW.LOG write
-    ├── /meeting       → Meeting Mode
-    └── WHO.CT-000001  → direct code fetch
+    ├── /log ...       → NOW.LOG write (no routing)
+    ├── /meeting       → Meeting Mode (no routing)
+    └── WHO.CT-000001  → direct code fetch (no routing)
     │
     ▼
-[2] decomposeMessage()                   ← core/decomposition.ts
-    │  LLM-structured decomposition
-    │  → DecompositionResult { units[] }
-    │  unit.route ∈ { conversational | agentic | query }
+[2] Pre-fetch quick-resolve gate         ← core/memory/quick-resolve.ts
+    │  Deterministic code lookup, identity questions, name search
+    │  If resolved: single LLM call + sanitize → return
     │
     ▼
-[3] searchMemoryForUnits()               ← core/memory/unit-search.ts
-    │  Parallel per-unit BM25/vector search
+[3] decomposeMessage()                   ← core/decomposition.ts
+    │  LLM-structured decomposition with retry + heuristic repair
+    │  → DecomposedUnit[] { route, content, taskType? }
+    │  route ∈ { conversational | agentic | query }
     │
     ▼
-[4] routeDecomposedUnits()               ← core/router.ts
+[4] searchMemoryForUnits()               ← core/memory/unit-search.ts
+    │  Parallel per-unit BM25/vector search with signal scoping
     │
-    ├── conversational → buildContext() → callLLM()
+    ▼
+[5] routeDecomposedUnits()               ← core/router.ts
     │
-    ├── query → direct retrieval / hybrid fallback (no LLM if results found)
+    ├── conversational → buildContext() → callLLM() → sanitize output
+    │
+    ├── query → resolver (5-step) → hybridSearch fallback (no LLM if found)
     │
     └── agentic → assessComplexity()
-                   ├── LOW/MEDIUM → runQueryLoop()   ← iterative skill loop
-                   └── HIGH/MAX   → decomposeTask()  ← milestone planner
-                                     → executePlan()
-                                     → verifyExecution()
+                   ├── LOW/MEDIUM/taskType=coding → runQueryLoop()
+                   └── HIGH/MAX → decomposeTask() → executePlan()
     │
     ▼
-[5] Merge route outputs by original unit order
+[6] Merge route outputs by original unit order
     │
     ▼
-[6] AgentResponse { reply, intent, resolved, created?, error?, retries? }
+[7] AgentResponse { reply, intent, resolved, created?, error?, retries? }
     │
     ▼
-[7] Session log append (user + assistant)  ← core/session/session-log.ts
+[8] Session log append (user + assistant)  ← chat.ts (AFTER processMessage returns)
 ```
+
+**Legend:**
+- **Steps [0-2]** are deterministic fast-paths that return immediately without full routing.
+- **Steps [3-7]** are the normal decomposition-first pipeline.
+- **Step [8]** happens in `chat.ts` after `processMessage()` returns — not inside processMessage.
+- **Sanitization** removes thinking tags and control tokens from all LLM responses before returning to user.
 
 ---
 
