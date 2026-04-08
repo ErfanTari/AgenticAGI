@@ -721,6 +721,7 @@ Runs every 30 minutes while idle (`isProcessingMessage = false`):
 | `checkStaleProjects()` | WHAT.PJ active 7+ days |
 | `checkVisionAlignment()` | Plans with no overlap with North Star vision |
 | `checkStalePlanPJ()` | PLAN.PJ project brains not updated in 3+ days |
+| `checkNowTTL()` | NOW entries expiring soon (check time-to-live) |
 | `checkAutoDream()` | Idle > 10 min → refresh pointer index from today's events |
 
 Findings → `heartbeat_queue` table → surfaced at next user interaction.
