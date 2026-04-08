@@ -141,11 +141,13 @@ AgenticAGI/
 
 | Principle | What It Means in Code |
 |-----------|----------------------|
-| **Files are truth, SQLite is the map** | All content lives in `.md` files. SQLite holds only metadata + search indexes. Never duplicate content. |
+| **Files are canonical, SQLite is derived** | All authoritative content lives in `.md` files on disk. SQLite holds metadata, relationships, and a full-text search index derived from file contents. The index can always be rebuilt from the files; the files are never rebuilt from the index. |
 | **Index first, fetch second, search last** | Resolver tries direct code lookup → filter query → relationship traversal → only then calls `hybridSearch()`. |
 | **Codes are the universal language** | Every entry has a code like `WHO.CT-000001`. Codes encode notebook + type + sequence number. |
 | **Simplicity over cleverness** | Each layer must earn its place. No speculative abstractions. |
 | **Permission before execution** | Every skill declares a `permissionLevel`. The runner enforces it against the active mode before calling `execute()`. |
+
+**Note on FTS5:** The full-text search table necessarily stores tokenized body content for search performance. This is a derivation (not a duplicate source of truth) — the authoritative copy remains in the `.md` file. The FTS5 index can always be rebuilt from file contents without data loss.
 
 ---
 
@@ -841,9 +843,41 @@ Time saved: ~2-3 seconds
 
 ---
 
-## 20. Testing
+## 20. DVD Log Analysis Fix Sprint
 
-- **1099 tests** across 88 test files (1081 core + 18 Phase 19c quick-resolve)
+Five targeted bug fixes derived from transparency log analysis of a DVD screensaver task.
+Address BM25 relevance pollution, unnecessary decomposition retries, session cache churn,
+legacy complexity routing, and router defensive gaps.
+
+### Fixes Summary
+
+| Fix | Issue | Solution | File(s) |
+|-----|-------|----------|---------|
+| FIX 1 | BM25 injects irrelevant memory into agentic tasks | `hasMeaningfulOverlap()` relevance gate on BM25 fallback | `core/memory/unit-search.ts` |
+| FIX 2 | Compound re-trigger on single-intent messages | Bypass second decomposition when first pass returns 1 valid unit | `core/decomposition.ts` |
+| FIX 3 | Schema leak in decomposition output | **Verified closed** by json-integrity-complete sprint (responseSchema present) | `core/decomposition.ts` |
+| FIX 4 | Session cache churn-stores same entry | Dedup guard: skip write if code already cached with same updated timestamp | `core/memory/session-cache.ts` |
+| FIX 5A | Legacy "simple"/"complex" complexity routed to unknown path | Coerce legacy values post-Zod: "simple"→"LOW", "complex"→"MEDIUM" | `core/planner.ts` |
+| FIX 5B | Router has no defense against unknown complexity | Validate complexity is in {LOW, MEDIUM, HIGH, MAX}, default to LOW if unrecognized | `core/router.ts` |
+
+### New Transparency Event
+
+- `unit_search_filtered`: `{ unitId, reason: 'bm25_no_overlap', droppedCount }` — emitted when BM25 gate filters all results
+
+### Test Coverage
+
+- 28 new tests in `tests/dvd-log-fixes/fixes.test.ts`
+  - 10 tests for FIX 1 (relevance gate behavior, edge cases, regression checks)
+  - 6 tests for FIX 2 (bypass conditions, heuristic preservation)
+  - 2 tests for FIX 3 (schema verification)
+  - 4 tests for FIX 4 (dedup behavior, edge cases)
+  - 6 tests for FIX 5 (legacy coercion, router guard, schema preservation)
+
+---
+
+## 21. Testing
+
+- **1282 tests** across 95 test files (1254 core + 28 DVD log fixes)
 - **Vitest** with ESM support
 - **Test isolation**: Each test overrides `PATHS.db` and `PATHS.memory` to a `tmpDir`
 - **Mock LLM**: `tests/mocks/MockLLMHandler.ts` for deterministic pipeline tests
@@ -851,7 +885,8 @@ Time saved: ~2-3 seconds
 - **Stress critical**: `pnpm stress:critical` — focused critical-path stress tests
 
 ```bash
-pnpm test                        # all 933 tests
+pnpm test                        # all 1282 tests
+pnpm test tests/dvd-log-fixes/   # DVD log fixes only
 pnpm test tests/phase17/         # phase 17 only
 pnpm build                       # tsc compilation check
 pnpm stress:p15:codex            # stress test suite (requires LM Studio)
