@@ -1143,7 +1143,6 @@ async function handleCompatibilityExecution(
  */
 function classifyConfirmationResponse(message: string): 'approve' | 'reject' | 'ambiguous' {
   const lower = message.trim().toLowerCase();
-  const first15 = lower.slice(0, 15);
 
   // Approve patterns: yes, yeah, y, go, proceed, do it, execute, run, confirm, approved, okay, ok, sure, let's go, just do it
   const approvePatterns = [/^(yes|yeah|yep|y|go|proceed|do\s+it|execute|run|confirm|confirmed|okay|ok|sure|let'?s\s+go|just\s+do\s+it|absolutely|definitely|sounds\s+good)/i];
@@ -1206,7 +1205,7 @@ export async function processMessage(
       const milestones = currentPendingPlan.milestones ?? [];
       const nextMilestone = milestones.length > 0 ? milestones[0] : null;
       const clarification = nextMilestone
-        ? `Could you clarify? The plan's first step is: "${nextMilestone.milestone || 'Unknown'}". Do you want me to proceed?`
+        ? `Could you clarify? The plan's first milestone is: "${nextMilestone.title || 'Unknown'}". Do you want me to proceed?`
         : `Could you clarify? Do you want me to execute the plan?`;
       return {
         reply: findingsPrefix + clarification,
