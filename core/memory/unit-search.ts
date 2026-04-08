@@ -157,6 +157,33 @@ function getScopedNotebooks(route: RouteKind): string[] | undefined {
   }
 }
 
+/**
+ * FIX 1: BM25 Relevance Gate
+ * Returns true if any non-stopword from the query appears in the entry's name or summary.
+ * Used to filter BM25 fallback results that have zero semantic relevance to the query.
+ * This is deliberately simple — the bar is "does this entry have ANY connection to the query"
+ * not "is this entry highly relevant."
+ */
+function hasMeaningfulOverlap(query: string, entry: IndexEntry): boolean {
+  const STOPWORDS = new Set([
+    'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+    'of', 'with', 'by', 'from', 'is', 'it', 'this', 'that', 'be', 'as',
+    'are', 'was', 'were', 'use', 'your', 'my', 'me', 'you', 'i', 'every',
+    'which', 'hit', 'create', 'make', 'write', 'build', 'add', 'get', 'do',
+    'have', 'has', 'will', 'can', 'should', 'would', 'could',
+  ]);
+
+  const queryWords = query
+    .toLowerCase()
+    .split(/\W+/)
+    .filter(w => w.length > 2 && !STOPWORDS.has(w));
+
+  if (queryWords.length === 0) return true; // can't filter, pass through
+
+  const haystack = `${entry.name} ${entry.summary ?? ''}`.toLowerCase();
+  return queryWords.some(word => haystack.includes(word));
+}
+
 function searchExactOrFuzzy(
   entries: IndexEntry[],
   reference: string,
@@ -473,9 +500,34 @@ async function searchFallback(
     }
   }
 
-  const topBm25 = bm25[0]?.entry;
-  const bm25Confidence = computeBm25Confidence(unit.content, topBm25);
-  const bm25Entries = filterTerminalPlanEx(bm25.map(item => item.entry));
+  // FIX 1: BM25 Relevance Gate
+  // When using generic unscoped BM25 fallback (no prior signal match), filter out results
+  // that have zero semantic overlap with the query. This prevents irrelevant entries
+  // (e.g., calendar events) from polluting agentic coding unit context.
+  const beforeGate = bm25.map(item => item.entry);
+  const filteredByGate = beforeGate.filter(entry => hasMeaningfulOverlap(unit.content, entry));
+
+  if (filteredByGate.length < beforeGate.length && filteredByGate.length === 0) {
+    // Gate filtered ALL results — emit event and return empty
+    transparency.emit({
+      type: 'unit_search_filtered',
+      data: {
+        unitId: unit.id,
+        reason: 'bm25_no_overlap',
+        droppedCount: beforeGate.length,
+      },
+    });
+    return {
+      strategy: 'bm25',
+      confidence: 0,
+      entries: [],
+      contents: [],
+    };
+  }
+
+  const topBm25 = filteredByGate[0];
+  const bm25Confidence = topBm25 ? computeBm25Confidence(unit.content, topBm25) : 0;
+  const bm25Entries = filterTerminalPlanEx(filteredByGate);
 
   if (bm25Entries.length > 0 && bm25Confidence >= VECTOR_CONFIDENCE_THRESHOLD) {
     return {
@@ -560,7 +612,8 @@ async function searchUnit(unit: DecomposedUnit, alreadyResolved?: string[], opti
   // short-circuit before listing detection fires. Listing intent is unambiguous.
   const listingMatch = detectListingQuery(unit.content);
   if (listingMatch) {
-    const entries = uniqueByCode(queryEntries({ nb: listingMatch.nb, type: listingMatch.type })).slice(0, 20);
+    const rawEntries = uniqueByCode(queryEntries({ nb: listingMatch.nb, type: listingMatch.type })).slice(0, 20);
+    const entries = filterTerminalPlanEx(rawEntries);
     const result: UnitMemoryResult = { unitId: unit.id, strategy: 'type_scan' as UnitMemoryResult['strategy'], confidence: entries.length > 0 ? 1 : 0, entries, contents: loadContents(entries) };
     transparency.emit({ type: 'unit_search_strategy', data: { strategy: 'type_scan', projectName: null, confidence: result.confidence, codes: entries.map(e => e.code) } });
     transparency.emit({ type: 'unit_memory_search', data: { unit, result } });
