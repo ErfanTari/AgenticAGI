@@ -601,6 +601,49 @@ async function runSimplePlan(
   return { reply: lastOutput || 'Done.', artifactContext };
 }
 
+/**
+ * FIX 2: Detects if the message is a continuation request.
+ * Phrases like "resume", "continue", "keep going" signal to reuse prior PLAN.EX state.
+ */
+function isContinuationIntent(message: string): boolean {
+  const trimmed = message.trim().toLowerCase();
+  const CONTINUATION_PATTERN = /\b(resume|continue|keep going|go on|proceed|next|what's next|what's the next step|what do i do next)\b/;
+  return CONTINUATION_PATTERN.test(trimmed);
+}
+
+/**
+ * FIX 2: Retrieves the active PLAN.EX entry if one exists.
+ * Returns the entry code and full body content for continuation context.
+ */
+async function getActivePlanEx(): Promise<{ code: string; body: string } | null> {
+  try {
+    const { queryEntries } = await import('./memory/index.js');
+    const { fetchByCode } = await import('./memory/fetch.js');
+
+    // Query for active PLAN.EX entries (status = 'active' or 'in_progress')
+    const entries = queryEntries({ nb: 'PLAN', type: 'EX', status: 'active' });
+    if (entries.length === 0) {
+      const inProgressEntries = queryEntries({ nb: 'PLAN', type: 'EX', status: 'in_progress' });
+      if (inProgressEntries.length === 0) return null;
+      const entry = inProgressEntries[0];
+      const body = fetchByCode(entry.code);
+      return {
+        code: entry.code,
+        body: typeof body === 'string' ? body : (body?.content ?? ''),
+      };
+    }
+
+    const entry = entries[0];
+    const body = fetchByCode(entry.code);
+    return {
+      code: entry.code,
+      body: typeof body === 'string' ? body : (body?.content ?? ''),
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function handleAgenticUnits(
   units: DecomposedUnit[],
   results: UnitMemoryResult[],
@@ -628,6 +671,21 @@ async function handleAgenticUnits(
     .filter(s => !allowedSkills.some(a => a.name === s.name))
     .map(s => s.name);
   const workspaceFiles = buildWorkspaceManifest();
+
+  // FIX 2: Build continuation context for resumable PLAN.EX entries
+  let continuationContext = '';
+  if (units.some(unit => isContinuationIntent(unit.content))) {
+    try {
+      const activePlan = await getActivePlanEx();
+      if (activePlan) {
+        continuationContext = activePlan.body.slice(0, 2000); // Cap at 2000 chars to avoid bloat
+        transparency.emit({ type: 'continuation_context_loaded', data: { code: activePlan.code, length: continuationContext.length } });
+      }
+    } catch {
+      // FIX 2: Continuation context building is advisory — fall through on error
+    }
+  }
+
   const plan = await decomposeTask(goalMessage, {
     skills: getSkillDescriptionsForPermission(permissionMode),
     goals,
@@ -638,6 +696,7 @@ async function handleAgenticUnits(
     blockedSkillNames,
     workspaceFiles: workspaceFiles || undefined,
     recentArtifact: _lastSessionArtifact,
+    continuationContext: continuationContext || undefined,  // FIX 2: Inject continuation context
   }, llmHandler);
 
   if (plan.needsConfirmation) {
@@ -673,8 +732,27 @@ async function handleAgenticUnits(
     };
   }
 
+  // FIX 5B: Defensive fallback for unrecognized complexity values
+  // The planner should only emit LOW/MEDIUM/HIGH/MAX after FIX 5A coercion, but add
+  // a defense-in-depth guard in case a future model regression emits a novel unknown value.
+  const KNOWN_COMPLEXITY = new Set(['LOW', 'MEDIUM', 'HIGH', 'MAX']);
+  const planComplexity = plan.complexity ?? 'LOW';
+  if (!KNOWN_COMPLEXITY.has(planComplexity)) {
+    console.warn(
+      `[zaraban][router] Unrecognized complexity "${planComplexity}" — defaulting to LOW (queryLoop)`
+    );
+    transparency.emit({
+      type: 'route',
+      data: {
+        level: 'LOW',
+        reason: `unknown complexity "${planComplexity}" defaulted to LOW`,
+        path: 'query_loop',
+      },
+    });
+  }
+
   // Route based on the plan's self-assessed complexity
-  const isSimple = plan.complexity === 'LOW' || plan.complexity === 'MEDIUM';
+  const isSimple = planComplexity === 'LOW' || planComplexity === 'MEDIUM';
   if (isSimple) {
     const simpleResult = await runSimplePlan(plan, llmHandler);
     if (simpleResult.artifactContext) {

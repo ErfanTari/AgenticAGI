@@ -20,6 +20,8 @@ import generateAndSaveFileSkill from './tools/generate_and_save_file.js';
 import patchFileSkill from './tools/patch_file.js';
 import grepWorkspaceSkill from './tools/grep_workspace.js';
 import listDirSkill from './tools/list_dir.js';
+import globSkill from './tools/glob.js';
+import confirmPlanSkill from './tools/confirm_plan.js';
 // --- MCP Skill Registry (Map-based) ---
 const registry = new Map();
 let _frozen = false;
@@ -124,6 +126,8 @@ registerSkill(generateAndSaveFileSkill);
 registerSkill(patchFileSkill);
 registerSkill(grepWorkspaceSkill);
 registerSkill(listDirSkill);
+registerSkill(globSkill);
+registerSkill(confirmPlanSkill);
 // Freeze the registry after all built-in skills are registered
 freezeRegistry();
 // --- Legacy skill loading (used by context builder) ---

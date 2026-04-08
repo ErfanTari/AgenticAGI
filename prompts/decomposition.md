@@ -32,6 +32,30 @@ EXAMPLE:
 User: "How's the Zaraban project going?"
 Output: {"units":[{"route":"query","content":"How's the Zaraban project going?"}]}
 
+EXAMPLE (Action+HTML):
+User: "Create a calculator and save it as an HTML file"
+Output: {"units":[{"route":"agentic","content":"Create a calculator and save it as an HTML file","taskType":"coding"}]}
+← This is ONE action with multiple qualifiers (calculator + HTML + save). Do NOT split.
+
+EXAMPLE (Action+Implement):
+User: "Now implement the Tetris game in JavaScript with collision detection"
+Output: {"units":[{"route":"agentic","content":"Implement the Tetris game in JavaScript with collision detection","taskType":"coding"}]}
+← This is ONE action with qualifiers (Tetris + JavaScript + collision detection). Do NOT split into "Implement Tetris" and "with collision detection".
+
+ACTION+QUALIFIER RULE (FIX 3):
+When a unit has the pattern "ACTION + qualifiers" (e.g., "Create X with Y", "Implement Z in Language"), keep it as ONE unit.
+Qualifiers are things that modify the action (language, format, features, details) but are NOT separate goals.
+
+WRONG: "Implement Tetris" + "with collision detection"
+RIGHT: "Implement Tetris with collision detection"
+
+WRONG: "Create an app" + "using React"
+RIGHT: "Create an app using React"
+
+CORRECT: Two units are only when there are distinct GOALS, not when there are qualifiers:
+WRONG: "Create a calculator" + "create a dashboard" (split — two independent creation goals)
+RIGHT: "Create a calculator app that also shows a dashboard" (one unit — qualifiers of same goal)
+
 CRITICAL: Each unit MUST be an object with "route" and "content" keys.
 WRONG: {"units": ["route", "agentic", "content", "..."]}
 RIGHT: {"units": [{"route": "agentic", "content": "..."}]}

@@ -1143,10 +1143,14 @@ async function handleCompatibilityExecution(
  */
 function classifyConfirmationResponse(message: string): 'approve' | 'reject' | 'ambiguous' {
   const lower = message.trim().toLowerCase();
+  const approvalQualifierPattern = /\b(but|if|except|change|changes|changed|modify|modifies|modified)\b/i;
 
   // Approve patterns: yes, yeah, y, go, proceed, do it, execute, run, confirm, approved, okay, ok, sure, let's go, just do it
   const approvePatterns = [/^(yes|yeah|yep|y|go|proceed|do\s+it|execute|run|confirm|confirmed|okay|ok|sure|let'?s\s+go|just\s+do\s+it|absolutely|definitely|sounds\s+good)/i];
   if (approvePatterns.some(p => p.test(lower))) {
+    if (approvalQualifierPattern.test(lower)) {
+      return 'ambiguous';
+    }
     return 'approve';
   }
 
@@ -1172,10 +1176,10 @@ export async function processMessage(
     // === FIX 0: Plan Confirmation Interceptor (step [0]) ===
     // Deterministic confirmation without LLM calls. Reads the user's raw message
     // and classifies it as approval, rejection, or ambiguous.
-    const findingsPrefix = await buildFindingsPrefix();
     const handler = options?.llmHandler ?? callLLM;
     const currentPendingPlan = _getPendingConfirmationPlan();
     if (currentPendingPlan) {
+      const findingsPrefix = await buildFindingsPrefix();
       const decision = classifyConfirmationResponse(message);
       if (decision === 'approve') {
         // Execute the plan immediately
@@ -1215,15 +1219,18 @@ export async function processMessage(
     }
 
     if (/^\/log\s+/i.test(message.trim())) {
+      const findingsPrefix = await buildFindingsPrefix();
       return await handleLogFastPath(message, findingsPrefix);
     }
 
     if (DIRECT_MEETING_PREFIX.test(message.trim())) {
+      const findingsPrefix = await buildFindingsPrefix();
       return await handleMeetingFastPath(history, handler, findingsPrefix);
     }
 
     const codes = extractCodes(message);
     if (isDirectCodeFetchMessage(message, codes)) {
+      const findingsPrefix = await buildFindingsPrefix();
       return await handleLegacyResolvedFlow(
         message,
         history,
@@ -1232,6 +1239,8 @@ export async function processMessage(
         findingsPrefix,
       );
     }
+
+    const findingsPrefix = await buildFindingsPrefix();
 
     // FIX-T2-V2: Deterministic compound entity creation fast path.
     // The planner generates incomplete plans for "Save A and B as contacts + create project X".
@@ -1355,12 +1364,10 @@ ${memoryContext}
 ## Grounding Rule
 The memory entries provided above are confirmed to exist in the database. You MUST NOT claim that any of these entries do not exist, are missing, or could not be found. Base your answer on the content of these entries.`;
 
-      // Phase 20b: Modification commands need the full pipeline, not the synthesis path
-      const MODIFICATION_VERBS = /^(?:update|change|modify|edit|rename|delete|remove|move|merge)\b/i;
-      const needsFullPipeline = isCommand && MODIFICATION_VERBS.test(message.trim());
-
-      if (!needsFullPipeline) {
-        // Use the synthesis path for queries and simple read-only actions
+      // Phase 20b FIX 2: Commands bypass synthesis — only queries use the synthesis path
+      // All command-intent messages need the full agentic pipeline (decomposition → planner/executor)
+      if (!isCommand) {
+        // Use the synthesis path for queries and retrieval-only actions
         const contextMessages: Message[] = [
           { role: 'system', content: systemPrompt },
           ...history.slice(-6),
@@ -1379,7 +1386,7 @@ The memory entries provided above are confirmed to exist in the database. You MU
           // LLM call failed — fall through to normal pipeline
         }
       }
-      // else: modification commands fall through to full pipeline
+      // else: commands fall through to full pipeline
     }
     // ── End quick-resolve ──
 

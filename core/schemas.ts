@@ -71,7 +71,26 @@ export const TaskPlanSchema = z.object({
 
 export type TaskPlan = z.infer<typeof TaskPlanSchema>;
 
-export const taskPlanJsonSchema = z.toJSONSchema(TaskPlanSchema) as Record<string, unknown>;
+const baseTaskPlanJsonSchema = z.toJSONSchema(TaskPlanSchema) as Record<string, unknown>;
+
+function stripDefaultedStepFieldsFromTransportSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const clone = JSON.parse(JSON.stringify(schema)) as Record<string, any>;
+  const defaultedStepFields = new Set(['confidence_score', 'risk_level']);
+
+  const stripRequired = (node: Record<string, any> | undefined): void => {
+    if (!node || !Array.isArray(node.required)) return;
+    node.required = node.required.filter((field: unknown) =>
+      typeof field !== 'string' || !defaultedStepFields.has(field)
+    );
+  };
+
+  stripRequired(clone.properties?.steps?.items);
+  stripRequired(clone.properties?.milestones?.items?.properties?.steps?.items);
+
+  return clone;
+}
+
+export const taskPlanJsonSchema = stripDefaultedStepFieldsFromTransportSchema(baseTaskPlanJsonSchema);
 
 // --- Verification schema ---
 

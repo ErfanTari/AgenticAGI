@@ -1,5 +1,6 @@
 /**
- * @deprecated generate_and_save_file is deprecated. Prefer content_writer + file_writer instead.
+ * generate_and_save_file — self-contained file generation and write in one skill call.
+ * Handles complete file generation from spec and writes to disk atomically.
  */
 import { callLLM } from '../../llm.js';
 import { fetchByCode } from '../../memory/fetch.js';
@@ -145,8 +146,7 @@ function buildGenerationPrompt(
 const generateAndSaveFileSkill: MCPSkill = {
   name: 'generate_and_save_file',
   description: [
-    '[DEPRECATED: prefer content_writer + file_writer]',
-    'Generate a file from a spec and save it to workspace.',
+    'Generate a complete file (HTML, JS, CSS, etc.) from a detailed specification and write it to disk in one step.',
     'PREFERRED: Use spec_code (a memory code like PLAN.EX-000042) to avoid JSON escaping limits.',
     'Step 1: Write the detailed spec with memory_write → get back a code.',
     'Step 2: Call this skill with {"path":"...","spec_code":"PLAN.EX-000042"}.',
@@ -195,7 +195,6 @@ const generateAndSaveFileSkill: MCPSkill = {
   },
 
   async execute(input: Record<string, unknown>): Promise<SkillResult> {
-    console.warn('[generate_and_save_file] DEPRECATED — prefer content_writer + file_writer');
     const pathValue = String(input.path ?? '').trim();
 
     if (!pathValue) {

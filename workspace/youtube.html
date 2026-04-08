@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Clone</title>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        /* Basic Reset & Body Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f9f9f9; /* Light background */
+            color: #030303;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background-color: #fff;
+            border-bottom: 1px solid #ddd;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            height: 56px; /* Standard YouTube header height */
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+        }
+
+        .menu-icon {
+            font-size: 24px;
+            cursor: pointer;
+            margin-right: 20px;
+            color: #606060;
+        }
+
+        .youtube-logo {
+            display: flex;
+            align-items: center;
+            font-size: 20px;
+            font-weight: bold;
+            color: #282828;
+        }
+
+        .youtube-logo .fab {
+            color: #FF0000;
+            font-size: 28px;
+            margin-right: 5px;
+        }
+
+        .youtube-logo span {
+            margin-left: 2px;
+        }
+
+        .header-middle {
+            display: flex;
+            flex: 0.6; /* Takes up more space */
+            max-width: 600px;
+            margin: 0 20px;
+        }
+
+        .search-bar {
+            flex-grow: 1;
+            padding: 8px 10px;
+            border: 1px solid #ccc;
+            border-right: none;
+            border-radius: 2px 0 0 2px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        .search-bar:focus {
+            border-color: #1c62b9; /* YouTube blue on focus */
+        }
+
+        .search-button {
+            padding: 8px 15px;
+            border: 1px solid #ccc;
+            background-color: #f8f8f8;
+            cursor: pointer;
+            border-radius: 0 2px 2px 0;
+            font-size: 16px;
+            color: #606060;
+            transition: background-color 0.2s ease;
+        }
+
+        .search-button:hover {
+            background-color: #f0f0f0;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+        }
+
+        .header-icon {
+            font-size: 20px;
+            margin-left: 25px;
+            color: #606060;
+            cursor: pointer;
+        }
+
+        .header-icon.profile {
+            font-size: 24px;
+            border-radius: 50%;
+            background-color: #aaa;
+            color: #fff;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Main Content Area */
+        .main-container {
+            display: flex;
+            flex-grow: 1;
+            margin-top: 0; /* Adjust for sticky header */
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 240px;
+            background-color: #fff;
+            padding-top: 10px;
+            position: sticky;
+            top: 56px; /* Below the header */
+            height: calc(100vh - 56px); /* Full height minus header */
+            overflow-y: auto;
+            border-right: 1px solid #ddd;
+            transition: width 0.3s ease, transform 0.3s ease;
+            flex-shrink: 0; /* Prevent shrinking */
+        }
+
+        .sidebar.collapsed {
+            width: 72px;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .sidebar-item:hover {
+            background-color: #f2f2f2;
+        }
+
+        .sidebar-item.active {
+            background-color: #e5e5e5;
+            border-left: 3px solid #FF0000;
+            padding-left: 17px; /* Adjust for border */
+        }
+
+        .sidebar-item i {
+            font-size: 20px;
+            margin-right: 20px;
+            color: #606060;
+            width: 24px; /* Fixed width for icon */
+            text-align: center;
+        }
+
+        .sidebar-item span {
+            font-size: 14px;
+            font-weight: 500;
+            color: #030303;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .sidebar.collapsed .sidebar-item span {
+            display: none;
+        }
+
+        .sidebar.collapsed .sidebar-item {
+            justify-content: center;
+            padding: 10px 0;
+        }
+
+        .sidebar.collapsed .sidebar-item i {
+            margin-right: 0;
+        }
+
+        .sidebar hr {
+            border: none;
+            border-top: 1px solid #e5e5e5;
+            margin: 10px 0;
+        }
+
+        /* Video Grid */
+        .video-grid {
+            flex-grow: 1;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            background-color: #f9f9f9;
+            transition: margin-left 0.3s ease;
+        }
+
+        .video-card {
+            background-color: #fff;
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .video-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        .thumbnail-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%; /* 16:9 aspect ratio */
+            overflow: hidden;
+        }
+
+        .thumbnail {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.3s ease;
+        }
+
+        .video-card:hover .thumbnail {
+            transform: scale(1.05);
+        }
+
+        .video-info {
+            display: flex;
+            padding: 10px;
+        }
+
+        .channel-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: #aaa;
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+
+        .video-details {
+            flex-grow: 1;
+        }
+
+        .video-title {
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 1.4;
+            margin-bottom: 5px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #030303;
+        }
+
+        .channel-name, .video-metadata {
+            font-size: 14px;
+            color: #606060;
+            margin-bottom: 2px;
+        }
+
+        .video-metadata {
+            display: flex;
+            align-items: center;
+        }
+
+        .video-metadata span:first-child {
+            margin-right: 5px;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            .header-middle {
+                flex: 0.5;
+            }
+            .video-grid {
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                padding: 10px 15px;
+            }
+            .menu-icon {
+                margin-right: 15px;
+            }
+            .youtube-logo span {
+                display: none; /* Hide 'YouTube' text on smaller screens */
+            }
+            .header-middle {
+                flex: 1;
+                margin: 0 10px;
+            }
+            .header-right .header-icon:not(.profile) {
+                display: none; /* Hide some icons on smaller screens */
+            }
+            .sidebar {
+                width: 72px; /* Always collapsed on smaller screens */
+                transform: translateX(-100%); /* Hide it off-screen */
+                position: fixed; /* Fixed position for overlay */
+                top: 56px;
+                left: 0;
+                height: calc(100vh - 56px);
+                background-color: #fff;
+                z-index: 999;
+                box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            }
+            .sidebar.active {
+                transform: translateX(0); /* Show sidebar */
+            }
+            .sidebar-item span {
+                display: none;
+            }
+            .sidebar-item {
+                justify-content: center;
+                padding: 10px 0;
+            }
+            .sidebar-item i {
+                margin-right: 0;
+            }
+            .video-grid {
+                margin-left: 0; /* No margin for main content */
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                padding: 15px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header {
+                padding: 10px;
+            }
+            .search-bar {
+                padding: 6px 8px;
+                font-size: 14px;
+            }
+            .search-button {
+                padding: 6px 10px;
+                font-size: 14px;
+            }
+            .header-icon {
+                margin-left: 15px;
+            }
+            .video-grid {
+                grid-template-columns: 1fr; /* Single column on very small screens */
+                padding: 10px;
+            }
+            .video-title {
+                font-size: 15px;
+            }
+            .channel-name, .video-metadata {
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-left">
+            <i class="fas fa-bars menu-icon" id="sidebar-toggle"></i>
+            <a href="#" class="youtube-logo">
+                <i class="fab fa-youtube"></i>
+                <span>YouTube</span>
+            </a>
+        </div>
+        <div class="header-middle">
+            <input type="text" class="search-bar" placeholder="Search">
+            <button class="search-button">
+                <i class="fas fa-search"></i>
+            </button>
+        </div>
+        <div class="header-right">
+            <i class="fas fa-video header-icon"></i>
+            <i class="fas fa-bell header-icon"></i>
+            <div class="header-icon profile">
+                <i class="fas fa-user"></i>
+            </div>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <aside class="sidebar" id="sidebar">
+            <a href="#" class="sidebar-item active">
+                <i class="fas fa-home"></i>
+                <span>Home</span>
+            </a>
+            <a href="#" class="sidebar-item">
+                <i class="fas fa-fire"></i>
+                <span>Trending</span>
+            </a>
+            <a href="#" class="sidebar-item">
+                <i class="fas fa-subscriptions"></i>
+                <span>Subscriptions</span>
+            </a>
+            <hr>
+            <a href="#" class="sidebar-item">
+                <i class="fas fa-folder"></i>
+                <span>Library</span>
+            </a>
+            <a href="#" class="sidebar-item">
+                <i class="fas fa-history"></i>
+                <span>History</span>
+            </a>
+            <a href="#" class="sidebar-item">
+                <i class="fas fa-clock"></i>
+                <span>Watch Later</span>
+            </a>
+            <a href="#" class="sidebar-item">
+                <i class="fas fa-thumbs-up"></i>
+                <span>Liked Videos</span>
+            </a>
+            <hr>
+            <!-- Add more sections as needed -->
+        </aside>
+
+        <main class="video-grid">
+            <!-- Video Card 1 -->
+            <div class="video-card">
+                <div class="thumbnail-container">
+                    <img src="https://i.ytimg.com/vi/dQw4w9WgXcQ/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLD03j2O_Y0qf-49-hJ39J1_21X7gQ" alt="Video Thumbnail" class="thumbnail">
+                </div>
+                <div class="video-info">
+                    <div class="channel-avatar"></div>
+                    <div class="video-details">
+                        <h3 class="video-title">Never Gonna Give You Up</h3>
+                        <p class="channel-name">Rick Astley</p>
+                        <p class="video-metadata"><span>2.5M views</span> &bull; <span>3 years ago</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video Card 2 -->
+            <div class="video-card">
+                <div class="thumbnail-container">
+                    <img src="https://i.ytimg.com/vi/LXb3EKWsInQ/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLB-N-t023NnJ-32_21X7gQ" alt="Video Thumbnail" class="thumbnail">
+                </div>
+                <div class="video-info">
+                    <div class="channel-avatar"></div>
+                    <div class="video-details">
+                        <h3 class="video-title">The Ultimate Guide to Web Development 2024</h3>
+                        <p class="channel-name">DevMaster</p>
+                        <p class="video-metadata"><span>1.2M views</span> &bull; <span>1 month ago</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video Card 3 -->
+            <div class="video-card">
+                <div class="thumbnail-container">
+                    <img src="https://i.ytimg.com/vi/k_9_J-u5R7E/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLD03j2O_Y0qf-49-hJ39J1_21X7gQ" alt="Video Thumbnail" class="thumbnail">
+                </div>
+                <div class="video-info">
+                    <div class="channel-avatar"></div>
+                    <div class="video-details">
+                        <h3 class="video-title">10 Amazing Places You Must Visit in Japan</h3>
+                        <p class="channel-name">TravelVlog</p>
+                        <p class="video-metadata"><span>800K views</span> &bull; <span>2 weeks ago</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video Card 4 -->
+            <div class="video-card">
+                <div class="thumbnail-container">
+                    <img src="https://i.ytimg.com/vi/2Lg_f4b7b7o/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLD03j2O_Y0qf-49-hJ39J1_21X7gQ" alt="Video Thumbnail" class="thumbnail">
+                </div>
+                <div class="video-info">
+                    <div class="channel-avatar"></div>
+                    <div class="video-details">
+                        <h3 class="video-title">Cooking Masterclass: Italian Pasta from Scratch</h3>
+                        <p class="channel-name">Chef's Table</p>
+                        <p class="video-metadata"><span>500K views</span> &bull; <span>4 days ago</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video Card 5 -->
+            <div class="video-card">
+                <div class="thumbnail-container">
+                    <img src="https://i.ytimg.com/vi/M7lc1uxWRCX/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLD03j2O_Y0qf-49-hJ39J1_21X7gQ" alt="Video Thumbnail" class="thumbnail">
+                </div>
+                <div class="video-info">
+                    <div class="channel-avatar"></div>
+                    <div class="video-details">
+                        <h3 class="video-title">Top 5 Gadgets You Need in 2024</h3>
+                        <p class="channel-name">TechReview</p>
+                        <p class="video-metadata"><span>1.8M views</span> &bull; <span>3 weeks ago</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video Card 6 -->
+            <div class="video-card">
+                <div class="thumbnail-container">
+                    <img src="https://i.ytimg.com/vi/tgbNymZ7vqY/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLD03j2O_Y0qf-49-hJ39J1_21X7gQ" alt="Video Thumbnail" class="thumbnail">
+                </div>
+                <div class="video-info">
+                    <div class="channel-avatar"></div>
+                    <div class="video-details">
+                        <h3 class="video-title">Learn JavaScript in 10 Minutes - Crash Course</h3>
+                        <p class="channel-name">CodeWithMe</p>
+                        <p class="video-metadata"><span>3.1M views</span> &bull; <span>6 months ago</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video Card 7 -->
+            <div class="video-card">
+                <div class="thumbnail-container">
+                    <img src="https://i.ytimg.com/vi/q_M684B_f-o/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLD03j2O_Y0qf-49-hJ39J1_21X7gQ" alt="Video Thumbnail" class="thumbnail">
+                </div>
+                <div class="video-info">
+                    <div class="channel-avatar"></div>
+                    <div class="video-details">
+                        <h3 class="video-title">Relaxing Nature Sounds for Sleep & Meditation</h3>
+                        <p class="channel-name">Soundscapes</p>
+                        <p class="video-metadata"><span>900K views</span> &bull; <span>1 year ago</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video Card 8 -->
+            <div class="video-card">
+                <div class="thumbnail-container">
+                    <img src="https://i.ytimg.com/vi/h_D3VFfhfo4/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLD03j2O_Y0qf-49-hJ39J1_21X7gQ" alt="Video Thumbnail" class="thumbnail">
+                </div>
+                <div class="video-info">
+                    <div class="channel-avatar"></div>
+                    <div class="video-details">
+                        <h3 class="video-title">Exploring Ancient Ruins: A Journey Through History</h3>
+                        <p class="channel-name">HistoryBuff</p>
+                        <p class="video-metadata"><span>750K views</span> &bull; <span>5 months ago</span></p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const sidebarToggle = document.getElementById('sidebar-toggle');
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.querySelector('.video-grid');
+
+            // Function to check if it's a mobile view
+            const isMobile = () => window.innerWidth <= 768;
+
+            // Initial state based on screen size
+            if (isMobile()) {
+                sidebar.classList.add('collapsed');
+                sidebar.classList.remove('active'); // Ensure it's hidden by default on mobile
+            } else {
+                sidebar.classList.remove('collapsed');
+            }
+
+            sidebarToggle.addEventListener('click', () => {
+                if (isMobile()) {
+                    // On mobile, toggle 'active' class to show/hide sidebar as an overlay
+                    sidebar.classList.toggle('active');
+                } else {
+                    // On desktop, toggle 'collapsed' class to change width
+                    sidebar.classList.toggle('collapsed');
+                }
+            });
+
+            // Close sidebar if clicking outside on mobile
+            document.addEventListener('click', (event) => {
+                if (isMobile() && sidebar.classList.contains('active') &&
+                    !sidebar.contains(event.target) && !sidebarToggle.contains(event.target)) {
+                    sidebar.classList.remove('active');
+                }
+            });
+
+            // Adjust sidebar state on window resize
+            window.addEventListener('resize', () => {
+                if (isMobile()) {
+                    sidebar.classList.add('collapsed');
+                    sidebar.classList.remove('active'); // Hide overlay on resize to mobile
+                } else {
+                    sidebar.classList.remove('collapsed');
+                    sidebar.classList.remove('active'); // Ensure overlay is off on desktop
+                }
+            });
+        });
+    </script>
+</body>
+</html>

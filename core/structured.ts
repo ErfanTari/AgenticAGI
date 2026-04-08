@@ -1,4 +1,4 @@
-import type { ZodSchema } from 'zod';
+import { ZodError, type ZodSchema } from 'zod';
 import type { LLMHandler, Message } from './types.js';
 
 export interface StructuredResult<T> {
@@ -9,9 +9,72 @@ export interface StructuredResult<T> {
   error?: string;
 }
 
+export type SafeParseJsonWithErrorResult<T> =
+  | { data: T; error: null; parsed: unknown }
+  | { data: null; error: ZodError<T>; parsed: unknown | null; parseError?: undefined }
+  | { data: null; error: null; parsed: null; parseError: string };
+
+/**
+ * FIX 2: Attempt to repair common JSON string escape errors from LLM output.
+ * Fixes:
+ * - Literal newlines inside JSON strings (should be \\n)
+ * - Literal tabs inside JSON strings (should be \\t)
+ * - Literal carriage returns inside JSON strings (should be \\r)
+ *
+ * This is best-effort — not a full JSON parser. It handles the 80% case
+ * where the model outputs a literal newline inside a string value.
+ */
+export function repairJsonEscapes(raw: string): string {
+  let result = '';
+  let inString = false;
+  let escape = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const char = raw[i];
+
+    if (escape) {
+      result += char;
+      escape = false;
+      continue;
+    }
+
+    if (char === '\\' && inString) {
+      result += char;
+      escape = true;
+      continue;
+    }
+
+    if (char === '"' && !escape) {
+      inString = !inString;
+      result += char;
+      continue;
+    }
+
+    if (inString) {
+      if (char === '\n') {
+        result += '\\n';
+        continue;
+      }
+      if (char === '\t') {
+        result += '\\t';
+        continue;
+      }
+      if (char === '\r') {
+        result += '\\r';
+        continue;
+      }
+    }
+
+    result += char;
+  }
+
+  return result;
+}
+
 /**
  * Extract the first complete JSON object from text using bracket-depth counting.
  * Stops at the closing brace of the first complete object.
+ * FIX 2: Attempts to repair common escape errors on parse failure.
  */
 export function extractFirstJsonObject(text: string): string | null {
   let depth = 0;
@@ -35,7 +98,24 @@ export function extractFirstJsonObject(text: string): string | null {
       // BUG-M3 fix: clamp depth to 0 — ignore unmatched closing braces before any opening brace
       if (depth < 0) { depth = 0; continue; }
       if (depth === 0 && start !== -1) {
-        return text.slice(start, i + 1);
+        const candidate = text.slice(start, i + 1);
+
+        // FIX 2: Try to parse extracted candidate; if it fails, attempt escape repair
+        try {
+          JSON.parse(candidate);
+          return candidate;  // Parsing succeeded, return as-is
+        } catch {
+          // First parse failed, try repairing escapes
+          const repaired = repairJsonEscapes(candidate);
+          try {
+            JSON.parse(repaired);
+            console.debug('[zaraban][json-repair] Escape repair succeeded');
+            return repaired;  // Repair succeeded, return repaired version
+          } catch {
+            // Repair also failed, return original candidate — let caller handle the error
+            return candidate;
+          }
+        }
       }
     }
   }
@@ -115,6 +195,40 @@ export function applyRepairPasses(raw: string): string {
   s = s.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)(\s*:)/g, '$1"$2"$3');
 
   return s;
+}
+
+export function safeParseJsonWithError<T>(
+  raw: string,
+  schema: ZodSchema<T>,
+  callSite: string,
+): SafeParseJsonWithErrorResult<T> {
+  try {
+    const extracted = extractFirstJsonObject(raw);
+    if (!extracted) {
+      return {
+        data: null,
+        error: null,
+        parsed: null,
+        parseError: `[zaraban][${callSite}] No JSON object found in response`,
+      };
+    }
+
+    const repaired = applyRepairPasses(extracted);
+    const parsed = flattenSingleKeyObjects(JSON.parse(repaired));
+    const result = schema.safeParse(parsed);
+    if (!result.success) {
+      return { data: null, error: result.error, parsed };
+    }
+
+    return { data: result.data, error: null, parsed };
+  } catch (error) {
+    return {
+      data: null,
+      error: null,
+      parsed: null,
+      parseError: `[zaraban][${callSite}] JSON parse error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
 function fixEscapedQuotes(json: string): string {

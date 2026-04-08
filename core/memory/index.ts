@@ -363,6 +363,12 @@ export function initDatabase(dbPath?: string): Database.Database {
       seen     INTEGER DEFAULT 0,
       created  TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS pending_plans (
+      id         INTEGER PRIMARY KEY CHECK (id = 1),
+      plan_json  TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `);
 
   // Phase 5 migration: add due_date column for existing databases
@@ -583,4 +589,40 @@ export function closeDatabase(): void {
     db.close();
     db = null;
   }
+}
+
+// === Pending Plans Management (Task B) ===
+
+/**
+ * savePendingPlan — persist a pending plan to SQLite (singleton row id=1)
+ */
+export function savePendingPlan(plan: unknown): void {
+  const d = getDb();
+  const planJson = JSON.stringify(plan);
+  const now = new Date().toISOString();
+  d.prepare(
+    'INSERT OR REPLACE INTO pending_plans (id, plan_json, created_at) VALUES (1, ?, ?)'
+  ).run(planJson, now);
+}
+
+/**
+ * loadPendingPlan — retrieve pending plan from SQLite, returns null if none
+ */
+export function loadPendingPlan(): unknown | null {
+  try {
+    const d = getDb();
+    const row = d.prepare('SELECT plan_json FROM pending_plans WHERE id = 1').get() as { plan_json: string } | undefined;
+    if (!row) return null;
+    return JSON.parse(row.plan_json);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * clearPendingPlan — delete pending plan from SQLite
+ */
+export function clearPendingPlan(): void {
+  const d = getDb();
+  d.prepare('DELETE FROM pending_plans WHERE id = 1').run();
 }

@@ -16,7 +16,7 @@ function normalizeWorkspacePath(inputPath: string): string {
  */
 export const fileWriter: MCPSkill = {
   name: 'file_writer',
-  description: 'Write or edit a file in the workspace. Use when agent needs to create, save, or modify files as part of a task.',
+  description: 'Write a NEW file to disk. For modifying existing files, use patch_file instead. Pass overwrite:true only when fully replacing an existing file is intended.',
   permissionLevel: 'workspace-write',
 
   inputSchema: {
@@ -33,6 +33,10 @@ export const fileWriter: MCPSkill = {
       mode: {
         type: 'string',
         description: 'Mode: "write" (overwrite, default) or "append" (add to end)',
+      },
+      overwrite: {
+        type: 'boolean',
+        description: 'Only set to true when you explicitly intend to replace the entire contents of an existing file. Default is false.',
       },
     },
     required: ['path', 'content'],
@@ -52,6 +56,7 @@ export const fileWriter: MCPSkill = {
     const filePath = normalizeWorkspacePath(rawPath);
     const content = input.content as string;
     const mode = (input.mode as string) || 'write';
+    const overwrite = input.overwrite === true;
 
     if (!filePath) {
       return {
@@ -108,6 +113,15 @@ export const fileWriter: MCPSkill = {
             error: 'Access denied: symlink escapes workspace boundary',
           };
         }
+      }
+
+      // Guard: prevent overwriting existing files unless explicitly requested
+      if (fs.existsSync(resolved) && !overwrite) {
+        return {
+          success: false,
+          output: '',
+          error: 'File already exists. Use patch_file for targeted modifications, or pass overwrite: true to replace the entire file.',
+        };
       }
 
       // Create parent directories if needed

@@ -10,6 +10,7 @@ import { updatePlan } from './memory/working-memory.js';
 import { VerificationResultSchema, MilestoneRevisionSchema, PostFlightSchema, verificationJsonSchema, postFlightJsonSchema } from './schemas.js';
 import type { PostFlightResult } from './schemas.js';
 import { extractFirstJsonObject } from './structured.js';
+import { milestoneRevisionJsonSchema } from './schemas.js';
 import { stripThinkingTags } from './llm.js';
 import { PATHS } from '../config/agent.config.js';
 import { runWithRetry } from './react.js';
@@ -433,7 +434,12 @@ async function reviseRemainingMilestones(
       },
     ];
 
-    const response = await llmHandler(prompt, { maxTokens: TOKEN_BUDGETS.MILESTONE_REVISION, disableThinking: true });
+    // FIX 1: Add responseSchema for engine-level JSON enforcement
+    const response = await llmHandler(prompt, {
+      responseSchema: milestoneRevisionJsonSchema,
+      maxTokens: TOKEN_BUDGETS.MILESTONE_REVISION,
+      disableThinking: true
+    });
     const parsed = safeParseJson(response, MilestoneRevisionSchema, 'reviseRemainingMilestones', { revised: false });
 
     // FIX 2: Handle abort recommendation from revision LLM

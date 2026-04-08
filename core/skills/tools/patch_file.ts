@@ -12,7 +12,7 @@ function normalizeWorkspacePath(inputPath: string): string {
 
 const patchFileSkill: MCPSkill = {
   name: 'patch_file',
-  description: 'Apply a targeted string replacement to a file in the workspace. Use to edit existing files without rewriting the entire content.',
+  description: 'PREFERRED tool for modifying existing files. Replaces a unique string with another. Fails if the search_string is not found or appears more than once.',
   permissionLevel: 'workspace-write',
 
   inputSchema: {

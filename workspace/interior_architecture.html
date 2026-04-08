@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LUMINA | Interior Architecture</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+
+    <style>
+        /* CSS Reset & Variables */
+        :root {
+            --color-bg: #f9f9f9;
+            --color-text: #333333;
+            --color-text-light: #666666;
+            --color-accent: #d4c4b5; /* Soft Beige */
+            --color-white: #ffffff;
+            --color-border: #e0e0e0;
+            
+            --font-heading: 'Playfair Display', serif;
+            --font-body: 'Lato', sans-serif;
+            
+            --spacing-section: 100px;
+            --transition: all 0.4s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-body);
+            color: var(--color-text);
+            background-color: var(--color-bg);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: var(--font-heading);
+            font-weight: 400;
+            color: var(--color-text);
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+            transition: var(--transition);
+        }
+
+        ul {
+            list-style: none;
+        }
+
+        img {
+            max-width: 100%;
+            display: block;
+        }
+
+        /* Utility Classes */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            text-align: center;
+            margin-bottom: 1rem;
+            position: relative;
+            padding-bottom: 20px;
+        }
+
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 2px;
+            background-color: var(--color-accent);
+        }
+
+        .section-subtitle {
+            text-align: center;
+            color: var(--color-text-light);
+            margin-bottom: 3rem;
+            font-weight: 300;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background-color: var(--color-text);
+            color: var(--color-white);
+            font-family: var(--font-body);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.85rem;
+            border: 1px solid var(--color-text);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .btn:hover {
+            background-color: transparent;
+            color: var(--color-text);
+        }
+
+        .btn-outline {
+            background-color: transparent;
+            color: var(--color-text);
+            border: 1px solid var(--color-text);
+        }
+
+        .btn-outline:hover {
+            background-color: var(--color-text);
+            color: var(--color-white);
+        }
+
+        /* Navigation */
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.05);
+            padding: 20px 0;
+            transition: var(--transition);
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: var(--font-heading);
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: 2px;
+            color: var(--color-text);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 40px;
+        }
+
+        .nav-links a {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            position: relative;
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 1px;
+            background-color: var(--color-accent);
+            transition: var(--transition);
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        .hamburger {
+            display: none;
+            cursor: pointer;
+            font-size: 1.5rem;
+        }
+
+        /* Hero Section */
+        #hero {
+            height: 100vh;
+            width: 100%;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .hero-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+
+        .hero-bg img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: brightness(0.85);
+        }
+
+        .hero-content {
+            text-align: center;
+            color: var(--color-white);
+            max-width: 800px;
+            padding: 0 20px;
+            opacity: 0;
+            transform: translateY(30px);
+            animation: fadeUp 1s ease forwards 0.5s;
+        }
+
+        .hero-content h1 {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            line-height: 1.1;
+        }
+
+        .hero-content p {
+            font-size: 1.2rem;
+            margin-bottom: 40px;
+            font-weight: 300;
+            opacity: 0.9;
+        }
+
+        /* Gallery Section */
+        #gallery {
+            padding: var(--spacing-section) 0;
+            background-color: var(--color-bg);
+        }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+        }
+
+        .project-card {
+            background-color: var(--color-white);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.03);
+            transition: var(--transition);
+            overflow: hidden;
+            position: relative;
+            group: 'card';
+        }
+
+        .project-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.08);
+        }
+
+        .card-image {
+            width: 100%;
+            height: 300px;
+            overflow: hidden;
+        }
+
+        .card-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.6s ease;
+        }
+
+        .project-card:hover .card-image img {
+            transform: scale(1.05);
+        }
+
+        .card-content {
+            padding: 30px;
+            text-align: center;
+        }
+
+        .card-content h3 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+
+        .card-content p {
+            color: var(--color-text-light);
+            font-size: 0.95rem;
+            margin-bottom: 20px;
+        }
+
+        .card-link {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--color-text);
+            border-bottom: 1px solid var(--color-accent);
+            padding-bottom: 3px;
+        }
+
+        /* About Section */
+        #about {
+            padding: var(--spacing-section) 0;
+            background-color: var(--color-white);
+        }
+
+        .about-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 60px;
+        }
+
+        .about-image {
+            flex: 1;
+            position: relative;
+        }
+
+        .about-image img {
+            width: 100%;
+            border-radius: 2px;
+            box-shadow: 20px 20px 0px var(--color-accent);
+        }
+
+        .about-text {
+            flex: 1;
+        }
+
+        .about-text h2 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+        }
+
+        .about-text p {
+            color: var(--color-text-light);
+            margin-bottom: 20px;
+            font-size: 1.05rem;
+        }
+
+        .about-stats {
+            display: flex;
+            gap: 40px;
+            margin-top: 30px;
+            border-top: 1px solid var(--color-border);
+            padding-top: 30px;
+        }
+
+        .stat-item h4 {
+            font-size: 2rem;
+            color: var(--color-accent);
+            margin-bottom: 5px;
+        }
+
+        .stat-item span {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Contact Section */
+        #contact {
+            padding: var(--spacing-section) 0;
+            background-color: #f4f4f4;
+        }
+
+        .contact-wrapper {
+            display: flex;
+            justify-content: center;
+        }
+
+        .contact-form {
+            background-color: var(--color-white);
+            padding: 50px;
+            width: 100%;
+            max-width: 700px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.05);
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--color-text);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 15px;
+            border: 1px solid var(--color-border);
+            background-color: #fafafa;
+            font-family: var(--font-body);
+            font-size: 1rem;
+            transition: var(--transition);
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--color-accent);
+            background-color: var(--color-white);
+        }
+
+        textarea.form-control {
+            resize: vertical;
+            min-height: 150px;
+        }
+
+        /* Footer */
+        footer {
+            background-color: #222;
+            color: #fff;
+            padding: 60px 0 30px;
+            text-align: center;
+        }
+
+        .footer-logo {
+            font-family: var(--font-heading);
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+
+        .social-links {
+            margin-bottom: 30px;
+        }
+
+        .social-links a {
+            color: #fff;
+            margin: 0 15px;
+            font-size: 0.9rem;
+            opacity: 0.7;
+        }
+
+        .social-links a:hover {
+            opacity: 1;
+        }
+
+        .copyright {
+            color: #666;
+            font-size: 0.8rem;
+            border-top: 1px solid #333;
+            padding-top: 30px;
+        }
+
+        /* Animations */
+        @keyframes fadeUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.8s ease;
+        }
+
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 992px) {
+            .hero-content h1 {
+                font-size: 3rem;
+            }
+            
+            .about-wrapper {
+                flex-direction: column;
+            }
+            
+            .about-image img {
+                box-shadow: 10px 10px 0px var(--color-accent);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+                position: absolute;
+                top: 100%;
+                left: 0;
+                width: 100%;
+                background-color: var(--color-white);
+                flex-direction: column;
+                padding: 20px;
+                text-align: center;
+                box-shadow: 0 10px 10px rgba(0,0,0,0.05);
+            }
+
+            .nav-links.active {
+                display: flex;
+            }
+
+            .hamburger {
+                display: block;
+            }
+
+            .hero-content h1 {
+                font-size: 2.5rem;
+            }
+
+            .section-title {
+                font-size: 2rem;
+            }
+
+            .contact-form {
+                padding: 30px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header id="header">
+        <div class="container">
+            <nav>
+                <a href="#" class="logo">LUMINA</a>
+                <div class="hamburger" id="hamburger">
+                    <span>&#9776;</span>
+                </div>
+                <ul class="nav-links" id="nav-links">
+                    <li><a href="#hero">Home</a></li>
+                    <li><a href="#gallery">Projects</a></li>
+                    <li><a href="#about">Studio</a></li>
+                    <li><a href="#contact">Contact</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section id="hero">
+        <div class="hero-bg">
+            <img src="https://placehold.co/1920x1080/e0e0e0/999999?text=Modern+Interior+Architecture" alt="Modern Living Room Background">
+        </div>
+        <div class="hero-content">
+            <h1>Designing Spaces for the Soul</h1>
+            <p>We create minimalist, functional, and timeless interior environments that inspire calm and creativity.</p>
+            <a href="#gallery" class="btn">View Our Work</a>
+        </div>
+    </section>
+
+    <!-- Gallery Section -->
+    <section id="gallery">
+        <div class="container">
+            <h2 class="section-title reveal">Selected Works</h2>
+            <p class="section-subtitle reveal">A curation of our finest residential projects</p>
+            
+            <div class="gallery-grid">
+                <!-- Project 1 -->
+                <div class="project-card reveal">
+                    <div class="card-image">
+                        <img src="https://placehold.co/600x400/f5f5f5/333333?text=Modern+Living+Room" alt="Modern Living Room">
+                    </div>
+                    <div class="card-content">
+                        <h3>The Azure Loft</h3>
+                        <p>Urban living space featuring floor-to-ceiling windows and neutral tones.</p>
+                        <a href="#" class="card-link">View Project</a>
+                    </div>
+                </div>
+
+                <!-- Project 2 -->
+                <div class="project-card reveal">
+                    <div class="card-image">
+                        <img src="https://placehold.co/600x400/eaeaea/333333?text=Minimalist+Kitchen" alt="Minimalist Kitchen">
+                    </div>
+                    <div class="card-content">
+                        <h3>Onyx Kitchen</h3>
+                        <p>Functional elegance with matte black fixtures and oak cabinetry.</p>
+                        <a href="#" class="card-link">View Project</a>
+                    </div>
+                </div>
+
+                <!-- Project 3 -->
+                <div class="project-card reveal">
+                    <div class="card-image">
+                        <img src="https://placehold.co/600x400/f0f0f0/333333?text=Luxury+Bedroom" alt="Luxury Bedroom">
+                    </div>
+                    <div class="card-content">
+                        <h3>Serenity Suite</h3>
+                        <p>A sanctuary of rest featuring soft textures and warm ambient lighting.</p>
+                        <a href="#" class="card-link">View Project</a>
+                    </div>
+                </div>
+
+                <!-- Project 4 -->
+                <div class="project-card reveal">
+                    <div class="card-image">
+                        <img src="https://placehold.co/600x400/e5e5e5/333333?text=Home+Office" alt="Home Office">
+                    </div>
+                    <div class="card-content">
+                        <h3>Focus Workspace</h3>
+                        <p>Productivity meets aesthetics in this dedicated home office environment.</p>
+                        <a href="#" class="card-link">View Project</a>
+                    </div>
+                </div>
+
+                <!-- Project 5 -->
+                <div class="project-card reveal">
+                    <div class="card-image">
+                        <img src="https://placehold.co/600x400/eeeeee/333333?text=Open+Plan+Living" alt="Open Plan Living">
+                    </div>
+                    <div class="card-content">
+                        <h3>Harmony Residence</h3>
+                        <p>Seamless flow between indoor and outdoor living spaces.</p>
+                        <a href="#" class="card-link">View Project</a>
+                    </div>
+                </div>
+
+                <!-- Project 6 -->
+                <div class="project-card reveal">
+                    <div class="card-image">
+                        <img src="https://placehold.co/600x400/f8f8f8/333333?text=Scandinavian+Bath" alt="Scandinavian Bathroom">
+                    </div>
+                    <div class="card-content">
+                        <h3>Spa Retreat</h3>
+                        <p>Minimalist bathroom design focusing on natural stone and water elements.</p>
+                        <a href="#" class="card-link">View Project</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="about">
+        <div class="container">
+            <div class="about-wrapper">
+                <div class="about-image reveal">
+                    <img src="https://placehold.co/600x700/dcdcdc/333333?text=Architect+Portrait" alt="Lead Architect">
+                </div>
+                <div class="about-text reveal">
+                    <h2>Our Philosophy</h2>
+                    <p>At LUMINA, we believe that architecture is not just about buildings, but about how people experience space. Our approach is rooted in minimalism, stripping away the unnecessary to reveal the essential beauty of form, light, and material.</p>
+                    <p>Founded in 2015, our studio has grown into a team of passionate designers dedicated to creating environments that foster well-being and inspire creativity. We work closely with our clients to understand their unique lifestyle needs, translating them into bespoke architectural solutions.</p>
+                    
+                    <div class="about-stats">
+                        <div class="stat-item">
+                            <h4>150+</h4>
+                            <span>Projects</span>
+                        </div>
+                        <div class="stat-item">
+                            <h4>12</h4>
+                            <span>Awards</span>
+                        </div>
+                        <div class="stat-item">
+                            <h4>8</h4>
+                            <span>Years</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section id="contact">
+        <div class="container">
+            <h2 class="section-title reveal">Get in Touch</h2>
+            <p class="section-subtitle reveal">Let's discuss your next project</p>
+            
+            <div class="contact-wrapper reveal">
+                <form class="contact-form" onsubmit="event.preventDefault(); alert('Thank you for your message. We will be in touch shortly.');">
+                    <div class="form-group">
+                        <label for="name">Name</label>
+                        <input type="text" id="name" class="form-control" placeholder="Your Name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" class="form-control" placeholder="Your Email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="subject">Subject</label>
+                        <input type="text" id="subject" class="form-control" placeholder="Project Inquiry">
+                    </div>
+                    <div class="form-group">
+                        <label for="message">Message</label>
+                        <textarea id="message" class="form-control" placeholder="Tell us about your project..." required></textarea>
+                    </div>
+                    <button type="submit" class="btn">Send Message</button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <a href="#" class="footer-logo">LUMINA</a>
+            <div class="social-links">
+                <a href="#">Instagram</a>
+                <a href="#">Pinterest</a>
+                <a href="#">LinkedIn</a>
+                <a href="#">Behance</a>
+            </div>
+            <p class="copyright">&copy; 2023 LUMINA Interior Architecture. All Rights Reserved.</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        // Mobile Navigation Toggle
+        const hamburger = document.getElementById('hamburger');
+        const navLinks = document.getElementById('nav-links');
+
+        hamburger.addEventListener('click', () => {
+            navLinks.classList.toggle('active');
+        });
+
+        // Close mobile menu when a link is clicked
+        document.querySelectorAll('.nav-links a').forEach(link => {
+            link.addEventListener('click', () => {
+                navLinks.classList.remove('active');
+            });
+        });
+
+        // Scroll Reveal Animation
+        const revealElements = document.querySelectorAll('.reveal');
+
+        const revealOnScroll = () => {
+            const windowHeight = window.innerHeight;
+            const elementVisible = 150;
+
+            revealElements.forEach((element) => {
+                const elementTop = element.getBoundingClientRect().top;
+                if (elementTop < windowHeight - elementVisible) {
+                    element.classList.add('active');
+                }
+            });
+        };
+
+        window.addEventListener('scroll', revealOnScroll);
+        // Trigger once on load
+        revealOnScroll();
+
+        // Header Background on Scroll
+        const header = document.getElementById('header');
+        
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 50) {
+                header.style.boxShadow = "0 2px 20px rgba(0,0,0,0.1)";
+                header.style.padding = "10px 0";
+            } else {
+                header.style.boxShadow = "0 2px 20px rgba(0,0,0,0.05)";
+                header.style.padding = "20px 0";
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DVD Screensaver</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000000;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #timer {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #00ff00;
+            font-size: 14px;
+            opacity: 0.7;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="timer">DVD Screensaver</div>
+    <canvas id="screen"></canvas>
+
+    <script>
+        const canvas = document.getElementById('screen');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let balls = [];
+        const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#00FFFF', '#FF00FF', '#FFA500'];
+        
+        // Configuration
+        const BALL_RADIUS = 40;
+        const TEXT_SIZE = 30;
+        const CORNER_HIT_INTERVAL = 120; // seconds
+
+        // State
+        let lastCornerHitTime = 0;
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        class Ball {
+            constructor() {
+                this.x = Math.random() * (width - BALL_RADIUS * 2) + BALL_RADIUS;
+                this.y = Math.random() * (height - BALL_RADIUS * 2) + BALL_RADIUS;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.text = "DVD";
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                let hitCorner = false;
+
+                // Check boundaries
+                if (this.x + BALL_RADIUS > width) {
+                    this.x = width - BALL_RADIUS;
+                    this.vx *= -1;
+                    this.color = colors[Math.floor(Math.random() * colors.length)];
+                    hitCorner = true;
+                } else if (this.x - BALL_RADIUS < 0) {
+                    this.x = BALL_RADIUS;
+                    this.vx *= -1;
+                    this.color = colors[Math.floor(Math.random() * colors.length)];
+                    hitCorner = true;
+                }
+
+                if (this.y + BALL_RADIUS > height) {
+                    this.y = height - BALL_RADIUS;
+                    this.vy *= -1;
+                    this.color = colors[Math.floor(Math.random() * colors.length)];
+                    hitCorner = true;
+                } else if (this.y - BALL_RADIUS < 0) {
+                    this.y = BALL_RADIUS;
+                    this.vy *= -1;
+                    this.color = colors[Math.floor(Math.random() * colors.length)];
+                    hitCorner = true;
+                }
+
+                if (hitCorner) {
+                    this.handleCornerHit();
+                }
+            }
+
+            handleCornerHit() {
+                const now = Date.now() / 1000;
+                if (now - lastCornerHitTime >= CORNER_HIT_INTERVAL) {
+                    this.text = "DVD";
+                    lastCornerHitTime = now;
+                } else {
+                    this.text = "DVD"; // Keep it as DVD, but the timer ensures the visual change happens
+                }
+            }
+
+            draw() {
+                ctx.font = `bold ${TEXT_SIZE}px Arial`;
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 15;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.text, this.x, this.y);
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function init() {
+            resize();
+            balls = [];
+            for (let i = 0; i < 5; i++) {
+                balls.push(new Ball());
+            }
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'; // Trail effect
+            ctx.fillRect(0, 0, width, height);
+
+            balls.forEach(ball => {
+                ball.update();
+                ball.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', resize);
+        
+        // Initialize
+        init();
+        animate();
+
+    </script>
+</body>
+</html>

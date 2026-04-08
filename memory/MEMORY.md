@@ -1,13 +1,13 @@
 # Memory Index
 # Auto-maintained. Edit with caution.
 
-WHO.CT-000001: Alice Smith — Summary for Alice Smith
-WHO.CT-000010: Entry10 — Summary for Entry10
-WHO.CT-000011: Entry11 — Summary for Entry11
+WHO.CT-000001: Sara Moradi — Reviewer
+WHO.CT-000010: Sara — Developer
+WHO.CT-000011: James — Developer
 WHO.CT-000012: James Chen — Team Lead
 WHO.CT-000002: Bob Jones — Summary for Bob Jones
 WHO.CT-000003: Charlie — Summary for Charlie
-WHO.CT-000004: Dave — Updated summary
+WHO.CT-000004: Dave — Summary for Dave
 PLAN.EX-000001: Create a file called hello.txt in workspace/TestProject with content "Hello World". — Execution state for: Create a file called hello.txt in workspace/TestProject with content "Hello Worl
 WHEN.RF-000002: Reflection: I started working on a new project today called Te [07:07:12] — Acknowledged.
 WHO.CT-000078: Alice — Contact: Alice
@@ -117,3 +117,41 @@ WHO.CT-000097: Integration Test Contact — Test contact for quick-resolve
 WHAT.PJ-000079: Tennis 3D Game — 3D tennis game project
 NOW.TD-000014: Buy groceries — Grocery shopping task
 WHEN.DL-000002: Zaraban Project Deadline — Critical deadline for the Zaraban project
+HOW.PR-000023: Pattern: write a web scraper that saves results to memory — Auto-generated procedure for: write a web scraper that saves results to memory
+WHEN.EV-000200: Skill: file_writer — Create a file called workspace/hello-p15.txt with  [2026-04-07T15:38] — success — Skill: file_writer — Create a file called workspace/hello-p1
+WHEN.RF-000083: Reflection: Skill: file_writer — Create a file called workspac [15:38:24] — Task "Skill: file_writer — Create a file called workspace/hello-p15.txt with  [2026-04-07T15:38]" co
+WHEN.EV-000201: Skill: file_writer — Create a file workspace/terminal-test.txt with con [2026-04-07T15:38] — success — Skill: file_writer — Create a file workspace/terminal-test.t
+WHEN.RF-000084: Reflection: Skill: file_writer — Create a file workspace/termi [15:38:33] — Task "Skill: file_writer — Create a file workspace/terminal-test.txt with con [2026-04-07T15:38]" co
+WHEN.EV-000202: Skill: file_writer — Create a Node.js server using Express at workspace [2026-04-07T15:38] — success — Skill: file_writer — Create a Node.js server using Express a
+WHEN.RF-000085: Reflection: Skill: file_writer — Create a Node.js server using [15:38:39] — Task "Skill: file_writer — Create a Node.js server using Express at workspace [2026-04-07T15:38]" co
+WHEN.EV-000097: Create an HTML Snake game in the specified directory. — Document Procedure — success — Create an HTML Snake game in the specified directory. — Docu
+HOW.PR-000034: Write Web Scraper with Memory Storage — Procedure for creating web scrapers that store data in memory
+PLAN.EX-000066: Write a Tetris game with combos, overlay text, and 3D objects in the workspace — Execution state for: Write a Tetris game with combos, overlay text, and 3D objects in the workspace
+PLAN.EX-000067: Tetris-3D-Spec — Technical spec for 3D Tetris game
+WHEN.EV-000203: Write a Tetris game with combos, overlay text, and 3D objects in the workspace — Game Specification and Setup — success — Write a Tetris game with combos, overlay text, and 3D object
+WHEN.RF-000086: Reflection: Requesting the creation of a Tetris game with comb [15:42:59] — <|channel>thought
+WHEN.RF-000087: Reflection: Write a Tetris game with combos, overlay text, and [15:44:26] — <|channel>thought
+WHEN.EV-000090: Create an HTML calculator website with Mac OS-like design in a 'project_for_test' folder — partial — Create an HTML calculator website with Mac OS-like design in
+WHEN.EV-000088: Create a basic calculator app and place it in a 'Calculator' folder in the workspace — success — Create a basic calculator app and place it in a 'Calculator'
+PLAN.EX-000068: Tetris Implementation Spec — Technical spec for Tetris game with combos and 3D effects
+WHAT.KN-000001: Argyll Open Source ICC Calibration Tutorial — Tutorial on using Argyll for ICC color calibration
+HOW.PR-000017: Download Neolith Catalog — Procedure for finding and downloading the general catalog from Neolith website.
+HOW.PR-000016: Neolith Catalog Download Procedure — Procedure to locate and download Neolith general catalog from their website.
+WHEN.EV-000001: Create a procedure for testing ceramic glazes and save it to memory — success — Create a procedure for testing ceramic glazes and save it to
+PLAN.EX-000069: Price Dashboard Spec — Live price dashboard for currencies, crypto, gold and silver
+PLAN.EX-000070: price_dashboard2-spec — Spec for live price dashboard with crypto, fiat, gold, silver
+PLAN.EX-000071: Subway Runner Game Spec — Simple Subway Runner with left/right lane controls
+PLAN.EX-000072: Delete existing Subway Runner game and create a regular Subway Runner game — Execution state for: Delete existing Subway Runner game and create a regular Subway Runner game
+WHEN.EV-000204: Delete existing Subway Runner game and create a regular Subway Runner game — Delete existing Subway Runner file — success — Delete existing Subway Runner game and create a regular Subw
+PLAN.EX-000073: Regular Subway Runner Game Spec — Simple Subway Runner with left/right lane controls and obstacle dodging
+WHEN.EV-000205: Delete existing Subway Runner game and create a regular Subway Runner game — Create regular Subway Runner game spec in memory — success — Delete existing Subway Runner game and create a regular Subw
+PLAN.EX-000074: subway_runner3-spec — Game spec for subway runner3 with simplified graphics and space controls
+PLAN.EX-000075: YouTube Homepage Spec — Specification for YouTube-style homepage
+WHEN.CA-000007: Meeting with Sara Ahmadi — Collaboration discussion meeting
+WHEN.DL-000001: Review AgenticAGI architecture — Deadline for reviewing AgenticAGI architecture.
+PLAN.EX-000076: DVD Screensaver Spec — Specification for DVD screensaver with corner bouncing
+WHEN.EV-000094: Create an HTML Snake game in the specified directory. — Setup Project Directory — success — Create an HTML Snake game in the specified directory. — Setu
+PLAN.EX-000077: zaraban-portfolio-spec — Spec for Zaraban Portfolio Website with colorful placeholder cards
+PLAN.PL-000002: Finish Phase 9 of AgenticAGI — Develop comprehensive plan for completing Phase 9 of AgenticAGI system
+PLAN.EX-000078: interior-architecture-site-spec — Specification for modern interior architecture portfolio website with image gallery
+PLAN.EX-000079: Create a website for interior architecture using images from the internet — Execution state for: Create a website for interior architecture using images from the internet

@@ -37,7 +37,9 @@
       "generate_and_save_file",
       "patch_file",
       "grep_workspace",
-      "list_dir"
+      "list_dir",
+      "glob",
+      "confirm_plan"
     ],
     "planning": {
       "max_steps": 8,

@@ -170,6 +170,7 @@ describe('FIX 5: Reactive revision skipped on happy path', () => {
       goals: [],
       complexity: 'HIGH',
       needsConfirmation: false,
+      createdAt: new Date().toISOString(),
     });
 
     const mockLLM: LLMHandler = vi.fn(async (messages: Message[]) => {

@@ -36,3 +36,15 @@ export declare function getNotebookCounts(): Array<{
     count: number;
 }>;
 export declare function closeDatabase(): void;
+/**
+ * savePendingPlan — persist a pending plan to SQLite (singleton row id=1)
+ */
+export declare function savePendingPlan(plan: unknown): void;
+/**
+ * loadPendingPlan — retrieve pending plan from SQLite, returns null if none
+ */
+export declare function loadPendingPlan(): unknown | null;
+/**
+ * clearPendingPlan — delete pending plan from SQLite
+ */
+export declare function clearPendingPlan(): void;

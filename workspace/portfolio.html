@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zaraban | Creative Developer & Designer</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+
+    <style>
+        /* CSS Variables & Reset */
+        :root {
+            --bg-color: #1a1a1a;
+            --text-color: #f0f0f0;
+            --accent-color: #4ECDC4;
+            --header-bg: rgba(26, 26, 26, 0.95);
+            --card-red: #FF6B6B;
+            --card-teal: #4ECDC4;
+            --card-blue: #45B7D1;
+            --card-green: #96CEB4;
+            --card-yellow: #FFEEAD;
+            --card-pink: #D4A5A5;
+            --card-purple: #6C5B7B;
+            --card-navy: #355C7D;
+            --font-heading: 'Poppins', sans-serif;
+            --font-body: 'Roboto', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-body);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        ul {
+            list-style: none;
+        }
+
+        /* Header & Navigation */
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: var(--header-bg);
+            padding: 1rem 5%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .logo {
+            font-family: var(--font-heading);
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-color);
+            letter-spacing: 1px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--accent-color);
+        }
+
+        .hamburger {
+            display: none;
+            cursor: pointer;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .bar {
+            width: 25px;
+            height: 3px;
+            background-color: var(--text-color);
+            transition: 0.3s;
+        }
+
+        /* Hero Section */
+        .hero {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 0 1rem;
+            background: radial-gradient(circle at center, #2a2a2a 0%, #1a1a1a 100%);
+        }
+
+        .hero h1 {
+            font-family: var(--font-heading);
+            font-size: 3.5rem;
+            margin-bottom: 0.5rem;
+            animation: fadeInDown 1s ease-out;
+        }
+
+        .hero h2 {
+            font-size: 1.5rem;
+            font-weight: 300;
+            color: #ccc;
+            margin-bottom: 2rem;
+            animation: fadeInUp 1s ease-out 0.3s backwards;
+        }
+
+        .cta-btn {
+            padding: 1rem 2.5rem;
+            background-color: var(--accent-color);
+            color: #1a1a1a;
+            font-weight: 700;
+            border-radius: 50px;
+            font-family: var(--font-heading);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            animation: fadeInUp 1s ease-out 0.6s backwards;
+        }
+
+        .cta-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(78, 205, 196, 0.6);
+            animation: pulse 1.5s infinite;
+        }
+
+        /* Sections General */
+        section {
+            padding: 5rem 10%;
+        }
+
+        .section-title {
+            font-family: var(--font-heading);
+            font-size: 2.5rem;
+            text-align: center;
+            margin-bottom: 3rem;
+            position: relative;
+        }
+
+        .section-title::after {
+            content: '';
+            display: block;
+            width: 60px;
+            height: 4px;
+            background-color: var(--accent-color);
+            margin: 10px auto 0;
+            border-radius: 2px;
+        }
+
+        /* About Section */
+        .about-container {
+            display: flex;
+            align-items: center;
+            gap: 4rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .about-text {
+            flex: 1;
+        }
+
+        .about-text p {
+            font-size: 1.1rem;
+            margin-bottom: 1.5rem;
+            color: #ddd;
+        }
+
+        .about-image {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+        }
+
+        .avatar-placeholder {
+            width: 300px;
+            height: 300px;
+            background-color: #333;
+            border-radius: 50%;
+            border: 4px solid var(--accent-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-heading);
+            font-size: 1.2rem;
+            color: #777;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        /* Skills Section */
+        .skills-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .skill-card {
+            background-color: #252525;
+            padding: 2rem;
+            border-radius: 10px;
+            text-align: center;
+            transition: transform 0.3s ease, background-color 0.3s ease;
+            border: 1px solid #333;
+        }
+
+        .skill-card:hover {
+            transform: translateY(-5px);
+            background-color: #2a2a2a;
+            border-color: var(--accent-color);
+        }
+
+        .skill-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .skill-label {
+            font-family: var(--font-heading);
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        /* Portfolio Section */
+        .portfolio-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .portfolio-item {
+            position: relative;
+            aspect-ratio: 1 / 1;
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .portfolio-item:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        .portfolio-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 1rem;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+        }
+
+        .portfolio-item:hover .portfolio-overlay {
+            transform: translateY(0);
+        }
+
+        .portfolio-title {
+            font-family: var(--font-heading);
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 0.2rem;
+        }
+
+        .portfolio-desc {
+            font-size: 0.85rem;
+            opacity: 0.9;
+        }
+
+        /* Footer */
+        footer {
+            background-color: #111;
+            padding: 3rem 10%;
+            text-align: center;
+            border-top: 1px solid #333;
+        }
+
+        .social-links {
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .social-links a {
+            font-size: 1.2rem;
+            transition: color 0.3s;
+        }
+
+        .social-links a:hover {
+            color: var(--accent-color);
+        }
+
+        .copyright {
+            color: #777;
+            font-size: 0.9rem;
+        }
+
+        /* Animations */
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(78, 205, 196, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(78, 205, 196, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(78, 205, 196, 0); }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            .portfolio-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2.5rem; }
+            .hero h2 { font-size: 1.2rem; }
+            
+            .about-container {
+                flex-direction: column-reverse;
+                text-align: center;
+            }
+            
+            .avatar-placeholder {
+                width: 200px;
+                height: 200px;
+            }
+
+            .hamburger {
+                display: flex;
+            }
+
+            .nav-links {
+                position: absolute;
+                top: 70px;
+                left: 0;
+                width: 100%;
+                background-color: var(--header-bg);
+                flex-direction: column;
+                align-items: center;
+                padding: 2rem 0;
+                transform: translateY(-150%);
+                transition: transform 0.3s ease-in-out;
+                box-shadow: 0 5px 10px rgba(0,0,0,0.5);
+            }
+
+            .nav-links.active {
+                transform: translateY(0);
+            }
+
+            .portfolio-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header>
+        <div class="logo">Zaraban</div>
+        <nav>
+            <ul class="nav-links" id="navLinks">
+                <li><a href="#home">Home</a></li>
+                <li><a href="#about">About</a></li>
+                <li><a href="#skills">Skills</a></li>
+                <li><a href="#portfolio">Portfolio</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+        </nav>
+        <div class="hamburger" id="hamburger">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section id="home" class="hero">
+        <h1>Hi, I'm Zaraban</h1>
+        <h2>Creative Developer & Designer</h2>
+        <a href="#portfolio" class="cta-btn">View My Work</a>
+    </section>
+
+    <!-- About Section -->
+    <section id="about">
+        <h2 class="section-title">About Me</h2>
+        <div class="about-container">
+            <div class="about-text">
+                <p>Passionate about building digital experiences that blend aesthetics with functionality. I specialize in creating responsive, user-centric websites that leave a lasting impression.</p>
+                <p>With a background in both design and development, I bridge the gap between creative vision and technical execution. Whether it's a complex web application or a stunning landing page, I bring attention to detail and a commitment to quality.</p>
+            </div>
+            <div class="about-image">
+                <div class="avatar-placeholder">
+                    <span>Zaraban</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Skills Section -->
+    <section id="skills">
+        <h2 class="section-title">My Skills</h2>
+        <div class="skills-grid">
+            <div class="skill-card">
+                <span class="skill-icon">🌐</span>
+                <span class="skill-label">HTML5</span>
+            </div>
+            <div class="skill-card">
+                <span class="skill-icon">🎨</span>
+                <span class="skill-label">CSS3</span>
+            </div>
+            <div class="skill-card">
+                <span class="skill-icon">⚡</span>
+                <span class="skill-label">JavaScript</span>
+            </div>
+            <div class="skill-card">
+                <span class="skill-icon">🖌️</span>
+                <span class="skill-label">UI Design</span>
+            </div>
+            <div class="skill-card">
+                <span class="skill-icon">📱</span>
+                <span class="skill-label">Responsive</span>
+            </div>
+            <div class="skill-card">
+                <span class="skill-icon">🚀</span>
+                <span class="skill-label">SEO</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Portfolio Section -->
+    <section id="portfolio">
+        <h2 class="section-title">Portfolio</h2>
+        <div class="portfolio-grid">
+            <!-- Item 1: Red -->
+            <div class="portfolio-item" style="background-color: var(--card-red);">
+                <div class="portfolio-overlay">
+                    <div class="portfolio-title">Project Alpha</div>
+                    <div class="portfolio-desc">E-commerce Platform</div>
+                </div>
+            </div>
+            <!-- Item 2: Teal -->
+            <div class="portfolio-item" style="background-color: var(--card-teal);">
+                <div class="portfolio-overlay">
+                    <div class="portfolio-title">Project Beta</div>
+                    <div class="portfolio-desc">Landing Page Design</div>
+                </div>
+            </div>
+            <!-- Item 3: Blue -->
+            <div class="portfolio-item" style="background-color: var(--card-blue);">
+                <div class="portfolio-overlay">
+                    <div class="portfolio-title">Project Gamma</div>
+                    <div class="portfolio-desc">Dashboard UI</div>
+                </div>
+            </div>
+            <!-- Item 4: Green -->
+            <div class="portfolio-item" style="background-color: var(--card-green);">
+                <div class="portfolio-overlay">
+                    <div class="portfolio-title">Project Delta</div>
+                    <div class="portfolio-desc">Mobile App Interface</div>
+                </div>
+            </div>
+            <!-- Item 5: Yellow -->
+            <div class="portfolio-item" style="background-color: var(--card-yellow);">
+                <div class="portfolio-overlay">
+                    <div class="portfolio-title">Project Epsilon</div>
+                    <div class="portfolio-desc">Brand Identity</div>
+                </div>
+            </div>
+            <!-- Item 6: Pink -->
+            <div class="portfolio-item" style="background-color: var(--card-pink);">
+                <div class="portfolio-overlay">
+                    <div class="portfolio-title">Project Zeta</div>
+                    <div class="portfolio-desc">Photography Portfolio</div>
+                </div>
+            </div>
+            <!-- Item 7: Purple -->
+            <div class="portfolio-item" style="background-color: var(--card-purple);">
+                <div class="portfolio-overlay">
+                    <div class="portfolio-title">Project Eta</div>
+                    <div class="portfolio-desc">Creative Agency Site</div>
+                </div>
+            </div>
+            <!-- Item 8: Navy -->
+            <div class="portfolio-item" style="background-color: var(--card-navy);">
+                <div class="portfolio-overlay">
+                    <div class="portfolio-title">Project Theta</div>
+                    <div class="portfolio-desc">SaaS Application</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer id="contact">
+        <div class="social-links">
+            <a href="#">GitHub</a>
+            <a href="#">LinkedIn</a>
+            <a href="#">Twitter</a>
+            <a href="#">Dribbble</a>
+        </div>
+        <div class="copyright">
+            &copy; 2023 Zaraban. All rights reserved.
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const hamburger = document.getElementById('hamburger');
+            const navLinks = document.getElementById('navLinks');
+            const navItems = document.querySelectorAll('.nav-links a');
+
+            // Toggle Mobile Menu
+            hamburger.addEventListener('click', () => {
+                navLinks.classList.toggle('active');
+                
+                // Animate hamburger bars (optional simple toggle)
+                const bars = hamburger.querySelectorAll('.bar');
+                if (navLinks.classList.contains('active')) {
+                    bars[0].style.transform = 'rotate(45deg) translate(5px, 6px)';
+                    bars[1].style.opacity = '0';
+                    bars[2].style.transform = 'rotate(-45deg) translate(5px, -6px)';
+                } else {
+                    bars[0].style.transform = 'none';
+                    bars[1].style.opacity = '1';
+                    bars[2].style.transform = 'none';
+                }
+            });
+
+            // Close menu when clicking a link
+            navItems.forEach(item => {
+                item.addEventListener('click', () => {
+                    navLinks.classList.remove('active');
+                    const bars = hamburger.querySelectorAll('.bar');
+                    bars[0].style.transform = 'none';
+                    bars[1].style.opacity = '1';
+                    bars[2].style.transform = 'none';
+                });
+            });
+        });
+    </script>
+</body>
+</html>

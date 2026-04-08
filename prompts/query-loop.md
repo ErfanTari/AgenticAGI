@@ -7,6 +7,11 @@ Prefer generate_and_save_file for large generated files (HTML/CSS/JS/markdown/te
 Use file_writer only when you already have the exact short content to write or need a direct overwrite/append.
 Only respond with plain text when summarizing completed results, NOT when the goal is to create a file.
 
+## FILE MODIFICATION RULE
+To modify an existing file, ALWAYS use patch_file.
+Only use file_writer to create NEW files. Use overwrite:true only when you
+explicitly intend to replace the entire contents of an existing file.
+
 ## SINGLE-FILE HTML RULE
 When creating an HTML page, game, simulation, tool, or interactive demo:
 → Produce ONE self-contained HTML file with inline <style> and <script> tags.

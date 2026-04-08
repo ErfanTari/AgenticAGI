@@ -74,7 +74,20 @@ export type TransparencyEvent =
   | { type: 'intake_signals'; data: { personSignal: string | null; projectSignal: string | null; querySignal: boolean; agenticSignal: boolean } }
   | { type: 'unit_search_strategy'; data: { strategy: string; projectName: string | null; confidence: number; codes: string[] } }
   // Phase 19 — Intake + query fix
-  | { type: 'list_intent_detected'; data: { unitContent: string; matched: { nb: string; type?: string }; resultCount: number } };
+  | { type: 'list_intent_detected'; data: { unitContent: string; matched: { nb: string; type?: string }; resultCount: number } }
+  // Tetris Session Fix Sprint — FIX 1: Milestone count validation
+  | { type: 'plan_repair_truncation'; data: { attempt: number; expectedSteps: number | null; actualSteps: number; expectedMilestones: number | null; actualMilestones: number } }
+  // Tetris Session Fix Sprint — FIX 2: Continuation intent auto-retrieval
+  | { type: 'continuation_context_loaded'; data: { code: string; length: number } }
+  // JSON Integrity Sprint — FIX 3: Plan referential integrity
+  | { type: 'plan_integrity_warning'; data: { orphanedSteps: string[]; missingSteps: string[]; brokenDependencies: string[] } }
+  | { type: 'plan_image_warning'; data: { message: string; steps: string[] } }
+  // DVD Log Analysis Fix Sprint — FIX 1: BM25 relevance gate
+  | { type: 'unit_search_filtered'; data: { unitId: string; reason: string; droppedCount: number } }
+  // Phase 5, Task 5 — Startup prefetch + lazy loading
+  | { type: 'startup_prefetch'; data: { pointerEntryCount: number; entriesPrefetched: number; timeMs: number } }
+  | { type: 'startup_prefetch_error'; data: { error: string } }
+  | { type: 'context_lazy_loaded'; data: Record<string, never> };
 
 type TransparencyHandler = (event: TransparencyEvent) => void;
 

@@ -65,36 +65,33 @@ const confirmPlanSkill: MCPSkill = {
       };
     }
 
-    if (decision === 'approve') {
+    if (decision === 'approve' || decision === 'reject') {
       const plan = getPendingConfirmationPlan();
       if (!plan) {
         return {
           success: false,
           output: '',
-          error: 'No plan pending confirmation.',
+          error: `No plan pending confirmation to ${decision}.`,
         };
       }
-      // Fallback path: if the skill is called, clear the pending plan.
-      // Normal flow: agent interceptor clears this before skill is invoked.
-      clearPendingConfirmationPlan();
-      transparency.emit({
-        type: 'plan_confirmed',
-        data: { goal: plan.goal ?? 'unknown' },
-      });
-      return {
-        success: true,
-        output: JSON.stringify({ decision: 'approve', executed: true }),
-      };
-    }
 
-    if (decision === 'reject') {
       // Fallback path: if the skill is called, clear the pending plan.
       // Normal flow: agent interceptor clears this before skill is invoked.
-      const plan = getPendingConfirmationPlan();
       clearPendingConfirmationPlan();
+      if (decision === 'approve') {
+        transparency.emit({
+          type: 'plan_confirmed',
+          data: { goal: plan.goal ?? 'unknown' },
+        });
+        return {
+          success: true,
+          output: JSON.stringify({ decision: 'approve', executed: true }),
+        };
+      }
+
       transparency.emit({
         type: 'plan_rejected',
-        data: { goal: plan?.goal ?? 'unknown' },
+        data: { goal: plan.goal ?? 'unknown' },
       });
       return {
         success: true,

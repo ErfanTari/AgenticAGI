@@ -175,7 +175,7 @@ export declare const EXECUTOR_CONFIG: {
 };
 export declare const TOKEN_BUDGETS: {
     readonly INTAKE: 600;
-    readonly INTAKE_TIMEOUT_MS: 20000;
+    readonly INTAKE_TIMEOUT_MS: 120000;
     readonly DECOMPOSITION: 2000;
     readonly PLANNER: 8192;
     readonly MILESTONE_REVISION: 2000;

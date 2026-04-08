@@ -16,6 +16,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export type TemplateVars = Record<string, string>;
+export interface PromptLoaderOptions {
+  reloadOnChange?: boolean;
+}
+
+interface CachedPrompt {
+  raw: string;
+  mtimeMs: number;
+}
 
 export interface PromptLoader {
   /**
@@ -42,24 +50,34 @@ function substitute(template: string, vars: TemplateVars): string {
   });
 }
 
-export function createPromptLoader(promptsDir?: string): PromptLoader {
+export function createPromptLoader(promptsDir?: string, options?: PromptLoaderOptions): PromptLoader {
   const dir = promptsDir ?? path.join(process.cwd(), 'prompts');
-  const cache = new Map<string, string>();
+  const cache = new Map<string, CachedPrompt>();
 
   function filePath(name: string): string {
     return path.join(dir, `${name}.md`);
   }
 
   function loadRaw(name: string): string {
-    const cached = cache.get(name);
-    if (cached !== undefined) return cached;
-
     const fp = filePath(name);
     if (!fs.existsSync(fp)) {
       throw new Error(`[prompt-loader] Template not found: ${fp}`);
     }
+
+    const stat = fs.statSync(fp);
+    const cached = cache.get(name);
+    if (cached !== undefined) {
+      if (!options?.reloadOnChange) return cached.raw;
+      if (stat.mtimeMs <= cached.mtimeMs) return cached.raw;
+    }
+
     const raw = fs.readFileSync(fp, 'utf8');
-    cache.set(name, raw);
+    if (cached && options?.reloadOnChange) {
+      console.log(
+        `[zaraban][prompt-loader] Reloaded ${name} prompt (mtime: ${new Date(stat.mtimeMs).toISOString()})`
+      );
+    }
+    cache.set(name, { raw, mtimeMs: stat.mtimeMs });
     return raw;
   }
 
@@ -84,4 +102,8 @@ export function createPromptLoader(promptsDir?: string): PromptLoader {
 }
 
 /** Default singleton pointed at <cwd>/prompts/ */
-export const promptLoader: PromptLoader = createPromptLoader();
+export const promptLoader: PromptLoader = createPromptLoader(undefined, { reloadOnChange: true });
+
+export function loadPlannerPrompt(vars?: TemplateVars): string {
+  return promptLoader.load('planner', vars);
+}

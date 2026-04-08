@@ -17,6 +17,7 @@ import {
 } from '../../core/memory/mod.js';
 import { processMessage } from '../../core/agent.js';
 import { PATHS } from '../../config/agent.config.js';
+import { sessionCache } from '../../core/memory/session-cache.js';
 import type { Message } from '../../core/types.js';
 import type { Chunk } from '../../core/memory/chunks.js';
 
@@ -32,6 +33,9 @@ let projectCode: string;
 let todoCode: string;
 
 beforeAll(() => {
+  // Clear session cache to prevent stale entries from previous tests/sessions
+  sessionCache.clear();
+
   (PATHS as Record<string, string>).db = TEST_DB;
   (PATHS as Record<string, string>).memory = TEST_MEMORY;
   initDatabase(TEST_DB);

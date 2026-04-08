@@ -9,7 +9,7 @@ import { assessComplexity } from './planner.js';
 import { runQueryLoop } from './query-loop.js';
 import { searchMemoryForUnits } from './memory/unit-search.js';
 import { runWithRetry } from './react.js';
-import { addRelationship, fetchByCode, getEntryByCode, hybridSearch, upsertEntry, } from './memory/mod.js';
+import { addRelationship, fetchByCode, getEntryByCode, hybridSearch, upsertEntry, savePendingPlan, clearPendingPlan, } from './memory/mod.js';
 import { startHeartbeat, stopHeartbeat, recordActivity } from './heartbeat.js';
 import { getDb } from './memory/index.js';
 import { classifyFailure } from './executor.js';
@@ -22,6 +22,7 @@ import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
 import { transparency } from './transparency.js';
 import { runIntake } from './intake.js';
 import { createWorkingMemory, loadWorkingMemory } from './memory/working-memory.js';
+import { setPendingConfirmationPlan as skillSetPendingPlan, clearPendingConfirmationPlan as skillClearPendingPlan, } from './skills/tools/confirm_plan.js';
 const GREETING_ONLY = /^\s*(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy|greetings)\s*[!.?]*\s*$/i;
 const DIRECT_MEETING_PREFIX = /^\/meeting\b/i;
 const DIRECT_CODE_FETCH_PREFIX = /^\s*(show|show me|tell me about|open|fetch|get|display)\b/i;
@@ -146,32 +147,24 @@ Respond with ONLY the JSON object, no extra text.`;
 // FIX 1: Processing flag — heartbeat checks this to skip when agent is busy
 export let isProcessingMessage = false;
 // FIX 0: Plan confirmation state machine — prevents fake-execution hallucination
-let pendingConfirmationPlan = null;
+// Now uses skill's state management (stored in confirm_plan.ts)
+// Module-level backup for quick access
+let _pendingConfirmationPlanCache = null;
 /** Exported for testing only. */
 export function _getPendingConfirmationPlan() {
-    return pendingConfirmationPlan;
+    return _pendingConfirmationPlanCache;
 }
 /** Exported for testing only. */
 export function _setPendingConfirmationPlan(plan) {
-    pendingConfirmationPlan = plan;
-}
-export function isUserConfirmation(message) {
-    const normalized = message.toLowerCase().trim();
-    const confirmPatterns = [
-        /^(yes|yep|yeah|yup|sure|ok|okay|go|do it|proceed|confirm|confirmed|execute|run it|go ahead|let's go|let's do it|approved|approve)$/,
-        /\b(confirm|execute|proceed|go ahead|approved?)\b.*\b(plan|it)\b/,
-        /\b(yes|sure|ok)\b.*\b(execute|run|do|go)\b/,
-    ];
-    return confirmPatterns.some(p => p.test(normalized));
-}
-export function isUserRejection(message) {
-    const normalized = message.toLowerCase().trim();
-    const rejectPatterns = [
-        /^(no|nope|nah|cancel|stop|abort|don't|nevermind|never mind)$/,
-        /\b(cancel|abort|stop|don't)\b.*\b(plan|it)\b/,
-        /\b(no|nope)\b/,
-    ];
-    return rejectPatterns.some(p => p.test(normalized));
+    _pendingConfirmationPlanCache = plan;
+    if (plan) {
+        skillSetPendingPlan(plan);
+        savePendingPlan(plan); // Persist to SQLite
+    }
+    else {
+        skillClearPendingPlan();
+        clearPendingPlan(); // Delete from SQLite
+    }
 }
 // FIX 1: Agent lifecycle
 export function startAgent() {
@@ -1038,61 +1031,93 @@ async function handleCompatibilityExecution(message, history, classification, fi
     }
     return null;
 }
+/**
+ * Classify user response to a pending plan confirmation.
+ * Deterministic regex-based classification without LLM calls.
+ * @returns 'approve' | 'reject' | 'ambiguous'
+ */
+function classifyConfirmationResponse(message) {
+    const lower = message.trim().toLowerCase();
+    const approvalQualifierPattern = /\b(but|if|except|change|changes|changed|modify|modifies|modified)\b/i;
+    // Approve patterns: yes, yeah, y, go, proceed, do it, execute, run, confirm, approved, okay, ok, sure, let's go, just do it
+    const approvePatterns = [/^(yes|yeah|yep|y|go|proceed|do\s+it|execute|run|confirm|confirmed|okay|ok|sure|let'?s\s+go|just\s+do\s+it|absolutely|definitely|sounds\s+good)/i];
+    if (approvePatterns.some(p => p.test(lower))) {
+        if (approvalQualifierPattern.test(lower)) {
+            return 'ambiguous';
+        }
+        return 'approve';
+    }
+    // Reject patterns: no, nope, nah, cancel, stop, abort, don't, don't do it, never, skip, disagree, no thanks
+    const rejectPatterns = [/^(no|nope|nah|n|cancel|stop|abort|don't|do\s+not|never|skip|disagree|no\s+thanks|i\s+don't)/i];
+    if (rejectPatterns.some(p => p.test(lower))) {
+        return 'reject';
+    }
+    // Ambiguous: anything else
+    return 'ambiguous';
+}
 export async function processMessage(message, history, options) {
     isProcessingMessage = true;
     recordActivity(); // Phase 16: track last activity for AutoDream idle detection
     let decomposition = null;
     try {
-        // === FIX 0: Plan Confirmation Intercept ===
-        // Must be the FIRST check — before intake, decomposition, or any routing.
-        // Prevents the "fake execution" hallucination where a confirmation message
-        // gets routed as conversational and the LLM fabricates plan completion.
-        if (pendingConfirmationPlan) {
-            const plan = pendingConfirmationPlan;
-            const handler = options?.llmHandler ?? callLLM;
-            if (isUserConfirmation(message)) {
-                pendingConfirmationPlan = null;
-                transparency.emit({ type: 'plan_confirmed', data: { goal: plan.goal } });
-                const result = await executeConfirmedPlan(plan, handler);
+        // === FIX 0: Plan Confirmation Interceptor (step [0]) ===
+        // Deterministic confirmation without LLM calls. Reads the user's raw message
+        // and classifies it as approval, rejection, or ambiguous.
+        const handler = options?.llmHandler ?? callLLM;
+        const currentPendingPlan = _getPendingConfirmationPlan();
+        if (currentPendingPlan) {
+            const findingsPrefix = await buildFindingsPrefix();
+            const decision = classifyConfirmationResponse(message);
+            if (decision === 'approve') {
+                // Execute the plan immediately
+                const executionResult = await executeConfirmedPlan(currentPendingPlan, handler);
+                _setPendingConfirmationPlan(null);
+                skillClearPendingPlan();
+                transparency.emit({ type: 'plan_confirmed', data: { goal: currentPendingPlan.goal ?? 'unknown' } });
                 return {
-                    reply: result.reply,
+                    reply: findingsPrefix + executionResult.reply,
                     intent: 'planned_workflow',
                     resolved: null,
                 };
             }
-            else if (isUserRejection(message)) {
-                pendingConfirmationPlan = null;
-                transparency.emit({ type: 'plan_rejected', data: { goal: plan.goal } });
+            if (decision === 'reject') {
+                // Reject and clear the plan
+                _setPendingConfirmationPlan(null);
+                skillClearPendingPlan();
+                transparency.emit({ type: 'plan_rejected', data: { goal: currentPendingPlan.goal ?? 'unknown' } });
                 return {
-                    reply: 'Plan cancelled. What would you like me to do instead?',
+                    reply: findingsPrefix + `Plan cancelled. Let me know what you'd like to do instead.`,
                     intent: 'general',
                     resolved: null,
                 };
             }
-            else {
-                // Ambiguous response — re-prompt without clearing the plan
-                transparency.emit({ type: 'plan_confirmation_ambiguous', data: { userMessage: message } });
-                const milestoneLines = (plan.milestones ?? []).map((m) => `- ${m.title}${m.description ? ': ' + m.description : ''}`);
-                return {
-                    reply: "I have a plan ready to execute. Please confirm with 'yes' or cancel with 'no'.\n\n" +
-                        milestoneLines.join('\n'),
-                    intent: 'general',
-                    resolved: null,
-                };
-            }
+            // decision === 'ambiguous' — keep plan pending and re-prompt
+            transparency.emit({ type: 'plan_confirmation_ambiguous', data: { userMessage: message } });
+            const milestones = currentPendingPlan.milestones ?? [];
+            const nextMilestone = milestones.length > 0 ? milestones[0] : null;
+            const clarification = nextMilestone
+                ? `Could you clarify? The plan's first milestone is: "${nextMilestone.title || 'Unknown'}". Do you want me to proceed?`
+                : `Could you clarify? Do you want me to execute the plan?`;
+            return {
+                reply: findingsPrefix + clarification,
+                intent: 'general',
+                resolved: null,
+            };
         }
-        const findingsPrefix = await buildFindingsPrefix();
-        const handler = options?.llmHandler ?? callLLM;
         if (/^\/log\s+/i.test(message.trim())) {
+            const findingsPrefix = await buildFindingsPrefix();
             return await handleLogFastPath(message, findingsPrefix);
         }
         if (DIRECT_MEETING_PREFIX.test(message.trim())) {
+            const findingsPrefix = await buildFindingsPrefix();
             return await handleMeetingFastPath(history, handler, findingsPrefix);
         }
         const codes = extractCodes(message);
         if (isDirectCodeFetchMessage(message, codes)) {
+            const findingsPrefix = await buildFindingsPrefix();
             return await handleLegacyResolvedFlow(message, history, { intent: 'code_fetch', codes }, handler, findingsPrefix);
         }
+        const findingsPrefix = await buildFindingsPrefix();
         // FIX-T2-V2: Deterministic compound entity creation fast path.
         // The planner generates incomplete plans for "Save A and B as contacts + create project X".
         // Handle it deterministically here to guarantee all entities are created.
@@ -1200,11 +1225,10 @@ ${memoryContext}
 
 ## Grounding Rule
 The memory entries provided above are confirmed to exist in the database. You MUST NOT claim that any of these entries do not exist, are missing, or could not be found. Base your answer on the content of these entries.`;
-            // Phase 20b: Modification commands need the full pipeline, not the synthesis path
-            const MODIFICATION_VERBS = /^(?:update|change|modify|edit|rename|delete|remove|move|merge)\b/i;
-            const needsFullPipeline = isCommand && MODIFICATION_VERBS.test(message.trim());
-            if (!needsFullPipeline) {
-                // Use the synthesis path for queries and simple read-only actions
+            // Phase 20b FIX 2: Commands bypass synthesis — only queries use the synthesis path
+            // All command-intent messages need the full agentic pipeline (decomposition → planner/executor)
+            if (!isCommand) {
+                // Use the synthesis path for queries and retrieval-only actions
                 const contextMessages = [
                     { role: 'system', content: systemPrompt },
                     ...history.slice(-6),
@@ -1223,7 +1247,7 @@ The memory entries provided above are confirmed to exist in the database. You MU
                     // LLM call failed — fall through to normal pipeline
                 }
             }
-            // else: modification commands fall through to full pipeline
+            // else: commands fall through to full pipeline
         }
         // ── End quick-resolve ──
         // Phase 15: Run intake classification before decomposition
@@ -1239,7 +1263,9 @@ The memory entries provided above are confirmed to exist in the database. You MU
         catch {
             // Intake is advisory — never block processing
         }
-        decomposition = await decomposeMessage(message, handler, intakeResult?.resolvedContext);
+        // Create fresh repair context for this message's decomposition
+        const repairContext = { count: 0 };
+        decomposition = await decomposeMessage(message, handler, intakeResult?.resolvedContext, repairContext);
         if (decomposition.units.length === 1 && GREETING_ONLY.test(decomposition.units[0].content)) {
             const routed = await routeDecomposedUnits(decomposition.units, [], history, handler);
             return {
@@ -1302,7 +1328,7 @@ The memory entries provided above are confirmed to exist in the database. You MU
         const routed = await routeDecomposedUnits(decomposition.units, unitResults, history, handler, workingMemory ?? undefined);
         // FIX 0: If routing produced a plan that needs confirmation, store it and return the confirmation prompt
         if (routed.plan?.needsConfirmation && !routed.execution) {
-            pendingConfirmationPlan = routed.plan;
+            _setPendingConfirmationPlan(routed.plan);
             transparency.emit({ type: 'plan_confirmation_pending', data: { goal: routed.plan.goal, stepCount: routed.plan.steps.length } });
         }
         const agentReply = stripThinkingTags(routed.reply);

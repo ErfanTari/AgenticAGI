@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subway Runner 3</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #222;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        canvas {
+            background-color: #333;
+            display: block;
+            border: 4px solid #fff;
+        }
+
+        #uiLayer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        #scoreDisplay {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            padding: 10px;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        #gameOverScreen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 20px 40px;
+            text-align: center;
+            border-radius: 10px;
+            display: none;
+            pointer-events: auto;
+        }
+
+        #gameOverScreen h1 {
+            margin-top: 0;
+            color: #ff4444;
+        }
+
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin-top: 15px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        .controls-hint {
+            position: absolute;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255,255,255,0.7);
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+        <div id="uiLayer">
+            <div id="scoreDisplay">Score: 0</div>
+            <div class="controls-hint">Controls: Left/Right to Move, Space to Jump</div>
+        </div>
+        <div id="gameOverScreen">
+            <h1>GAME OVER</h1>
+            <p>Final Score: <span id="finalScore">0</span></p>
+            <button onclick="resetGame()">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreSpan = document.getElementById('finalScore');
+
+        // Game Constants
+        const LANE_COUNT = 3;
+        const LANE_WIDTH = canvas.width / LANE_COUNT;
+        const PLAYER_SIZE = { width: 40, height: 60 };
+        const OBSTACLE_SIZE = { width: 40, height: 60 };
+        const GROUND_Y = 320;
+
+        // Game State
+        let gameState = 'playing'; // playing, gameover
+        let score = 0;
+        let speed = 5;
+        let frameCount = 0;
+        let obstacles = [];
+        
+        // Player Object
+        const player = {
+            lane: 1, // 0=Left, 1=Center, 2=Right
+            x: 0,
+            y: GROUND_Y - PLAYER_SIZE.height,
+            width: PLAYER_SIZE.width,
+            height: PLAYER_SIZE.height,
+            isJumping: false,
+            jumpVelocity: 0,
+            gravity: 0.8,
+            jumpStrength: 12,
+            color: '#3498db'
+        };
+
+        // Input Handling
+        let keys = {};
+
+        window.addEventListener('keydown', (e) => {
+            if (gameState === 'gameover') return;
+            
+            if (e.code === 'ArrowLeft' || e.key.toLowerCase() === 'a') {
+                moveLane(-1);
+            } else if (e.code === 'ArrowRight' || e.key.toLowerCase() === 'd') {
+                moveLane(1);
+            } else if (e.code === 'Space') {
+                jump();
+            }
+        });
+
+        function moveLane(direction) {
+            const newLane = player.lane + direction;
+            if (newLane >= 0 && newLane < LANE_COUNT) {
+                player.lane = newLane;
+            }
+        }
+
+        function jump() {
+            if (!player.isJumping) {
+                player.isJumping = true;
+                player.jumpVelocity = player.jumpStrength;
+            }
+        }
+
+        // Game Logic Functions
+        function spawnObstacle() {
+            const lane = Math.floor(Math.random() * LANE_COUNT);
+            obstacles.push({
+                lane: lane,
+                x: canvas.width + 50,
+                y: GROUND_Y - OBSTACLE_SIZE.height,
+                width: OBSTACLE_SIZE.width,
+                height: OBSTACLE_SIZE.height,
+                color: '#e74c3c'
+            });
+        }
+
+        function update() {
+            if (gameState !== 'playing') return;
+
+            // Increase speed gradually based on score
+            if (score % 100 === 0 && score > 0) {
+                speed += 0.5;
+            }
+
+            // Player Physics (Jumping)
+            if (player.isJumping) {
+                player.y -= player.jumpVelocity;
+                player.jumpVelocity -= player.gravity;
+
+                if (player.y <= GROUND_Y - PLAYER_SIZE.height) {
+                    player.y = GROUND_Y - PLAYER_SIZE.height;
+                    player.isJumping = false;
+                    player.jumpVelocity = 0;
+                }
+            } else {
+                // Smooth horizontal movement to lane center
+                const targetX = (player.lane * LANE_WIDTH) + (LANE_WIDTH / 2) - (PLAYER_SIZE.width / 2);
+                player.x += (targetX - player.x) * 0.15;
+            }
+
+            // Spawn Obstacles
+            frameCount++;
+            if (frameCount % Math.floor(600 / speed) === 0) {
+                spawnObstacle();
+            }
+
+            // Update Obstacles & Collision
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.x -= speed;
+
+                // Collision Detection
+                if (obs.lane === player.lane) {
+                    const hitBoxPadding = 5;
+                    if (
+                        player.x + PLAYER_SIZE.width - hitBoxPadding > obs.x + hitBoxPadding &&
+                        player.x + hitBoxPadding < obs.x + obs.width - hitBoxPadding
+                    ) {
+                        // Check vertical collision (jumping over)
+                        const playerBottom = GROUND_Y;
+                        const playerTop = player.y;
+                        
+                        if (playerTop > obs.y + 10) { 
+                            // Player is high enough to clear obstacle
+                        } else {
+                            gameOver();
+                        }
+                    }
+                }
+
+                // Remove off-screen obstacles and add score
+                if (obs.x < -OBSTACLE_SIZE.width) {
+                    obstacles.splice(i, 1);
+                    score += 10;
+                    scoreDisplay.innerText = 'Score: ' + score;
+                }
+            }
+        }
+
+        function draw() {
+            // Clear Canvas
+            ctx.fillStyle = '#333';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Road Lanes
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 2;
+            for (let i = 1; i < LANE_COUNT; i++) {
+                const x = i * LANE_WIDTH;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+
+            // Draw Ground Line
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, GROUND_Y);
+            ctx.lineTo(canvas.width, GROUND_Y);
+            ctx.stroke();
+
+            // Draw Player
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, PLAYER_SIZE.width, PLAYER_SIZE.height);
+            
+            // Player Detail (simple face)
+            ctx.fillStyle = '#fff';
+            if (!player.isJumping) {
+                ctx.fillRect(player.x + 10, player.y + 15, 8, 8);
+                ctx.fillRect(player.x + 22, player.y + 15, 8, 8);
+            }
+
+            // Draw Obstacles
+            for (let obs of obstacles) {
+                ctx.fillStyle = obs.color;
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                
+                // Obstacle Detail (danger stripes)
+                ctx.fillStyle = '#c0392b';
+                ctx.beginPath();
+                ctx.moveTo(obs.x + 5, obs.y + 10);
+                ctx.lineTo(obs.x + 35, obs.y + 40);
+                ctx.lineTo(obs.x + 25, obs.y + 40);
+                ctx.lineTo(obs.x - 5, obs.y + 10);
+                ctx.fill();
+            }
+
+            // Draw Moving Road Lines (illusion of speed)
+            ctx.fillStyle = '#fff';
+            const offset = (frameCount * speed) % 60;
+            for(let i=0; i<LANE_COUNT-1; i++) {
+                 let laneX = (i+1) * LANE_WIDTH;
+                 for(let y=GROUN_Y + 20; y < canvas.height; y+=60) {
+                     ctx.fillRect(laneX - 2, y - offset, 4, 30);
+                 }
+            }
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            gameState = 'gameover';
+            finalScoreSpan.innerText = score;
+            gameOverScreen.style.display = 'block';
+        }
+
+        window.resetGame = function() {
+            score = 0;
+            speed = 5;
+            frameCount = 0;
+            obstacles = [];
+            player.lane = 1;
+            player.y = GROUND_Y - PLAYER_SIZE.height;
+            player.isJumping = false;
+            player.jumpVelocity = 0;
+            
+            scoreDisplay.innerText = 'Score: 0';
+            gameOverScreen.style.display = 'none';
+            gameState = 'playing';
+        };
+
+        // Start Game
+        gameLoop();
+
+    </script>
+</body>
+</html>

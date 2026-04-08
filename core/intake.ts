@@ -10,6 +10,7 @@ import type Database from 'better-sqlite3';
 import { sessionCache } from './memory/session-cache.js';
 import { transparency } from './transparency.js';
 import { extractFirstJsonObject } from './structured.js';
+import { intakeJsonSchema } from './schemas.js';
 import { stripThinkingTags } from './llm.js';
 import { promptLoader } from './prompt-loader.js';
 import { TOKEN_BUDGETS } from '../config/agent.config.js';
@@ -103,7 +104,13 @@ export async function runIntake(
 
   let parsed: ReturnType<typeof parseIntakeResponse> = null;
   try {
-    const response = await llm(classifyMessages, { maxTokens: TOKEN_BUDGETS.INTAKE, temperature: 0, disableThinking: true });
+    // FIX 1: Add responseSchema for engine-level JSON enforcement
+    const response = await llm(classifyMessages, {
+      responseSchema: intakeJsonSchema,
+      maxTokens: TOKEN_BUDGETS.INTAKE,
+      temperature: 0,
+      disableThinking: true
+    });
     parsed = parseIntakeResponse(response);
     if (!parsed) {
       console.warn(`[zaraban][intake] Schema validation failed. Raw length: ${response.length}. Falling back.`);

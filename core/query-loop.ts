@@ -560,6 +560,37 @@ export async function runQueryLoop(
       };
     }
 
+    // FIX 3: Pre-dispatch validator for generate_and_save_file
+    if (toolCall.action === 'generate_and_save_file') {
+      const input = toolCall.input || {};
+      const hasDescription = typeof input.description === 'string' && input.description.trim().length > 0;
+      const hasSpecCode = typeof input.spec_code === 'string' && input.spec_code.trim().length > 0;
+
+      // Check for contradictory payload
+      if (hasDescription && hasSpecCode) {
+        const errorMsg = 'generate_and_save_file received both "description" and "spec_code". ' +
+          'Use one or the other. If you have a spec_code, do not include description. ' +
+          'If you are writing inline, do not include spec_code.';
+        messages.push({ role: 'assistant', content: stripThinkingTags(reply).trim() });
+        messages.push({ role: 'user', content: `[TOOL ERROR] ${errorMsg}\n\n${buildGoalBlock(goal, iteration + 1, filesWritten)}` });
+        continue;
+      }
+
+      // If spec_code present, verify it exists
+      if (hasSpecCode) {
+        const { getEntryByCode } = await import('./memory/index.js');
+        const entry = getEntryByCode(input.spec_code as string);
+        if (!entry) {
+          const errorMsg = `spec_code "${input.spec_code}" does not exist in memory. ` +
+            'You must first write the spec using memory_write, then pass the returned code as spec_code. ' +
+            'Alternatively, use "description" with a detailed inline spec instead of spec_code.';
+          messages.push({ role: 'assistant', content: stripThinkingTags(reply).trim() });
+          messages.push({ role: 'user', content: `[TOOL ERROR] ${errorMsg}\n\n${buildGoalBlock(goal, iteration + 1, filesWritten)}` });
+          continue;
+        }
+      }
+    }
+
     const inlineFileWriteError = getLargeInlineFileWriteError(toolCall);
     if (inlineFileWriteError) {
       circuitFailures.set(ck, ckFailures + 1);
@@ -623,6 +654,31 @@ export async function runQueryLoop(
       }
 
       transparency.emit({ type: 'query_loop_skill_result', data: { skill: toolCall.action, success: true } });
+
+      // FIX 4: Post-write verification for file generation
+      if (toolCall.action === 'generate_and_save_file') {
+        const filePath = typeof toolCall.input.path === 'string' ? toolCall.input.path : '';
+        if (filePath) {
+          try {
+            const { runSkill } = await import('./skills/runner.js');
+            const verifyResult = await runSkill('verify_state', {
+              operation: 'file_write',
+              target: filePath,
+            });
+
+            if (!verifyResult.success) {
+              const warnMsg = `[VERIFICATION WARNING] generate_and_save_file reported success ` +
+                `but verify_state could not confirm file at "${filePath}". ` +
+                `The file may not have been written correctly. Try again.`;
+              messages.push({ role: 'user', content: warnMsg });
+              continue;
+            }
+          } catch (e) {
+            // verify_state failure should not break the loop — log and continue
+            console.warn('[QueryLoop] verify_state call failed:', (e as Error).message);
+          }
+        }
+      }
 
       // Fix 3: Capture artifact context after generate_and_save_file succeeds
       if (toolCall.action === 'generate_and_save_file') {

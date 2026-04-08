@@ -6,6 +6,11 @@ import { sanitizeForHistory } from './core/decomposition.js';
 import { transparency } from './core/transparency.js';
 import { attachConsoleRenderer } from './core/transparency-renderer.js';
 import { currentSession } from './core/session/session-log.js';
+import { getCostReport, formatCostReport } from './core/operators/cost.js';
+import { runHealthCheck, formatHealthCheck } from './core/operators/doctor.js';
+import { captureContextSnapshot, formatContextSnapshot } from './core/operators/context.js';
+import { runStartupPrefetch, getPointerIndexCache } from './core/startup/prefetch.js';
+import { selectResumablePlan, formatResumePrompt } from './core/operators/resume.js';
 import type { Message } from './core/types.js';
 
 // Initialize transparency bus based on environment
@@ -28,6 +33,46 @@ validateConfig();
 initDatabase();
 startAgent();
 
+// Startup prefetch: load pointer index and first 20 entries in parallel
+let promptStarted = false;
+
+const prefetchPromise = runStartupPrefetch().then(async (result) => {
+  if (result.pointerIndexLoaded) {
+    console.log(`  Loaded pointer index (${result.pointerEntryCount} entries)`);
+  }
+  if (result.entriesPrefetched > 0) {
+    console.log(`  Prefetched ${result.entriesPrefetched} memory entries (${result.prefetchTimeMs}ms)`);
+  }
+
+  // Print ready message after prefetch completes
+  console.log('Agent ready. Type a message and press Enter. Type "quit" to exit.');
+  console.log('Operators: /cost (session usage), /doctor (health check), /context (memory snapshot), /resume (resume plans)\n');
+
+  // Check for active execution plans after prefetch
+  await checkActivePlan();
+
+  // Start prompt if not already started (defensive guard)
+  if (!promptStarted) {
+    promptStarted = true;
+    prompt();
+  }
+}).catch(async (err) => {
+  console.warn(`  Startup prefetch failed: ${String(err).slice(0, 50)}`);
+
+  // Print ready message even on prefetch failure
+  console.log('Agent ready. Type a message and press Enter. Type "quit" to exit.');
+  console.log('Operators: /cost (session usage), /doctor (health check), /context (memory snapshot), /resume (resume plans)\n');
+
+  // Check for active execution plans even on prefetch failure
+  await checkActivePlan();
+
+  // Start prompt if not already started (defensive guard)
+  if (!promptStarted) {
+    promptStarted = true;
+    prompt();
+  }
+});
+
 const history: Message[] = [];
 
 const rl = readline.createInterface({
@@ -35,35 +80,34 @@ const rl = readline.createInterface({
   output: process.stdout,
 });
 
-console.log('Agent ready. Type a message and press Enter. Type "quit" to exit.\n');
-
 // Check for active PLAN.EX on startup — surface resumable execution plans
-// Phase 15 Conflict 2: also load associated working memory for context
-try {
-  const { loadActivePlanEX } = await import('./core/memory/plan-ex.js');
-  const activePlan = loadActivePlanEX();
-  if (activePlan) {
-    const milestone = activePlan.milestones?.[activePlan.current_milestone];
-    const milestoneName = milestone?.name ?? activePlan.next_action ?? 'pending milestone';
-    const statusLine = activePlan.status === 'paused'
-      ? `Paused: ${activePlan.abort_reason ?? milestoneName}`
-      : `In progress: ${milestoneName}`;
-    console.log(`📋 Active execution plan found: "${activePlan.task_name}"\n   ${statusLine}\n   Continue? (just say "continue" or proceed with other work)\n`);
+async function checkActivePlan() {
+  try {
+    const { loadActivePlanEX } = await import('./core/memory/plan-ex.js');
+    const activePlan = loadActivePlanEX();
+    if (activePlan) {
+      const milestone = activePlan.milestones?.[activePlan.current_milestone];
+      const milestoneName = milestone?.name ?? activePlan.next_action ?? 'pending milestone';
+      const statusLine = activePlan.status === 'paused'
+        ? `Paused: ${activePlan.abort_reason ?? milestoneName}`
+        : `In progress: ${milestoneName}`;
+      console.log(`📋 Active execution plan found: "${activePlan.task_name}"\n   ${statusLine}\n   Continue? (just say "continue" or proceed with other work)\n`);
 
-    // Load associated working memory if a project code is available
-    try {
-      const { loadWorkingMemory } = await import('./core/memory/working-memory.js');
-      const wm = activePlan.project_code
-        ? await loadWorkingMemory(activePlan.project_code)
-        : null;
-      if (wm) {
-        const lastStep = wm.stepLog.at(-1);
-        const lastStepSummary = lastStep ? `Last step: ${lastStep.summary}` : '';
-        console.log(`   Resuming from: ${wm.goal}${lastStepSummary ? `\n   ${lastStepSummary}` : ''}\n`);
-      }
-    } catch { /* working memory load is advisory */ }
-  }
-} catch { /* startup check is advisory */ }
+      // Load associated working memory if a project code is available
+      try {
+        const { loadWorkingMemory } = await import('./core/memory/working-memory.js');
+        const wm = activePlan.project_code
+          ? await loadWorkingMemory(activePlan.project_code)
+          : null;
+        if (wm) {
+          const lastStep = wm.stepLog.at(-1);
+          const lastStepSummary = lastStep ? `Last step: ${lastStep.summary}` : '';
+          console.log(`   Resuming from: ${wm.goal}${lastStepSummary ? `\n   ${lastStepSummary}` : ''}\n`);
+        }
+      } catch { /* working memory load is advisory */ }
+    }
+  } catch { /* startup check is advisory */ }
+}
 
 function prompt() {
   rl.question('you > ', async (input) => {
@@ -73,6 +117,59 @@ function prompt() {
       stopAgent();
       rl.close();
       process.exit(0);
+    }
+
+    // Handle operator commands
+    if (trimmed === '/cost') {
+      try {
+        const report = getCostReport();
+        console.log(`\nagent > ${formatCostReport(report)}`);
+      } catch (err) {
+        console.log(`\nagent > Error generating cost report: ${String(err).slice(0, 100)}`);
+      }
+      return prompt();
+    }
+
+    if (trimmed === '/doctor') {
+      try {
+        const health = runHealthCheck();
+        console.log(`\nagent > ${formatHealthCheck(health)}`);
+      } catch (err) {
+        console.log(`\nagent > Error running health check: ${String(err).slice(0, 100)}`);
+      }
+      return prompt();
+    }
+
+    if (trimmed === '/context') {
+      try {
+        const snapshot = captureContextSnapshot();
+        console.log(`\nagent > ${formatContextSnapshot(snapshot)}`);
+      } catch (err) {
+        console.log(`\nagent > Error capturing context: ${String(err).slice(0, 100)}`);
+      }
+      return prompt();
+    }
+
+    if (trimmed === '/resume') {
+      try {
+        const result = selectResumablePlan();
+        console.log(`\nagent > ${formatResumePrompt(result)}`);
+      } catch (err) {
+        console.log(`\nagent > Error finding resumable plans: ${String(err).slice(0, 100)}`);
+      }
+      return prompt();
+    }
+
+    // Handle /resume plan-code or /resume plan-name for specific plan
+    if (trimmed.startsWith('/resume ')) {
+      try {
+        const planRef = trimmed.slice(8).trim();
+        const result = selectResumablePlan(planRef);
+        console.log(`\nagent > ${formatResumePrompt(result)}`);
+      } catch (err) {
+        console.log(`\nagent > Error finding plan: ${String(err).slice(0, 100)}`);
+      }
+      return prompt();
     }
 
     try {
@@ -106,5 +203,3 @@ function prompt() {
     prompt();
   });
 }
-
-prompt();

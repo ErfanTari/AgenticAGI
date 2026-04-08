@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lumina | Interior Architecture Studio</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600&family=Montserrat:wght@300;400;500&display=swap" rel="stylesheet">
+
+    <!-- AOS Animation Library -->
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+
+    <style>
+        :root {
+            --color-bg: #f9f8f6;
+            --color-text: #2c2c2c;
+            --color-accent: #a67b5b;
+            --color-dark: #1a1a1a;
+            --font-serif: 'Cormorant Garamond', serif;
+            --font-sans: 'Montserrat', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: var(--font-serif);
+            font-weight: 400;
+            color: var(--color-dark);
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+            transition: opacity 0.3s ease;
+        }
+
+        a:hover {
+            opacity: 0.7;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            padding: 2rem 5%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+            background-color: rgba(249, 248, 246, 0.95);
+            backdrop-filter: blur(5px);
+            transition: padding 0.3s ease;
+        }
+
+        nav.scrolled {
+            padding: 1rem 5%;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.05);
+        }
+
+        .logo {
+            font-family: var(--font-serif);
+            font-size: 1.8rem;
+            letter-spacing: -0.02em;
+            color: var(--color-dark);
+            font-weight: 600;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 3rem;
+        }
+
+        .nav-links a {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            position: relative;
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0%;
+            height: 1px;
+            background-color: var(--color-accent);
+            transition: width 0.3s ease;
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        /* Hero Section */
+        header.hero {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('https://images.unsplash.com/photo-1600210492486-724fe5c69fb6?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80');
+            background-size: cover;
+            background-position: center;
+            z-index: -1;
+        }
+
+        .hero-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.3);
+        }
+
+        .hero-content {
+            text-align: center;
+            color: #fff;
+            z-index: 1;
+            max-width: 800px;
+            padding: 0 2rem;
+        }
+
+        .hero-title {
+            font-size: 4.5rem;
+            line-height: 1.1;
+            margin-bottom: 1.5rem;
+            color: #fff;
+        }
+
+        .hero-subtitle {
+            font-size: 1.2rem;
+            font-weight: 300;
+            letter-spacing: 0.05em;
+            margin-bottom: 2.5rem;
+            opacity: 0.9;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 1rem 2.5rem;
+            border: 1px solid #fff;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background-color: #fff;
+            color: var(--color-dark);
+        }
+
+        /* Section Styling */
+        section {
+            padding: 6rem 5%;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .section-title {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .section-divider {
+            width: 60px;
+            height: 2px;
+            background-color: var(--color-accent);
+            margin: 0 auto;
+        }
+
+        /* About Section */
+        .about-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .about-text p {
+            margin-bottom: 1.5rem;
+            font-size: 1.05rem;
+            color: #555;
+        }
+
+        .about-image img {
+            width: 100%;
+            height: auto;
+            border-radius: 2px;
+            box-shadow: 20px 20px 0px rgba(0,0,0,0.05);
+        }
+
+        /* Services Section */
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .service-card {
+            background: #fff;
+            padding: 3rem 2rem;
+            text-align: center;
+            transition: transform 0.3s ease;
+            border-bottom: 3px solid transparent;
+        }
+
+        .service-card:hover {
+            transform: translateY(-10px);
+            border-bottom-color: var(--color-accent);
+        }
+
+        .icon-box {
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            color: var(--color-accent);
+        }
+
+        .service-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Portfolio Section */
+        .portfolio-filters {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .filter-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-family: var(--font-sans);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #888;
+            transition: color 0.3s ease;
+        }
+
+        .filter-btn.active, .filter-btn:hover {
+            color: var(--color-dark);
+        }
+
+        .portfolio-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .project-item {
+            position: relative;
+            height: 350px;
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        .project-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.6s ease;
+        }
+
+        .project-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(26, 26, 26, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .project-item:hover .project-img {
+            transform: scale(1.1);
+        }
+
+        .project-item:hover .project-overlay {
+            opacity: 1;
+        }
+
+        .project-title {
+            color: #fff;
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Contact Section */
+        .contact-section {
+            background-color: var(--color-dark);
+            color: #fff;
+        }
+
+        .contact-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+        }
+
+        .contact-info h3 {
+            color: #fff;
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .info-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            color: #ccc;
+        }
+
+        .contact-form input, 
+        .contact-form textarea {
+            width: 100%;
+            padding: 1rem;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid #444;
+            color: #fff;
+            font-family: var(--font-sans);
+            margin-bottom: 1rem;
+        }
+
+        .contact-form input:focus, 
+        .contact-form textarea:focus {
+            outline: none;
+            border-color: var(--color-accent);
+        }
+
+        .submit-btn {
+            background-color: var(--color-accent);
+            color: #fff;
+            border: none;
+            padding: 1rem 3rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .submit-btn:hover {
+            background-color: #8a6549;
+        }
+
+        /* Footer */
+        footer {
+            padding: 2rem 5%;
+            text-align: center;
+            border-top: 1px solid rgba(0,0,0,0.1);
+            font-size: 0.8rem;
+            color: #777;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 900px) {
+            .hero-title {
+                font-size: 3rem;
+            }
+            
+            .about-grid, 
+            .contact-container {
+                grid-template-columns: 1fr;
+            }
+
+            .nav-links {
+                display: none; /* Simplified for this demo */
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Navigation -->
+    <nav id="navbar">
+        <a href="#" class="logo">Lumina.</a>
+        <div class="nav-links">
+            <a href="#about">Studio</a>
+            <a href="#services">Services</a>
+            <a href="#projects">Projects</a>
+            <a href="#contact">Contact</a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="hero" id="home">
+        <div class="hero-bg"></div>
+        <div class="hero-overlay"></div>
+        <div class="hero-content" data-aos="fade-up" data-aos-duration="1000">
+            <h1 class="hero-title">Defining Space,<br>Elevating Life.</h1>
+            <p class="hero-subtitle">Award-winning interior architecture and design studio based in New York.</p>
+            <a href="#projects" class="btn">View Our Work</a>
+        </div>
+    </header>
+
+    <!-- About Section -->
+    <section id="about">
+        <div class="section-header" data-aos="fade-up">
+            <h2 class="section-title">The Studio</h2>
+            <div class="section-divider"></div>
+        </div>
+        <div class="about-grid">
+            <div class="about-text" data-aos="fade-right">
+                <p>Lumina is an architectural design firm focused on the intersection of space, light, and material. We believe that architecture is not just about buildings, but about how those structures influence human behavior and emotion.</p>
+                <p>Founded in 2015, our team of architects and designers works collaboratively to create environments that are both aesthetically striking and functionally superior. From residential renovations to commercial spaces, we approach every project with a unique perspective tailored to the client's vision.</p>
+            </div>
+            <div class="about-image" data-aos="fade-left">
+                <img src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Interior Design Studio">
+            </div>
+        </div>
+    </section>
+
+    <!-- Services Section -->
+    <section id="services" style="background-color: #fff;">
+        <div class="section-header" data-aos="fade-up">
+            <h2 class="section-title">Services</h2>
+            <div class="section-divider"></div>
+        </div>
+        <div class="services-grid">
+            <div class="service-card" data-aos="fade-up" data-aos-delay="0">
+                <div class="icon-box">&#127968;</div>
+                <h3>Residential Design</h3>
+                <p>Tailored interior solutions for private homes, focusing on comfort, flow, and personal expression.</p>
+            </div>
+            <div class="service-card" data-aos="fade-up" data-aos-delay="100">
+                <div class="icon-box">&#127969;</div>
+                <h3>Commercial Architecture</h3>
+                <p>Strategic design for offices, retail spaces, and hospitality venues that enhance brand identity.</p>
+            </div>
+            <div class="service-card" data-aos="fade-up" data-aos-delay="200">
+                <div class="icon-box">&#127916;</div>
+                <h3>Spatial Planning</h3>
+                <p>Optimizing layouts and structural elements to maximize utility without compromising aesthetics.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Projects Section -->
+    <section id="projects">
+        <div class="portfolio-filters" data-aos="fade-up">
+            <button class="filter-btn active" onclick="filterProjects('all')">All</button>
+            <button class="filter-btn" onclick="filterProjects('residential')">Residential</button>
+            <button class="filter-btn" onclick="filterProjects('commercial')">Commercial</button>
+        </div>
+        
+        <div class="portfolio-grid">
+            <!-- Project 1 -->
+            <div class="project-item residential" data-aos="fade-up">
+                <img src="https://images.unsplash.com/photo-1600607686527-6fb886090705?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="The Glass House" class="project-img">
+                <div class="project-overlay">
+                    <h3 class="project-title">The Glass House</h3>
+                    <p>Residential</p>
+                </div>
+            </div>
+
+            <!-- Project 2 -->
+            <div class="project-item commercial" data-aos="fade-up" data-aos-delay="100">
+                <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Apex Office" class="project-img">
+                <div class="project-overlay">
+                    <h3 class="project-title">Apex Office</h3>
+                    <p>Commercial</p>
+                </div>
+            </div>
+
+            <!-- Project 3 -->
+            <div class="project-item residential" data-aos="fade-up" data-aos-delay="200">
+                <img src="https://images.unsplash.com/photo-1600566753190-17f8baa3ef74?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Minimalist Loft" class="project-img">
+                <div class="project-overlay">
+                    <h3 class="project-title">Minimalist Loft</h3>
+                    <p>Residential</p>
+                </div>
+            </div>
+
+             <!-- Project 4 -->
+             <div class="project-item commercial" data-aos="fade-up">
+                <img src="https://images.unsplash.com/photo-1560185007-cde436f6a4d0?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Urban Cafe" class="project-img">
+                <div class="project-overlay">
+                    <h3 class="project-title">Urban Cafe</h3>
+                    <p>Commercial</p>
+                </div>
+            </div>
+
+             <!-- Project 5 -->
+             <div class="project-item residential" data-aos="fade-up" data-aos-delay="100">
+                <img src="https://images.unsplash.com/photo-1600210492486-724fe5c69fb6?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Nordic Retreat" class="project-img">
+                <div class="project-overlay">
+                    <h3 class="project-title">Nordic Retreat</h3>
+                    <p>Residential</p>
+                </div>
+            </div>
+
+             <!-- Project 6 -->
+             <div class="project-item commercial" data-aos="fade-up" data-aos-delay="200">
+                <img src="https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Skyline Gallery" class="project-img">
+                <div class="project-overlay">
+                    <h3 class="project-title">Skyline Gallery</h3>
+                    <p>Commercial</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section id="contact" class="contact-section">
+        <div class="section-header">
+            <h2 class="section-title" style="color: #fff;">Get in Touch</h2>
+            <div class="section-divider"></div>
+        </div>
+        <div class="contact-container">
+            <div class="contact-info" data-aos="fade-right">
+                <h3>Let's build something extraordinary.</h3>
+                <p style="color: #ccc; margin-bottom: 2rem;">We are currently accepting new projects for the upcoming season. Reach out to discuss your vision.</p>
+                
+                <div class="info-item">
+                    <span>&#128205;</span>
+                    <span>123 Design Avenue, New York, NY 10012</span>
+                </div>
+                <div class="info-item">
+                    <span>&#9993;</span>
+                    <span>hello@lumina-arch.com</span>
+                </div>
+                <div class="info-item">
+                    <span>&#128222;</span>
+                    <span>+1 (555) 123-4567</span>
+                </div>
+            </div>
+
+            <form class="contact-form" data-aos="fade-left" onsubmit="event.preventDefault(); alert('Thank you for your message. We will contact you shortly.');">
+                <input type="text" placeholder="Name" required>
+                <input type="email" placeholder="Email" required>
+                <textarea rows="5" placeholder="Tell us about your project" required></textarea>
+                <button type="submit" class="submit-btn">Send Message</button>
+            </form>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2023 Lumina Interior Architecture. All rights reserved.</p>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <script>
+        // Initialize AOS Animation Library
+        AOS.init({
+            once: true,
+            offset: 100,
+            duration: 800,
+            easing: 'ease-out-cubic',
+        });
+
+        // Navbar Scroll Effect
+        const navbar = document.getElementById('navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 50) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+        });
+
+        // Simple Portfolio Filter Logic
+        function filterProjects(category) {
+            const items = document.querySelectorAll('.project-item');
+            const buttons = document.querySelectorAll('.filter-btn');
+
+            // Toggle active button class
+            buttons.forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.innerText.toLowerCase() === category || (category === 'all' && btn.innerText === 'All')) {
+                    btn.classList.add('active');
+                }
+            });
+
+            // Filter items
+            items.forEach(item => {
+                if (category === 'all') {
+                    item.style.display = 'block';
+                } else {
+                    if (item.classList.contains(category)) {
+                        item.style.display = 'block';
+                    } else {
+                        item.style.display = 'none';
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>

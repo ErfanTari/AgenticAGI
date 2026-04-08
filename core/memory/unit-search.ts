@@ -12,6 +12,7 @@ import type {
 import type { IndexEntry } from './types.js';
 
 const DEFAULT_LIMIT = 4;
+export const MINIMUM_PLANNER_MEMORY_CONFIDENCE = 0.3;
 
 // FIX 4: Options carrying intake signals into unit-search as scope constraints
 export interface UnitSearchOptions {
@@ -96,6 +97,26 @@ function loadContents(entries: IndexEntry[]): string[] {
     if (fetched?.content) contents.push(fetched.content);
   }
   return contents;
+}
+
+export function filterPlannerContextResult(
+  result: UnitMemoryResult,
+  minimumConfidence = MINIMUM_PLANNER_MEMORY_CONFIDENCE,
+): UnitMemoryResult {
+  if (result.confidence >= minimumConfidence || result.entries.length === 0) {
+    return result;
+  }
+
+  const filteredCodes = result.entries.map(entry => entry.code);
+  console.debug(
+    `[zaraban][planner] Filtered ${filteredCodes.length} zero-confidence memory entries from planner context for ${result.unitId || 'unknown'}: ${filteredCodes.join(', ')}`
+  );
+
+  return {
+    ...result,
+    entries: [],
+    contents: [],
+  };
 }
 
 export function detectPersonName(content: string): string | null {

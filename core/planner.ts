@@ -1,11 +1,13 @@
 import type { Classification, LLMHandler, Message } from './types.js';
-import { TaskPlanSchema, taskPlanJsonSchema } from './schemas.js';
+import { TaskPlanSchema, taskPlanJsonSchema, planAssertionJsonSchema, validatePlanIntegrity } from './schemas.js';
 import type { TaskGoal, TaskMilestone, TaskPlan, TaskStep } from './schemas.js';
 import { transparency } from './transparency.js';
 import { queryEntries } from './memory/index.js';
 import { fetchByCode } from './memory/fetch.js';
-import { promptLoader } from './prompt-loader.js';
+import { MINIMUM_PLANNER_MEMORY_CONFIDENCE } from './memory/unit-search.js';
+import { loadPlannerPrompt } from './prompt-loader.js';
 import { TOKEN_BUDGETS } from '../config/agent.config.js';
+import type { ZodError, ZodIssue } from 'zod';
 
 // --- Graded complexity (P6) ---
 
@@ -15,6 +17,39 @@ export interface ComplexityAssessment {
   level: ComplexityLevel;
   reason: string;
   estimatedSteps: number;
+}
+
+function formatIssuePath(path: ReadonlyArray<PropertyKey>): string {
+  return path.reduce<string>((acc, segment) => {
+    if (typeof segment === 'number') return `${acc}[${segment}]`;
+    const label = String(segment);
+    return acc ? `${acc}.${label}` : label;
+  }, '');
+}
+
+export function buildRepairMessage(zodError: ZodError): string {
+  const issues = zodError.issues.map((issue: ZodIssue) => {
+    const issueWithMeta = issue as ZodIssue & { expected?: unknown; received?: unknown };
+    const path = formatIssuePath(issue.path);
+    const label = path ? `"${path}"` : '"<root>"';
+
+    if (issue.code === 'invalid_type' && issueWithMeta.received === 'undefined') {
+      return `Missing required field ${label}: expected ${String(issueWithMeta.expected ?? issue.message)}`;
+    }
+
+    if (issueWithMeta.expected !== undefined || issueWithMeta.received !== undefined) {
+      return `Field ${label}: ${issue.message} (expected ${String(issueWithMeta.expected ?? 'valid value')}, received ${String(issueWithMeta.received ?? 'invalid value')})`;
+    }
+
+    return `Field ${label}: ${issue.message}`;
+  });
+
+  return [
+    `Schema validation failed with ${issues.length} issue(s):`,
+    ...issues.map((entry, index) => `${index + 1}. ${entry}`),
+    '',
+    'Fix ONLY the listed issues. Do not change the plan logic. Return corrected JSON only.',
+  ].join('\n');
 }
 
 // Fix 5: keywords that imply code/file output → HIGH when combined with output keywords
@@ -37,12 +72,13 @@ export async function assessComplexity(
     }
   }
 
-  // Fix 5: Generation + code/file output signals → HIGH (route to planner, not queryLoop)
+  // FIX 5: Generation + artifact target → at least MEDIUM (queryLoop for single-file tasks)
+  // Do not promote to HIGH unless explicitly multi-file or multi-milestone
   if (GENERATION_VERBS.test(message) && OUTPUT_SIGNALS.test(message)) {
     return {
-      level: 'HIGH',
-      reason: 'GenerationTask: build/create/generate + code/file output detected',
-      estimatedSteps: 5,
+      level: 'MEDIUM',
+      reason: 'GenerationTask: generation verb + artifact target detected',
+      estimatedSteps: 2,
     };
   }
 
@@ -579,6 +615,41 @@ export interface PlannerContext {
   blockedSkillNames?: string[];
   workspaceFiles?: string;
   recentArtifact?: { path: string; format: string; description: string };
+  continuationContext?: string;  // FIX 2: Prior PLAN.EX context for continuation
+}
+
+export function filterPlannerMemoryContext(
+  memoryContext: string,
+  minimumConfidence = MINIMUM_PLANNER_MEMORY_CONFIDENCE,
+): string {
+  if (!memoryContext.trim()) return '';
+
+  const sections = memoryContext
+    .split(/\n(?=##\s+)/)
+    .map(section => section.trim())
+    .filter(Boolean);
+
+  const keptSections: string[] = [];
+  const filteredCodes: string[] = [];
+
+  for (const section of sections) {
+    const confidenceMatch = section.match(/Confidence:\s*([0-9.]+)/i);
+    const confidence = confidenceMatch ? Number(confidenceMatch[1]) : Number.NaN;
+    if (!Number.isNaN(confidence) && confidence < minimumConfidence) {
+      const codes = [...section.matchAll(/\[([A-Z]+\.[A-Z]+-\d+)\]/g)].map(match => match[1]);
+      filteredCodes.push(...codes);
+      continue;
+    }
+    keptSections.push(section);
+  }
+
+  if (filteredCodes.length > 0) {
+    console.debug(
+      `[zaraban][planner] Filtered ${filteredCodes.length} zero-confidence memory entries from planner context: ${filteredCodes.join(', ')}`
+    );
+  }
+
+  return keptSections.join('\n\n');
 }
 
 function derivePlanComplexity(stepCount: number): ComplexityLevel {
@@ -588,7 +659,12 @@ function derivePlanComplexity(stepCount: number): ComplexityLevel {
   return 'MAX';
 }
 
-function shouldRequireConfirmation(steps: TaskStep[], complexity?: ComplexityLevel): boolean {
+export function shouldRequireConfirmation(steps: TaskStep[], complexity?: ComplexityLevel, message?: string): boolean {
+  // FIX 4: "plan first" intent — user explicitly asked to see the plan before execution
+  if (detectPlanFirstIntent(message)) {
+    return true;
+  }
+
   // MAX complexity tasks always require confirmation — too many unknowns to proceed blindly
   if (complexity === 'MAX') return true;
 
@@ -599,6 +675,12 @@ function shouldRequireConfirmation(steps: TaskStep[], complexity?: ComplexityLev
     const riskyOverwrite = step.skill === 'file_writer' && /\b(overwrite|replace existing|rewrite from scratch|rebuild)\b/.test(text);
     return destructive || externalSideEffect || riskyOverwrite;
   });
+}
+
+export function detectPlanFirstIntent(message?: string): boolean {
+  if (!message) return false;
+  const planFirstPatterns = /\bplan\s+first\b|\bshow\s+(?:me\s+)?the\s+plan\b|\breview\s+(?:the\s+)?plan\b/i;
+  return planFirstPatterns.test(message);
 }
 
 function flattenMilestones(milestones: TaskMilestone[]): TaskStep[] {
@@ -752,11 +834,18 @@ function normalizePlanPayload(
   const steps = Array.isArray(raw.steps) ? raw.steps as TaskStep[] : [];
   const rawGoals = Array.isArray(raw.goals) ? raw.goals as TaskGoal[] : [];
   const goals = rawGoals.length > 0 ? rawGoals : buildGoals(message, context.goals);
-  // Normalize model-returned "simple"/"complex" to canonical ComplexityLevel values
+  // FIX 5A: Normalize model-returned "simple"/"complex" to canonical ComplexityLevel values
+  // Legacy values (from schema description) are coerced to new enum values.
   const rawComplexity = typeof raw.complexity === 'string' ? raw.complexity : '';
-  const complexityMap: Record<string, ComplexityLevel> = { simple: 'LOW', complex: 'HIGH' };
+  const complexityMap: Record<string, ComplexityLevel> = { simple: 'LOW', complex: 'MEDIUM' };
   const complexity: ComplexityLevel = complexityMap[rawComplexity]
     ?? (['LOW', 'MEDIUM', 'HIGH', 'MAX'].includes(rawComplexity) ? rawComplexity as ComplexityLevel : derivePlanComplexity(steps.length));
+
+  if (complexityMap[rawComplexity]) {
+    console.warn(
+      `[zaraban][planner] Legacy complexity value "${rawComplexity}" normalized to "${complexity}"`
+    );
+  }
   const milestones = normalizeMilestones(raw.milestones, steps, goals, complexity);
   let flattenedSteps = flattenMilestones(milestones).slice(0, 8);
 
@@ -792,9 +881,84 @@ function normalizePlanPayload(
     milestones,
     steps: flattenedSteps,
     complexity,
-    needsConfirmation: shouldRequireConfirmation(flattenedSteps, complexity),
+    needsConfirmation: shouldRequireConfirmation(flattenedSteps, complexity, message),
     estimatedDuration: typeof raw.estimatedDuration === 'string' ? raw.estimatedDuration : undefined,
   };
+}
+
+// FIX 2 — Programmatic default injection for schema-only fields
+// The runtime owns metadata defaults like timestamps and baseline confidence.
+export function normalizePlanDefaults(raw: Record<string, unknown>): Record<string, unknown> {
+  let injectedCreatedAt = false;
+  let injectedConfidence = 0;
+  let injectedRiskLevel = 0;
+
+  if (!raw.createdAt) {
+    raw.createdAt = new Date().toISOString();
+    injectedCreatedAt = true;
+  }
+
+  const normalizeStep = (step: unknown): unknown => {
+    if (!step || typeof step !== 'object' || Array.isArray(step)) return step;
+
+    const normalizedStep = step as Record<string, unknown>;
+    if (normalizedStep.confidence_score === undefined) {
+      normalizedStep.confidence_score = 0.8;
+      injectedConfidence++;
+    }
+    if (normalizedStep.risk_level === undefined) {
+      normalizedStep.risk_level = 'LOW';
+      injectedRiskLevel++;
+    }
+    return normalizedStep;
+  };
+
+  if (Array.isArray(raw.steps)) {
+    raw.steps = raw.steps.map(normalizeStep);
+  }
+
+  if (Array.isArray(raw.milestones)) {
+    raw.milestones = raw.milestones.map((milestone: unknown) => {
+      if (!milestone || typeof milestone !== 'object' || Array.isArray(milestone)) return milestone;
+      const normalizedMilestone = milestone as Record<string, unknown>;
+      if (Array.isArray(normalizedMilestone.steps)) {
+        normalizedMilestone.steps = normalizedMilestone.steps.map(normalizeStep);
+      }
+      return normalizedMilestone;
+    });
+  }
+
+  if (injectedCreatedAt || injectedConfidence > 0 || injectedRiskLevel > 0) {
+    console.debug(
+      `[zaraban][planner] Injected default${injectedCreatedAt ? ' createdAt' : ''}` +
+      `${injectedConfidence > 0 ? `${injectedCreatedAt ? ',' : ''} confidence_score on ${injectedConfidence} step(s)` : ''}` +
+      `${injectedRiskLevel > 0 ? `${injectedCreatedAt || injectedConfidence > 0 ? ',' : ''} risk_level on ${injectedRiskLevel} step(s)` : ''}`
+    );
+  }
+
+  return raw;
+}
+
+const IMAGE_ACQUISITION_PATTERNS = /\b(use|include|add|embed)\s+(?:real\s+)?(?:images?|pictures?|photos?)\s+(?:on|from)\s+(?:the\s+)?(?:internet|web|online)\b/i;
+
+export function validateImageAcquisition(plan: TaskPlan, originalMessage: string): boolean {
+  if (!IMAGE_ACQUISITION_PATTERNS.test(originalMessage)) return false;
+
+  const hasUrlExtract = plan.steps.some(step => step.skill === 'url_extract');
+  const hasWebFetch = plan.steps.some(step => step.skill === 'web_fetch');
+  if (hasUrlExtract || hasWebFetch) return false;
+
+  console.warn(
+    `[zaraban][planner] Plan for image-acquisition task has no url_extract or web_fetch steps. Skills: ${plan.steps.map(step => step.skill).join(', ')}`
+  );
+  transparency.emit({
+    type: 'plan_image_warning',
+    data: {
+      message: 'Plan does not include image URL acquisition steps despite user requesting internet images',
+      steps: plan.steps.map(step => step.skill),
+    },
+  });
+  return true;
 }
 
 export async function decomposeTask(
@@ -839,7 +1003,12 @@ export async function decomposeTask(
   // Use project brain cache when available; otherwise fall back to memoryContext
   const memorySection = projectBrainContext
     ? `PROJECT BRAIN CONTEXT:\n${projectBrainContext}`
-    : (context.memoryContext ? `RELEVANT MEMORY CONTEXT:\n${context.memoryContext}` : '');
+    : (() => {
+        const filteredMemoryContext = context.memoryContext
+          ? filterPlannerMemoryContext(context.memoryContext)
+          : '';
+        return filteredMemoryContext ? `RELEVANT MEMORY CONTEXT:\n${filteredMemoryContext}` : '';
+      })();
 
   const workspaceSection = context.workspaceFiles
     ? `WORKSPACE STATE (files on disk right now):\n${context.workspaceFiles}`
@@ -856,7 +1025,13 @@ export async function decomposeTask(
       ].join('\n')
     : '';
 
+  // FIX 2: Inject continuation context if resuming a prior plan
+  const continuationSection = context.continuationContext
+    ? `PRIOR EXECUTION STATE (resume from here):\n${context.continuationContext}`
+    : '';
+
   const planningContextSections = [
+    continuationSection,
     context.decompositionSummary ? `DECOMPOSED GOALS:\n${context.decompositionSummary}` : '',
     memorySection,
     workspaceSection,
@@ -879,7 +1054,7 @@ export async function decomposeTask(
       ].join('\n')
     : '';
 
-  const plannerSystemPrompt = promptLoader.load('planner', {
+  const plannerSystemPrompt = loadPlannerPrompt({
     skill_descriptions: context.skills,
     runtime_context: runtimeContext,
     planning_context_sections: planningContextSections,
@@ -893,11 +1068,13 @@ export async function decomposeTask(
     { role: 'user', content: userMessageWithProcedure },
   ];
 
-  const MAX_RETRIES = 2;
+  const MAX_REPAIR_ATTEMPTS = 2;
   let lastResponse = '';
   let retryFeedback = 'Your response was not valid JSON. Return ONLY a valid JSON object matching the schema.';
+  let expectedStepCount: number | null = null;
+  let expectedMilestoneCount: number | null = null;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= MAX_REPAIR_ATTEMPTS; attempt++) {
     const messages: Message[] = attempt === 0
       ? planningPrompt
       : [
@@ -992,8 +1169,32 @@ export async function decomposeTask(
           }
         }
 
-        const result = TaskPlanSchema.safeParse(trimmed);
+        // FIX 2: Inject defaults before Zod validation to prevent infinite schema loops
+        const withDefaults = normalizePlanDefaults(trimmed);
+        const result = TaskPlanSchema.safeParse(withDefaults);
         if (result.success) {
+          // FIX 1: Validate milestone/step count on repair attempt
+          if (attempt > 0 && (expectedStepCount !== null || expectedMilestoneCount !== null)) {
+            const currentStepCount = result.data.steps?.length ?? 0;
+            const currentMilestoneCount = result.data.milestones?.length ?? 0;
+
+            const stepTruncated = expectedStepCount !== null && currentStepCount < expectedStepCount;
+            const milestoneTruncated = expectedMilestoneCount !== null && currentMilestoneCount < expectedMilestoneCount;
+
+            if (stepTruncated || milestoneTruncated) {
+              transparency.emit({
+                type: 'plan_repair_truncation',
+                data: {
+                  attempt,
+                  expectedSteps: expectedStepCount,
+                  actualSteps: currentStepCount,
+                  expectedMilestones: expectedMilestoneCount,
+                  actualMilestones: currentMilestoneCount,
+                },
+              });
+            }
+          }
+
           const plan: TaskPlan = {
             goal: result.data.goal,
             steps: result.data.steps,
@@ -1002,18 +1203,105 @@ export async function decomposeTask(
             complexity: result.data.complexity,
             needsConfirmation: result.data.needsConfirmation,
             estimatedDuration: result.data.estimatedDuration,
-            createdAt: new Date().toISOString(),
+            createdAt: result.data.createdAt,
           };
+
+          // FIX 3: Validate plan referential integrity (orphaned steps, missing steps, broken deps)
+          const integrity = validatePlanIntegrity(plan);
+          if (!integrity.valid) {
+            console.warn(
+              `[zaraban][planner] Plan has referential integrity issues:`,
+              {
+                orphaned: integrity.orphanedSteps,
+                missing: integrity.missingSteps,
+                brokenDeps: integrity.brokenDependencies,
+              }
+            );
+            transparency.emit({
+              type: 'plan_integrity_warning',
+              data: {
+                orphanedSteps: integrity.orphanedSteps,
+                missingSteps: integrity.missingSteps,
+                brokenDependencies: integrity.brokenDependencies,
+              },
+            });
+
+            // FIX 3: Auto-repair orphaned steps by assigning them to the correct milestone
+            if (integrity.orphanedSteps.length > 0 && integrity.missingSteps.length === 0) {
+              for (const orphanId of integrity.orphanedSteps) {
+                const step = plan.steps.find(s => s.id === orphanId);
+                if (!step) continue;
+
+                // Find which milestone contains the step this one depends on
+                let targetMilestone = plan.milestones && plan.milestones.length > 0
+                  ? plan.milestones[plan.milestones.length - 1]
+                  : null;
+
+                if (step.dependsOn && step.dependsOn.length > 0 && plan.milestones) {
+                  for (const milestone of plan.milestones) {
+                    if (milestone.steps?.some(mstep => step.dependsOn!.includes((mstep as any).id))) {
+                      targetMilestone = milestone;
+                      break;
+                    }
+                  }
+                }
+
+                // Add the orphaned step to the target milestone
+                if (targetMilestone) {
+                  if (!targetMilestone.steps) targetMilestone.steps = [];
+                  targetMilestone.steps.push(step);  // milestone.steps contains TaskStep objects
+                  console.warn(
+                    `[zaraban][planner] Auto-assigned orphaned step ${orphanId} to milestone ${targetMilestone.id}`
+                  );
+                }
+              }
+            }
+
+            // If steps are missing from root (referenced in milestones but don't exist),
+            // log loudly but don't crash
+            if (integrity.missingSteps.length > 0) {
+              console.error(
+                `[zaraban][planner] CRITICAL: Milestone references non-existent steps: ` +
+                integrity.missingSteps.join(', ')
+              );
+            }
+          }
+
+          validateImageAcquisition(plan, message);
           transparency.emit({ type: 'plan', data: plan });
           return plan;
         } else if (process.env.DEBUG_PLANNER === 'true') {
           console.log('[planner] Zod validation failed:', JSON.stringify(result.error.issues.slice(0, 3)));
         }
-        retryFeedback = 'Schema validation failed. Ensure all fields match required types and return corrected JSON only.';
+        // FIX 1: Extract step/milestone counts from failed attempt for validation on repair
+        if (expectedStepCount === null || expectedMilestoneCount === null) {
+          try {
+            const parsed = JSON.parse(sanitized) as Record<string, unknown>;
+            if (expectedStepCount === null && Array.isArray(parsed.steps)) {
+              expectedStepCount = parsed.steps.length;
+            }
+            if (expectedMilestoneCount === null && Array.isArray(parsed.milestones)) {
+              expectedMilestoneCount = parsed.milestones.length;
+            }
+          } catch { /* extraction failed */ }
+        }
+        retryFeedback = buildRepairMessage(result.error);
       }
     } catch (err) {
       if (process.env.DEBUG_PLANNER === 'true') {
         console.log('[planner] JSON parse or processing error:', err instanceof Error ? err.message : String(err));
+      }
+      // FIX 1: Extract counts before parse failure
+      if (expectedStepCount === null || expectedMilestoneCount === null) {
+        try {
+          const parsed = JSON.parse(sanitized) as Record<string, unknown>;
+          if (expectedStepCount === null && Array.isArray(parsed.steps)) {
+            expectedStepCount = parsed.steps.length;
+          }
+          if (expectedMilestoneCount === null && Array.isArray(parsed.milestones)) {
+            expectedMilestoneCount = parsed.milestones.length;
+          }
+        } catch { /* extraction failed */ }
       }
       retryFeedback = 'JSON parse failed. Return compact, valid JSON only. Do not include truncated or partial strings.';
     }
@@ -1051,7 +1339,12 @@ export async function verifyPlanAssertions(
         },
       ];
 
-      const response = await llmHandler(messages, { maxTokens: 300, disableThinking: true });
+      // FIX 1: Add responseSchema for engine-level JSON enforcement
+      const response = await llmHandler(messages, {
+        responseSchema: planAssertionJsonSchema,
+        maxTokens: 300,
+        disableThinking: true
+      });
       const cleaned = response.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
 

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DVD Screensaver (120s Corner Hit)</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
+        "Segoe UI Emoji";
+      cursor: none;
+    }
+
+    /* Subtle CRT-ish vibe */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(1200px 700px at 50% 40%, rgba(255,255,255,0.08), rgba(0,0,0,0) 60%),
+        repeating-linear-gradient(
+          to bottom,
+          rgba(255,255,255,0.03) 0px,
+          rgba(255,255,255,0.03) 1px,
+          rgba(0,0,0,0) 2px,
+          rgba(0,0,0,0) 4px
+        );
+      mix-blend-mode: screen;
+      opacity: 0.35;
+    }
+
+    #stage {
+      position: fixed;
+      inset: 0;
+    }
+
+    #dvd {
+      position: absolute;
+      left: 0;
+      top: 0;
+      will-change: transform, filter;
+      user-select: none;
+      pointer-events: none;
+      transform: translate3d(0, 0, 0);
+      filter:
+        drop-shadow(0 0 6px rgba(255,255,255,0.28))
+        drop-shadow(0 0 18px rgba(0, 160, 255, 0.12));
+    }
+
+    /* A simple, nostalgic “DVD VIDEO” badge */
+    .badge {
+      --h: 210;
+      width: 188px;
+      height: 92px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+      border: 1px solid rgba(255,255,255,0.22);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+      position: relative;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    .badge::before {
+      content: "";
+      position: absolute;
+      inset: -40%;
+      background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.22), rgba(255,255,255,0) 55%);
+      transform: rotate(-18deg);
+      opacity: 0.9;
+    }
+
+    .dvd-text {
+      position: relative;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      font-size: 40px;
+      line-height: 1;
+      transform: translateY(-2px);
+      background: linear-gradient(
+        180deg,
+        hsl(var(--h) 95% 82%) 0%,
+        hsl(var(--h) 95% 66%) 45%,
+        hsl(var(--h) 95% 50%) 100%
+      );
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      text-shadow:
+        0 1px 0 rgba(0,0,0,0.55),
+        0 0 18px rgba(0, 160, 255, 0.18);
+    }
+
+    .video-text {
+      position: relative;
+      margin-top: -8px;
+      font-weight: 800;
+      font-size: 14px;
+      letter-spacing: 0.48em;
+      text-indent: 0.48em;
+      color: rgba(255,255,255,0.78);
+      text-shadow: 0 1px 0 rgba(0,0,0,0.6);
+    }
+
+    #hud {
+      position: fixed;
+      right: 18px;
+      bottom: 16px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(255,255,255,0.10);
+      color: rgba(255,255,255,0.85);
+      font-size: 13px;
+      letter-spacing: 0.02em;
+      pointer-events: none;
+      backdrop-filter: blur(6px);
+    }
+
+    #pip {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(0, 255, 160, 0.9);
+      box-shadow: 0 0 10px rgba(0, 255, 160, 0.55);
+      opacity: 0.85;
+    }
+
+    #flash {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 260ms ease;
+      background:
+        radial-gradient(circle at var(--fx, 50%) var(--fy, 50%),
+          rgba(255,255,255,0.16) 0%,
+          rgba(255,255,255,0.06) 18%,
+          rgba(0,0,0,0) 62%);
+    }
+  </style>
+</head>
+<body>
+  <div id="stage" aria-hidden="true">
+    <div id="dvd">
+      <div class="badge" id="badge" role="presentation">
+        <div>
+          <div class="dvd-text" id="dvdText">DVD</div>
+          <div class="video-text">VIDEO</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="flash" aria-hidden="true"></div>
+  <div id="hud" aria-hidden="true">
+    <div id="pip"></div>
+    <div id="timer">Next corner hit: 120.0s</div>
+  </div>
+
+  <script>
+    // Corner hit cadence: EXACTLY every 120 seconds (no drift).
+    // Motion is time-parameterized per 120s segment (not integrated velocity).
+    const CORNER_INTERVAL_MS = 120_000;
+
+    const stage = document.getElementById("stage");
+    const dvd = document.getElementById("dvd");
+    const badge = document.getElementById("badge");
+    const timer = document.getElementById("timer");
+    const flash = document.getElementById("flash");
+    const dvdText = document.getElementById("dvdText");
+
+    let startPerf = performance.now();
+    let lastSegment = -1;
+    let lastDimsKey = "";
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function clamp(n, min, max) {
+      return Math.min(max, Math.max(min, n));
+    }
+
+    function getDims() {
+      const stageRect = stage.getBoundingClientRect();
+      const dvdRect = dvd.getBoundingClientRect();
+
+      const stageW = Math.max(0, stageRect.width);
+      const stageH = Math.max(0, stageRect.height);
+      const logoW = Math.max(1, dvdRect.width);
+      const logoH = Math.max(1, dvdRect.height);
+
+      const rangeX = Math.max(0, stageW - logoW);
+      const rangeY = Math.max(0, stageH - logoH);
+
+      return { stageW, stageH, logoW, logoH, rangeX, rangeY };
+    }
+
+    function updateHue(segment) {
+      // Classic behavior: color changes on "bounce" (here: on corner hit).
+      const hue = (segment * 47) % 360;
+      badge.style.setProperty("--h", String(hue));
+      // Slight glow tint shift.
+      dvd.style.filter =
+        `drop-shadow(0 0 6px hsla(${hue} 95% 70% / 0.28)) ` +
+        `drop-shadow(0 0 18px hsla(${hue} 95% 55% / 0.14))`;
+      dvdText.style.textShadow =
+        `0 1px 0 rgba(0,0,0,0.55), 0 0 18px hsla(${hue} 95% 55% / 0.20)`;
+    }
+
+    function triggerCornerFlash(x, y, stageW, stageH) {
+      const fx = stageW > 0 ? (x / stageW) * 100 : 50;
+      const fy = stageH > 0 ? (y / stageH) * 100 : 50;
+      flash.style.setProperty("--fx", fx.toFixed(2) + "%");
+      flash.style.setProperty("--fy", fy.toFixed(2) + "%");
+      flash.style.opacity = "1";
+      setTimeout(() => (flash.style.opacity = "0"), 180);
+    }
+
+    function frame(nowPerf) {
+      const elapsed = Math.max(0, nowPerf - startPerf);
+      const segment = Math.floor(elapsed / CORNER_INTERVAL_MS);
+      const segT = (elapsed % CORNER_INTERVAL_MS) / CORNER_INTERVAL_MS; // 0..1
+
+      const { stageW, stageH, rangeX, rangeY } = getDims();
+
+      // If the element size changes (e.g., zoom/font), adjust start time so phase stays smooth.
+      const dimsKey = `${Math.round(stageW)}x${Math.round(stageH)}:${Math.round(rangeX)}x${Math.round(rangeY)}`;
+      if (lastDimsKey && lastDimsKey !== dimsKey) {
+        // Keep the same absolute "corner schedule" by preserving elapsed time.
+        // (We don't reset elapsed; we just re-read ranges.)
+      }
+      lastDimsKey = dimsKey;
+
+      // Alternate between opposite corners each 120 seconds:
+      // segment 0: (0,0) -> (rangeX, rangeY)
+      // segment 1: (rangeX, rangeY) -> (0,0)
+      // segment 2: (0,0) -> (rangeX, rangeY)
+      // ...
+      const forward = segment % 2 === 0;
+      const x = forward ? lerp(0, rangeX, segT) : lerp(rangeX, 0, segT);
+      const y = forward ? lerp(0, rangeY, segT) : lerp(rangeY, 0, segT);
+
+      dvd.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+
+      const remainingMs = CORNER_INTERVAL_MS - (elapsed % CORNER_INTERVAL_MS);
+      const remainingS = clamp(remainingMs / 1000, 0, 120);
+      timer.textContent = `Next corner hit: ${remainingS.toFixed(1)}s`;
+
+      if (segment !== lastSegment) {
+        lastSegment = segment;
+        updateHue(segment);
+        triggerCornerFlash(x, y, stageW, stageH);
+      }
+
+      requestAnimationFrame(frame);
+    }
+
+    // Start after a tick so layout is stable.
+    requestAnimationFrame((t) => {
+      startPerf = t;
+      updateHue(0);
+      requestAnimationFrame(frame);
+    });
+  </script>
+</body>
+</html>

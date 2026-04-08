@@ -33,7 +33,9 @@ Return ONLY a JSON object matching this schema:
           "input": { ... skill input params ... },
           "dependsOn": [],
           "storeResultAs": "step1_result",
-          "optional": false
+          "optional": false,
+          "confidence_score": 0.8,
+          "risk_level": "LOW"
         }
       ]
     }
@@ -46,33 +48,69 @@ Return ONLY a JSON object matching this schema:
       "input": { ... skill input params ... },
       "dependsOn": [],
       "storeResultAs": "step1_result",
-      "optional": false
+      "optional": false,
+      "confidence_score": 0.8,
+      "risk_level": "LOW"
     }
   ],
   "complexity": "simple|complex",
   "needsConfirmation": false,
-  "estimatedDuration": "30s"
+  "estimatedDuration": "30s",
+  "createdAt": "2026-04-08T12:00:00Z"
 }
+
+STRUCTURAL INTEGRITY RULES (FIX 4):
+1. Every step defined in the root "steps" array MUST appear in exactly ONE
+   milestone's "steps" array. No orphaned steps. No missing steps.
+2. Every "dependsOn" reference MUST point to a step ID that exists in the
+   root "steps" array.
+3. All string values inside JSON fields MUST have newlines escaped as \\n,
+   tabs escaped as \\t, and internal quotes escaped as \\". Do NOT output
+   literal newlines inside JSON string values.
+4. Use the EXACT key names from the schema. Do not rename, abbreviate, or
+   "correct" key names. If the schema says "description", output "description"
+   — not "desc", "descrption", or "descriptron".
+5. Before outputting the closing bracket of the plan JSON, mentally verify:
+   - The number of milestones matches what you planned
+   - Every step appears in both the root array AND a milestone
+   - All brackets and braces are balanced
 
 COMPLEXITY SELF-ASSESSMENT — set "complexity" based on what the task actually requires:
 - "simple": 1–3 steps, bounded scope, single file or single memory target, no branching (fix a bug, change a style, add one feature, save a contact)
 - "complex": 4+ steps OR multiple interdependent outputs OR requires milestones/verification/memory writes (build an app, research + save + report, multi-file project)
+
+CONTINUATION RULE (FIX 2) — When "PRIOR EXECUTION STATE" appears above:
+- READ the prior milestones and completed steps carefully
+- Plan to CONTINUE FROM the next uncompleted milestone, not restart
+- Reuse any stored codes (e.g. {{saved_code}}) or file paths from prior work
+- Do NOT regenerate files that were already completed in the prior execution
+- If the user says "resume", "continue", "keep going", or "fix", use the prior state as context
 
 CRITICAL INPUT RULES:
 - "input" values must be primitive only: string, number, boolean, or null
 - NEVER nest objects inside "input"
 - "optional" must be boolean true/false (not an object)
 - "storeResultAs" must be a string or null (not an object)
+- Every step object in both "steps" arrays MUST include "confidence_score" and "risk_level"
+- Cross-step template references MUST use the exact "storeResultAs" value: if a step has
+  "storeResultAs": "projects", later steps must reference {{projects}}.
+- There is NO separate automatic "{{stepN_result}}" namespace unless the literal
+  storeResultAs value is actually "stepN_result".
 
 CORRECT:
 - "optional": false
 - "storeResultAs": "step1_result"
+- "confidence_score": 0.8
+- "risk_level": "LOW"
 - "input": {"path": "workspace/file.html", "content": "<!DOCTYPE html>..."}
+- If "storeResultAs": "search_results", later input should use "{{search_results}}"
 
 WRONG (do not generate these):
 - "optional": {"false": ""}
 - "storeResultAs": {"step1_result": ""}
+- omit "confidence_score" or "risk_level" from any step object
 - "input": {"path": {"workspace/file.html": ""}}
+- If "storeResultAs": "projects", later input must NOT use "{{step1_result}}"
 
 More correct examples:
 - web_search: { "query": "search term here" }
@@ -107,7 +145,7 @@ Use content_writer ONLY when: generating text that stays in memory / gets piped 
 
 - generate_and_save_file (html file): { "path": "index.html", "spec_code": "PLAN.EX-000042" }
 - generate_and_save_file (code file): { "path": "src/game.js", "description": "A short spec under 200 chars" }
-- generate_and_save_file (modify file): { "path": "src/game.js", "description": "Add keyboard controls", "context": "{{step3_result}}" }
+- generate_and_save_file (modify file): { "path": "src/game.js", "description": "Add keyboard controls", "context": "{{existing_source}}" }
 - content_writer (synthesis report): { "prompt": "Write a weekly status report using: {{projects}}", "format": "markdown" }
 - content_writer (comparison): { "prompt": "Compare {{search_results}} vs {{memory_result}}", "format": "markdown" }
 
@@ -138,8 +176,11 @@ RULE: spec_code only accepts codes. Use description or context for everything el
 IMPORTANT: content_writer MUST always include "format" field. Use "code" for JavaScript, CSS, TypeScript, Python, or any programming language. Use "html" for web pages. Use "markdown" for reports/docs. Use "plain" for prose text only.
 
 FILE MODIFICATION RULES:
+ALWAYS use patch_file to modify existing files. Only use file_writer to create NEW files.
+Use overwrite:true only when you explicitly intend to replace the entire contents of an existing file.
+
 When a plan needs to modify a file generated by an earlier step:
-- Use generate_and_save_file with "context": "{{earlier_step_result}}" — it modifies existing content and saves in one step
+- Use generate_and_save_file with "context": "{{initial_js}}" (or whatever exact storeResultAs name you chose) — it modifies existing content and saves in one step
 - The "description" field describes WHAT TO CHANGE, not the full content to regenerate
 - CORRECT pattern:
   step5: generate_and_save_file { path: "game.js", description: "A game.js with player movement..." }
@@ -175,7 +216,7 @@ CORRECT (creating a new file with a spec):
 FILE MODIFICATION (EXISTING FILES) RULES:
 When the WORKSPACE STATE section lists a file AND the user's request is to fix, update, or improve it:
 - STEP 1 MUST be file_reader targeting that exact path — read the actual code, not a specification
-- The context field of generate_and_save_file MUST be "{{step1_result}}" (the real file content)
+- The context field of generate_and_save_file MUST be "{{game_code}}" or the exact storeResultAs value from the file_reader step (the real file content)
 - NEVER use a memory entry body (markdown specification) as the context — context = actual code
 - NEVER create a new file with a different name when fixing an existing file
 - CORRECT pattern for "fix the 3D game" when workspace/tetris_3d.html exists:
@@ -236,14 +277,14 @@ This skill handles the retry loop internally, repairs both implementation and te
 - NEVER use file_writer to "save" information unless user explicitly says "save to file" or names a file
 
 DEPENDENCY RULES:
-- memory_write steps are ALWAYS independent. Never add dependsOn for memory_write steps unless one write literally needs the output of another (e.g. step2 uses the code created by step1 as input via {{step1_result}}).
+- memory_write steps are ALWAYS independent. Never add dependsOn for memory_write steps unless one write literally needs the output of another (e.g. step2 uses the code created by step1 as input via {{saved_code}}).
 - For compound messages that create multiple contacts and a project, all steps have dependsOn: [] — they run independently.
-- Only add dependsOn when a step's INPUT field contains a {{stepN_result}} template reference. If there is no template reference, dependsOn must be [].
+- Only add dependsOn when a step's INPUT field contains a template reference to an earlier step's storeResultAs value such as {{projects}} or {{saved_code}}. If there is no template reference, dependsOn must be [].
 
 Rules:
 - Maximum 8 steps
 - Use "dependsOn" to reference previous step IDs when a step needs prior output
-- Use "storeResultAs" to name outputs that later steps reference via {{stepN_result}} in their input
+- Use "storeResultAs" to name outputs that later steps reference via {{that_exact_name}} in their input
 - Mark non-critical steps as "optional": true
 - If the task involves creating memory, include a memory_write step
 - Every plan MUST include milestones
@@ -357,5 +398,27 @@ WEB BROWSING RULES (NEVER BREAK THESE):
 - curl command MUST single-quote the URL: curl -L -o file '{{download_url}}'
 - Use -L flag with curl to follow redirects
 - url_extract output is a single clean URL string — use it directly in next step
+
+IMAGE ACQUISITION RULE:
+When the user's request includes using images from the internet in the final artifact
+(for example "use images on internet", "include pictures from the web", "use real photos"):
+- The plan MUST include actual image URL acquisition steps, not just web_search
+- Use the WEB BROWSING WORKFLOW to acquire image URLs: web_search → url_extract → web_fetch
+- The spec or description passed to generate_and_save_file MUST reference the acquired
+  image URLs via {{template_tokens}} from prior steps
+- A plan that only does web_search and then says "include image suggestions" does NOT
+  satisfy a request for actual internet images
+- If run_bash is blocked, use web_fetch to find stable image URLs from sources like
+  Unsplash, Pexels, or Wikimedia Commons and embed them directly as <img src="...">
+- CORRECT pattern:
+  step1: web_search { "query": "free interior architecture photos unsplash" }
+  step2: url_extract { "text": "{{search_results}}", "filter": "unsplash" }
+  step3: web_fetch { "url": "{{target_url}}", "extract_links_matching": ".jpg" }
+  step4: memory_write { "nb": "PLAN", "type": "EX", "name": "Image-backed page spec", "summary": "Spec with image URLs", "body": "Use these images: {{page_content}}" } storeResultAs: "image_spec_code"
+  step5: generate_and_save_file { "path": "site.html", "spec_code": "{{image_spec_code}}" }
+- WRONG pattern:
+  step1: web_search { "query": "interior architecture images" }
+  step2: content_writer { "prompt": "suggest images for the page", "format": "markdown" }
+  step3: generate_and_save_file { "path": "site.html", "description": "Use the suggested images" }
 
 {{planning_context_sections}}

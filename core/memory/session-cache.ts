@@ -28,6 +28,16 @@ class SessionCache {
       return;
     }
 
+    // FIX 4: Session cache dedup guard
+    // If this code already exists in cache with the same updated timestamp (no real change),
+    // skip the redundant write and event emission. This prevents churn-store events
+    // when unit-search hits cached entries and then calls upsertPointerEntry for the same code.
+    const existing = this.entries.get(code);
+    if (existing && existing.updated === entry.updated) {
+      // Already in cache with the same version — skip write and event
+      return;
+    }
+
     this.entries.set(code, entry);
     if (entry.name) {
       this.nameIndex.set(entry.name.toLowerCase(), code);

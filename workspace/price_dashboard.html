@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Price Dashboard</title>
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --secondary-color: #6c757d;
+            --background-color: #f8f9fa;
+            --card-background: #ffffff;
+            --text-color: #343a40;
+            --border-color: #e9ecef;
+            --shadow-color: rgba(0, 0, 0, 0.05);
+            --error-color: #dc3545;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background-color: var(--card-background);
+            border-radius: 8px;
+            box-shadow: 0 4px 8px var(--shadow-color);
+        }
+
+        h1 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        #last-updated {
+            font-size: 0.9em;
+            color: var(--secondary-color);
+        }
+
+        .dashboard-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            flex-grow: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .card {
+            background-color: var(--card-background);
+            border-radius: 8px;
+            box-shadow: 0 4px 8px var(--shadow-color);
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.2s ease-in-out;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card h2 {
+            color: var(--primary-color);
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        .price-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            flex-grow: 1;
+        }
+
+        .price-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .price-item:last-child {
+            border-bottom: none;
+        }
+
+        .price-label {
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        .price-value {
+            font-weight: 500;
+            color: var(--primary-color);
+            text-align: right;
+        }
+
+        .loading-spinner {
+            border: 4px solid var(--border-color);
+            border-top: 4px solid var(--primary-color);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            color: var(--error-color);
+            text-align: center;
+            margin-top: 20px;
+            font-weight: 500;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 15px;
+            }
+            h1 {
+                font-size: 2em;
+            }
+            .card {
+                padding: 20px;
+            }
+            .card h2 {
+                font-size: 1.5em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Live Price Dashboard</h1>
+        <p id="last-updated">Loading...</p>
+    </header>
+
+    <main class="dashboard-container">
+        <!-- Currencies Card -->
+        <div class="card">
+            <h2>Currency Exchange Rates (USD)</h2>
+            <div id="currency-prices">
+                <div class="loading-spinner"></div>
+            </div>
+        </div>
+
+        <!-- Cryptocurrencies Card -->
+        <div class="card">
+            <h2>Cryptocurrency Prices (USD)</h2>
+            <div id="crypto-prices">
+                <div class="loading-spinner"></div>
+            </div>
+        </div>
+
+        <!-- Precious Metals Card -->
+        <div class="card">
+            <h2>Precious Metals (Tokenized USD)</h2>
+            <div id="metals-prices">
+                <div class="loading-spinner"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const currencyApiUrl = 'https://api.exchangerate-api.com/v4/latest/USD';
+        const cryptoApiUrl = 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,ripple,litecoin,cardano,solana&vs_currencies=usd';
+        // Using tokenized versions from CoinGecko as a proxy for spot prices due to free API limitations.
+        const metalsApiUrl = 'https://api.coingecko.com/api/v3/simple/price?ids=pax-gold,tether-gold,silver-token&vs_currencies=usd';
+
+        const currencyDiv = document.getElementById('currency-prices');
+        const cryptoDiv = document.getElementById('crypto-prices');
+        const metalsDiv = document.getElementById('metals-prices');
+        const lastUpdatedP = document.getElementById('last-updated');
+
+        const formatPrice = (price, currencySymbol = '') => {
+            if (typeof price !== 'number') return 'N/A';
+            return `${currencySymbol}${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+        };
+
+        const renderPrices = (container, data, type) => {
+            container.innerHTML = ''; // Clear loading spinner or previous data
+            if (!data || Object.keys(data).length === 0) {
+                container.innerHTML = '<p class="error-message">No data available.</p>';
+                return;
+            }
+
+            const ul = document.createElement('ul');
+            ul.className = 'price-list';
+
+            if (type === 'currency') {
+                const targetCurrencies = ['EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR', 'BRL', 'MXN'];
+                targetCurrencies.forEach(currency => {
+                    if (data.rates && data.rates[currency]) {
+                        const li = document.createElement('li');
+                        li.className = 'price-item';
+                        li.innerHTML = `<span class="price-label">1 USD = ${currency}</span><span class="price-value">${formatPrice(data.rates[currency])}</span>`;
+                        ul.appendChild(li);
+                    }
+                });
+            } else if (type === 'crypto') {
+                const cryptoMap = {
+                    'bitcoin': 'BTC',
+                    'ethereum': 'ETH',
+                    'ripple': 'XRP',
+                    'litecoin': 'LTC',
+                    'cardano': 'ADA',
+                    'solana': 'SOL'
+                };
+                Object.keys(cryptoMap).forEach(id => {
+                    if (data[id] && data[id].usd) {
+                        const li = document.createElement('li');
+                        li.className = 'price-item';
+                        li.innerHTML = `<span class="price-label">${cryptoMap[id]}</span><span class="price-value">${formatPrice(data[id].usd, '$')}</span>`;
+                        ul.appendChild(li);
+                    }
+                });
+            } else if (type === 'metals') {
+                const metalMap = {
+                    'pax-gold': 'PAXG (Gold Token)',
+                    'tether-gold': 'XAUT (Gold Token)',
+                    'silver-token': 'SLV (Silver Token)'
+                };
+                Object.keys(metalMap).forEach(id => {
+                    if (data[id] && data[id].usd) {
+                        const li = document.createElement('li');
+                        li.className = 'price-item';
+                        li.innerHTML = `<span class="price-label">${metalMap[id]}</span><span class="price-value">${formatPrice(data[id].usd, '$')}</span>`;
+                        ul.appendChild(li);
+                    }
+                });
+            }
+            if (ul.children.length > 0) {
+                container.appendChild(ul);
+            } else {
+                container.innerHTML = '<p class="error-message">No specific data items found.</p>';
+            }
+        };
+
+        const fetchPrices = async () => {
+            lastUpdatedP.textContent = 'Updating prices...';
+
+            // Show spinners while fetching
+            currencyDiv.innerHTML = '<div class="loading-spinner"></div>';
+            cryptoDiv.innerHTML = '<div class="loading-spinner"></div>';
+            metalsDiv.innerHTML = '<div class="loading-spinner"></div>';
+
+            const fetchAndRender = async (url, container, type) => {
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status} from ${url}`);
+                    }
+                    const data = await response.json();
+                    renderPrices(container, data, type);
+                } catch (error) {
+                    console.error(`Error fetching ${type} data:`, error);
+                    container.innerHTML = `<p class="error-message">Failed to load ${type} data.</p>`;
+                }
+            };
+
+            await Promise.all([
+                fetchAndRender(currencyApiUrl, currencyDiv, 'currency'),
+                fetchAndRender(cryptoApiUrl, cryptoDiv, 'crypto'),
+                fetchAndRender(metalsApiUrl, metalsDiv, 'metals')
+            ]);
+
+            lastUpdatedP.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+        };
+
+        // Initial fetch on page load
+        document.addEventListener('DOMContentLoaded', fetchPrices);
+
+        // Auto-refresh every 60 seconds
+        setInterval(fetchPrices, 60000); // 60000 milliseconds = 60 seconds
+    </script>
+</body>
+</html>

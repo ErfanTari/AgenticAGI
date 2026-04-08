@@ -71,10 +71,10 @@ export function resolveTypeKey(nb: string, type: string): NotebookType | undefin
 
 function getTimeoutForModel(modelName: string): number {
   const lower = modelName.toLowerCase();
-  if (/72b|70b|80b|35b|32b|26b|20b/.test(lower)) return 90000;   // 26b added: Gemma 4 26B
-  if (/7b|8b|13b|14b/.test(lower)) return 20000;
-  if (/1b|2b|3b|4b/.test(lower)) return 10000;
-  return 20000;
+  if (/72b|70b|80b|35b|32b|26b|20b/.test(lower)) return 600000;   // 10 minutes for large local models (generates up to ~4.5k tokens)
+  if (/7b|8b|13b|14b/.test(lower)) return 120000;  // 2 minutes for medium models
+  if (/1b|2b|3b|4b/.test(lower)) return 60000;     // 1 minute for small models
+  return 120000;
 }
 
 const _llmModel = process.env.LLM_MODEL ?? '';
@@ -141,7 +141,7 @@ export const EXECUTOR_CONFIG = {
 export const TOKEN_BUDGETS = {
   // Structural LLM calls (JSON output required)
   INTAKE:              600,
-  INTAKE_TIMEOUT_MS:   20000,
+  INTAKE_TIMEOUT_MS:   120000,  // Increased from 20s to allow local model time for JSON parsing
   DECOMPOSITION:      2000,
   PLANNER:            8192,
   MILESTONE_REVISION: 2000,
