@@ -2,9 +2,9 @@
  * @deprecated generate_and_save_file is deprecated. Prefer content_writer + file_writer instead.
  */
 import { callLLM } from '../../llm.js';
-import { fileWriter } from './file_writer.js';
 import { fetchByCode } from '../../memory/fetch.js';
 import { TOKEN_BUDGETS } from '../../../config/agent.config.js';
+import { runSkill } from '../runner.js';
 import type { MCPSkill, SkillResult } from '../types.js';
 
 type ContentFormat = 'markdown' | 'html' | 'plain';
@@ -293,8 +293,8 @@ const generateAndSaveFileSkill: MCPSkill = {
         const errors = htmlValidationErrors(validation);
 
         if (errors.length === 0) {
-          // Valid — write file
-          const writeResult = await fileWriter.execute({
+          // Valid — write file via permission gate
+          const writeResult = await runSkill('file_writer', {
             path: pathValue,
             content,
             mode: input.mode,
@@ -316,8 +316,8 @@ const generateAndSaveFileSkill: MCPSkill = {
         continue;
       }
 
-      // For non-HTML: write immediately
-      const writeResult = await fileWriter.execute({
+      // For non-HTML: write immediately via permission gate
+      const writeResult = await runSkill('file_writer', {
         path: pathValue,
         content,
         mode: input.mode,
