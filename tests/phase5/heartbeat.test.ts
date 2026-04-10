@@ -85,7 +85,7 @@ describe('updateEntry', () => {
 
   it('updates summary in SQLite and returns updated entry', () => {
     const entry = createEntry({
-      nb: 'WHAT', type: 'PJ', name: 'Summary Project',
+      nb: 'PLAN', type: 'PJ', name: 'Summary Project',
       status: 'active', summary: 'Original summary', body: 'Body',
     });
 
@@ -326,7 +326,7 @@ describe('checkStaleProjects', () => {
 
   it('detects stale active projects older than 7 days', () => {
     const entry = createEntry({
-      nb: 'WHAT', type: 'PJ', name: 'Stale Project',
+      nb: 'PLAN', type: 'PJ', name: 'Stale Project',
       status: 'active', summary: 'Abandoned project', body: 'Details',
     });
 
@@ -355,7 +355,7 @@ describe('runHeartbeat', () => {
     cleanup();
   });
 
-  it('creates one WHY.MT entry per notification', async () => {
+  it('creates one NOW.LOG pointer entry per notification', async () => {
     const { cleanup } = freshDb();
     const twoDaysAgo = new Date();
     twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
@@ -382,10 +382,11 @@ describe('runHeartbeat', () => {
     expect(result.notifications.length).toBe(2);
     expect(result.created.length).toBe(2);
 
-    // Each created entry is a WHY.MT
+    // Each created entry is a NOW.LOG pointer
     for (const entry of result.created) {
-      expect(entry.nb).toBe('WHY');
-      expect(entry.type).toBe('MT');
+      expect(entry.nb).toBe('NOW');
+      expect(entry.type).toBe('LOG');
+      expect(entry.purpose).toBe('pointer');
       expect(entry.name).toContain('Heartbeat');
       expect(fs.existsSync(entry.path)).toBe(true);
       const content = fs.readFileSync(entry.path, 'utf-8');
@@ -406,7 +407,7 @@ describe('runHeartbeat', () => {
 // --- Acceptance test ---
 
 describe('acceptance', () => {
-  it('overdue TODO triggers heartbeat notification + WHY.MT creation', async () => {
+  it('overdue TODO triggers heartbeat notification + NOW.LOG pointer creation', async () => {
     const { cleanup } = freshDb();
     const twoDaysAgo = new Date();
     twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
@@ -424,12 +425,13 @@ describe('acceptance', () => {
     expect(overdue).toBeDefined();
     expect(overdue!.entries.some(e => e.code === todo.code)).toBe(true);
 
-    // WHY.MT entry was created for this notification
+    // NOW.LOG pointer entry was created for this notification
     expect(result.created.length).toBeGreaterThan(0);
     const mtEntry = result.created.find(e => e.summary.includes('overdue'));
     expect(mtEntry).toBeDefined();
-    expect(mtEntry!.nb).toBe('WHY');
-    expect(mtEntry!.type).toBe('MT');
+    expect(mtEntry!.nb).toBe('NOW');
+    expect(mtEntry!.type).toBe('LOG');
+    expect(mtEntry!.purpose).toBe('pointer');
 
     // Todo status was changed to overdue
     const updated = getEntryByCode(todo.code);
@@ -474,7 +476,7 @@ describe('heartbeat_queue', () => {
     }>;
     expect(unseen.length).toBe(2);
 
-    // Each queue row maps to a created WHY.MT entry
+    // Each queue row maps to a created NOW.LOG pointer entry
     for (let i = 0; i < result.created.length; i++) {
       expect(unseen[i].code).toBe(result.created[i].code);
       expect(unseen[i].seen).toBe(0);

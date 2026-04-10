@@ -174,14 +174,14 @@ describe('Phase 13: unit memory search', () => {
 
   it('falls back to BM25 when a person signal has no WHO hits', async () => {
     const entry = {
-      code: 'WHAT.PJ-000099',
+      code: 'PLAN.PJ-000099',
       nb: 'WHAT',
       type: 'PJ',
       name: 'Architecture Notes',
       status: 'active',
       updated: '2026-03-06',
       summary: 'Notes about reviewed architecture',
-      path: '/tmp/WHAT.PJ-000099.md',
+      path: '/tmp/PLAN.PJ-000099.md',
     };
     mocks.searchBM25.mockReturnValue([{ code: entry.code, score: 0.1 }]);
     mocks.getEntryByCode.mockReturnValue(entry);
@@ -196,14 +196,14 @@ describe('Phase 13: unit memory search', () => {
 
   it('skips vector search when BM25 confidence is high enough', async () => {
     const entry = {
-      code: 'WHAT.PJ-000001',
+      code: 'PLAN.PJ-000001',
       nb: 'WHAT',
       type: 'PJ',
       name: 'ceramic roadmap',
       status: 'active',
       updated: '2026-03-06',
       summary: 'ceramic roadmap with milestones',
-      path: '/tmp/WHAT.PJ-000001.md',
+      path: '/tmp/PLAN.PJ-000001.md',
     };
     mocks.searchBM25.mockReturnValue([{ code: entry.code, score: 0.1 }]);
     mocks.getEntryByCode.mockReturnValue(entry);

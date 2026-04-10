@@ -15,10 +15,10 @@ describe('extractCodes', () => {
   });
 
   it('extracts multiple distinct codes', () => {
-    const result = extractCodes('Compare WHO.CT-000001 with WHAT.PJ-000003');
+    const result = extractCodes('Compare WHO.CT-000001 with PLAN.PJ-000003');
     expect(result).toHaveLength(2);
     expect(result).toContain('WHO.CT-000001');
-    expect(result).toContain('WHAT.PJ-000003');
+    expect(result).toContain('PLAN.PJ-000003');
   });
 
   it('deduplicates repeated codes', () => {
@@ -94,7 +94,7 @@ describe('quickResolve', () => {
     contactCode = cc;
 
     const { code: pc } = upsertEntry({
-      nb: 'WHAT',
+      nb: 'PLAN',
       type: 'PJ',
       name: 'Tennis 3D Game',
       status: 'active',

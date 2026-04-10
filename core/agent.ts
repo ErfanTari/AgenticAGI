@@ -2,7 +2,7 @@ import type { AgentResponse, Classification, DecompositionResult, DecomposedUnit
 import { localDatePlusDays } from './utils/date.js';
 import { resolveQuery } from './resolver.js';
 import { buildContext } from './context.js';
-import { callLLM, stripThinkingTags, sanitizeFinalOutput } from './llm.js';
+import { callLLM, createLMStudioChatSessionHandler, stripThinkingTags, sanitizeFinalOutput } from './llm.js';
 import { getSkillsForIntent } from './skills/registry.js';
 import { decomposeMessage, isLikelyCompoundMessage } from './decomposition.js';
 import { routeDecomposedUnits, executeConfirmedPlan } from './router.js';
@@ -25,7 +25,7 @@ import { classifyFailure } from './executor.js';
 import { memoryAgent } from './memory/memory-agent.js';
 import { writeEpisodicEvent, writeReflectionSync } from './memory/episodic.js';
 import { createPlanEX } from './memory/plan-ex.js';
-import { extractMemoryMetadata } from './memory/lifecycle.js';
+import { applyUtilityFeedback, extractMemoryMetadata } from './memory/lifecycle.js';
 import { quickResolve } from './memory/quick-resolve.js';
 import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
 import type { TaskPlan } from './schemas.js';
@@ -149,7 +149,7 @@ Return a JSON object with these fields:
 
 Valid notebook + type combinations (use ONLY these):
   WHO: CT (contact), ORG (organization)
-  WHAT: PJ (project), KN (knowledge)
+  WHAT: KN (knowledge)
   WHEN: CA (calendar), DL (deadline), EV (episodic event), RF (reflection), HX (history)
   HOW: PR (procedure), SK (skill)
   WHY: MT (meta), QU (question)
@@ -277,7 +277,7 @@ function detectNotebook(message: string): { nb?: string; type?: string } {
   if (/\bplanning\b|\bplans?\b/i.test(message)) return { nb: 'PLAN', type: 'PL' };
   if (/\bprojects?\b|\bstatus\s+of\b|\bwhat\s+is\s+the\s+status\b|\bwhat\s+is\s+(?:project|entry|knowledge)\b|\bknowledge\b/i.test(message)) {
     if (/\bknowledge\b/i.test(message)) return { nb: 'WHAT', type: 'KN' };
-    return { nb: 'WHAT', type: 'PJ' };
+    return { nb: 'PLAN', type: 'PJ' };
   }
   return {};
 }
@@ -674,7 +674,7 @@ function inferWriteData(message: string, classification: Classification): {
   if (!nb || !type) {
     if (/\bcontact\b/i.test(message) || /\bperson\b/i.test(message)) { nb = 'WHO'; type = 'CT'; }
     else if (/\borganization\b|\bcompany\b/i.test(message)) { nb = 'WHO'; type = 'ORG'; }
-    else if (/\bproject\b/i.test(message)) { nb = 'WHAT'; type = 'PJ'; }
+    else if (/\bproject\b/i.test(message)) { nb = 'PLAN'; type = 'PJ'; }
     else if (/\bknowledge\b/i.test(message)) { nb = 'WHAT'; type = 'KN'; }
     else if (/\bmeeting\b|\bcalendar\b|\bevent\b/i.test(message)) { nb = 'WHEN'; type = 'CA'; }
     else if (/\bdeadline\b/i.test(message)) { nb = 'WHEN'; type = 'DL'; }
@@ -830,12 +830,16 @@ async function handleLegacyResolvedFlow(
   classification: Classification,
   llmHandler: LLMHandler,
   findingsPrefix: string,
+  currentProjectCode: string | null = null,
 ): Promise<AgentResponse> {
   let resolved = resolveQuery(classification);
 
   if (resolved === null && classification.intent !== 'code_fetch') {
     try {
-      const searchResults = await hybridSearch(message, { nb: classification.nb });
+      const searchResults = await hybridSearch(message, {
+        nb: classification.nb,
+        currentProjectCode,
+      });
       if (searchResults.length > 0) {
         const entries = searchResults.map(r => r.entry);
         const contents = entries
@@ -865,10 +869,23 @@ async function handleLegacyResolvedFlow(
   }
 
   const skills = getSkillsForIntent(classification.intent);
-  const messages = await buildContext(message, resolved, history, skills, classification.intent, undefined, llmHandler);
+  const messages = await buildContext(
+    message,
+    resolved,
+    history,
+    skills,
+    classification.intent,
+    currentProjectCode,
+    undefined,
+    llmHandler,
+  );
   try {
     const reply = await llmHandler(messages);
-    return { reply: findingsPrefix + cleanReply(reply), intent: classification.intent, resolved };
+    const cleanedReply = cleanReply(reply);
+    if (resolved?.entries?.length) {
+      applyUtilityFeedback(resolved.entries, cleanedReply);
+    }
+    return { reply: findingsPrefix + cleanedReply, intent: classification.intent, resolved };
   } catch (error) {
     return {
       reply: findingsPrefix + 'I could not reach the language model. Please check that it is running.',
@@ -976,6 +993,7 @@ async function handleCompatibilityExecution(
         history,
         [],
         'skill',
+        null,
         skillResult.output,
         llmHandler,
       );
@@ -1176,7 +1194,7 @@ export async function processMessage(
     // === FIX 0: Plan Confirmation Interceptor (step [0]) ===
     // Deterministic confirmation without LLM calls. Reads the user's raw message
     // and classifies it as approval, rejection, or ambiguous.
-    const handler = options?.llmHandler ?? callLLM;
+    const handler = createLMStudioChatSessionHandler(options?.llmHandler ?? callLLM);
     const currentPendingPlan = _getPendingConfirmationPlan();
     if (currentPendingPlan) {
       const findingsPrefix = await buildFindingsPrefix();
@@ -1237,6 +1255,7 @@ export async function processMessage(
         { intent: 'code_fetch', codes },
         handler,
         findingsPrefix,
+        null,
       );
     }
 
@@ -1472,6 +1491,7 @@ The memory entries provided above are confirmed to exist in the database. You MU
           compatibilityClassification,
           handler,
           findingsPrefix,
+          intakeResult?.projectCode ?? null,
         );
         return result;
       }

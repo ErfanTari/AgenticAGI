@@ -54,7 +54,7 @@ function archiveAllVisions(): void {
 
 function archiveAllPlansAndProjects(): void {
   const d = getDb();
-  d.prepare("UPDATE index_entries SET status = 'archived' WHERE (nb = 'PLAN' AND type = 'PL') OR (nb = 'WHAT' AND type = 'PJ')").run();
+  d.prepare("UPDATE index_entries SET status = 'archived' WHERE (nb = 'PLAN' AND type = 'PL') OR (nb = 'PLAN' AND type = 'PJ')").run();
 }
 
 // --- Group 3: Vision + Planning ---
@@ -97,7 +97,7 @@ describe('Group 3: Vision + Planning', () => {
   });
 
   // 3B — Vision alignment check runs in heartbeat, flags unconnected project
-  it('3B: unconnected WHAT.PJ project flagged by vision_drift in heartbeat', async () => {
+  it('3B: unconnected PLAN.PJ project flagged by vision_drift in heartbeat', async () => {
     createEntry({
       nb: 'WHY', type: 'MT', name: 'North Star Vision',
       status: 'active', summary: 'Build the best ceramic analysis platform',
@@ -105,7 +105,7 @@ describe('Group 3: Vision + Planning', () => {
     });
 
     const project = createEntry({
-      nb: 'WHAT', type: 'PJ', name: 'Unrelated Social Media Sprint',
+      nb: 'PLAN', type: 'PJ', name: 'Unrelated Social Media Sprint',
       status: 'active', summary: 'Launch social media campaign for shoes',
       body: 'Focus on shoe marketing',
     });
@@ -140,7 +140,7 @@ describe('Group 3: Vision + Planning', () => {
     });
 
     const connectedProject = createEntry({
-      nb: 'WHAT', type: 'PJ', name: 'Unrelated But Connected',
+      nb: 'PLAN', type: 'PJ', name: 'Unrelated But Connected',
       status: 'active', summary: 'This has no keyword overlap at all',
       body: 'Random content about shoes and marketing',
     });

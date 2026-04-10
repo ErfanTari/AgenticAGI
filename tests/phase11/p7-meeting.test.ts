@@ -149,7 +149,7 @@ describe('Phase 11 P7: Meeting Mode', () => {
     const { createEntry } = await import('../../core/memory/write.js');
     const { runMeetingMode } = await import('../../core/meeting.js');
 
-    createEntry({ nb: 'WHAT', type: 'PJ', name: 'TestProj', status: 'active', summary: 'test', body: '' });
+    createEntry({ nb: 'PLAN', type: 'PJ', name: 'TestProj', status: 'active', summary: 'test', body: '' });
 
     const briefing = await runMeetingMode([], mockLLM as any);
     // Should have at least one suggestion from the active project
@@ -172,7 +172,7 @@ describe('Phase 11 P7: Meeting Mode', () => {
     const { createEntry } = await import('../../core/memory/write.js');
     const { runMeetingMode } = await import('../../core/meeting.js');
 
-    createEntry({ nb: 'WHAT', type: 'PJ', name: 'MyProject', status: 'active', summary: 'ongoing', body: '' });
+    createEntry({ nb: 'PLAN', type: 'PJ', name: 'MyProject', status: 'active', summary: 'ongoing', body: '' });
 
     const briefing = await runMeetingMode([], mockLLM as any);
     expect(briefing.context).toContain('MyProject');

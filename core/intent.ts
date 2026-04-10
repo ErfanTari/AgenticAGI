@@ -216,7 +216,7 @@ const PLAN_PATTERNS = [
 const NOTEBOOK_PATTERNS: Array<{ pattern: RegExp; nb: string; type: string }> = [
   { pattern: /\bcontacts?\b/i,                        nb: 'WHO',  type: 'CT' },
   { pattern: /\borganizations?\b|\bcompan(?:y|ies)\b/i, nb: 'WHO',  type: 'ORG' },
-  { pattern: /\bprojects?\b/i,                        nb: 'WHAT', type: 'PJ' },
+  { pattern: /\bprojects?\b/i,                        nb: 'PLAN', type: 'PJ' },
   { pattern: /\bknowledge\b/i,                         nb: 'WHAT', type: 'KN' },
   { pattern: /\bcalendar\b|\bevents?\b|\bmeeting\b/i,  nb: 'WHEN', type: 'CA' },
   { pattern: /\bdeadlines?\b/i,                        nb: 'WHEN', type: 'DL' },
@@ -277,7 +277,7 @@ function detectNotebook(message: string): { nb?: string; type?: string } {
   if (matchesAny(message, PLAN_PATTERNS)) return { nb: 'PLAN', type: 'PL' };
   if (matchesAny(message, WHAT_PATTERNS)) {
     if (/\bknowledge\b/i.test(message)) return { nb: 'WHAT', type: 'KN' };
-    return { nb: 'WHAT', type: 'PJ' };
+    return { nb: 'PLAN', type: 'PJ' };
   }
 
   // Fall back to keyword-based notebook detection

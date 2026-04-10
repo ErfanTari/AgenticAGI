@@ -223,13 +223,13 @@ describe('FIX 6: session cache terminal PLAN.EX gate', () => {
   });
 
   it('non-PLAN entries are always stored regardless of status', () => {
-    sessionCache.set('WHAT.PJ-000001', makeEntry({
-      code: 'WHAT.PJ-000001',
+    sessionCache.set('PLAN.PJ-000001', makeEntry({
+      code: 'PLAN.PJ-000001',
       nb: 'WHAT',
       type: 'PJ',
       status: 'complete',
     }));
-    expect(sessionCache.getByCode('WHAT.PJ-000001')).not.toBeNull();
+    expect(sessionCache.getByCode('PLAN.PJ-000001')).not.toBeNull();
   });
 });
 

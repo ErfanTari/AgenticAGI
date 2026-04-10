@@ -46,7 +46,7 @@ describe('Bug 1: savePlanEX no duplicates', () => {
 
     const planData = {
       task_name: 'Test Task Unique',
-      project_code: 'WHAT.PJ-000001',
+      project_code: 'PLAN.PJ-000001',
       goal: 'Test goal',
       milestones: [],
       current_milestone: 0,
@@ -84,7 +84,7 @@ describe('Bug 1: savePlanEX no duplicates', () => {
 
     const planData = {
       task_name: 'Unique Task Name XYZ',
-      project_code: 'WHAT.PJ-000001',
+      project_code: 'PLAN.PJ-000001',
       goal: 'Test goal',
       milestones: [],
       current_milestone: 0,
@@ -126,7 +126,7 @@ describe('Bug 2: loadActivePlanEX returns most recent by checkpoint_ts', () => {
 
     const older = {
       task_name: 'Older Task',
-      project_code: 'WHAT.PJ-000001',
+      project_code: 'PLAN.PJ-000001',
       goal: 'Older goal',
       milestones: [],
       current_milestone: 0,

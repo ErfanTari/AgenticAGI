@@ -46,7 +46,7 @@ beforeAll(() => {
   }).code;
 
   projectCode = createEntry({
-    nb: 'WHAT', type: 'PJ', name: 'Activation Xray',
+    nb: 'PLAN', type: 'PJ', name: 'Activation Xray',
     status: 'active', summary: 'AI interpretability project', body: 'Studying neural activations.',
   }).code;
 

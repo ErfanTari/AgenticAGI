@@ -11,6 +11,9 @@ import { scheduleMemoryCommit } from './versioning.js';
 import { localDateString } from '../utils/date.js';
 import { sessionCache } from './session-cache.js';
 import { upsertPointerEntry } from './pointer-index.js';
+import { computeNameSimilarity } from './similarity.js';
+import { enforceGateA } from './write-gate.js';
+import { deriveHandle } from './handle.js';
 
 // --- Phase 15: Identity Fingerprint Extraction ---
 
@@ -83,38 +86,6 @@ const APPEND_ONLY_TYPES = new Set(['NOW.LOG', 'WHEN.EV', 'WHEN.RF', 'PLAN.EX', '
 // WHO.CT is intentionally excluded — it already has fingerprint + fuzzy-name dedup (Stages 1+2).
 // Adding a third similarity layer there causes cross-test contamination when many CT entries exist.
 const DEDUP_SIMILARITY_TYPES = new Set(['WHAT.KN']);
-
-/**
- * FIX 3: Combined name similarity using word-overlap (Jaccard) + substring bonus.
- * "Favorite Color" vs "Favorite Vericolor" scores ~0.61 (> 0.6 threshold).
- */
-function computeNameSimilarity(a: string, b: string): number {
-  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
-  const wordsA = normalize(a).split(/\s+/).filter(Boolean);
-  const wordsB = normalize(b).split(/\s+/).filter(Boolean);
-  if (wordsA.length === 0 || wordsB.length === 0) return 0;
-
-  const setA = new Set(wordsA);
-  const setB = new Set(wordsB);
-  const exact = [...setA].filter(w => setB.has(w)).length;
-  const union = new Set([...setA, ...setB]).size;
-  const jaccard = exact / union;
-
-  // Substring bonus: shorter word contained within longer word (e.g. "color" in "vericolor")
-  let substringBonus = 0;
-  for (const wa of wordsA) {
-    if (wa.length < 3) continue;
-    for (const wb of wordsB) {
-      if (wb.length < 3) continue;
-      // Skip exact matches (already counted in Jaccard) — only bonus for partial overlap
-      if (wa !== wb && (wb.includes(wa) || wa.includes(wb))) {
-        substringBonus = Math.max(substringBonus, Math.min(wa.length, wb.length) / Math.max(wa.length, wb.length));
-      }
-    }
-  }
-
-  return Math.min(1, jaccard + substringBonus * 0.5);
-}
 
 /**
  * Stage 2 — Fuzzy name match for WHO.CT and WHO.ORG.
@@ -260,10 +231,17 @@ function buildFrontmatter(entry: Omit<IndexEntry, 'path'> & OperationalMeta): st
     `nb: ${entry.nb}`,
     `type: ${entry.type}`,
     `name: ${entry.name}`,
+    `handle: ${entry.handle ?? deriveHandle(entry.nb, entry.type, entry.name, { code: entry.code })}`,
     `status: ${entry.status ?? 'active'}`,
     `updated: ${today}`,
     `summary: ${(entry.summary ?? '').replace(/\n/g, ' ')}`,
   ];
+  if (entry.project_code) {
+    lines.push(`project_code: ${entry.project_code}`);
+  }
+  if (entry.purpose) {
+    lines.push(`purpose: ${entry.purpose}`);
+  }
   if (entry.due_date) {
     lines.push(`due_date: ${entry.due_date}`);
   }
@@ -287,6 +265,13 @@ function buildMarkdown(entry: Omit<IndexEntry, 'path'>, body: string): string {
   return frontmatter + '\n\n# ' + entry.name + '\n\n' + body + '\n';
 }
 
+function inferDefaultPurpose(input: Pick<CreateEntryInput, 'nb' | 'type' | 'name'>): NonNullable<IndexEntry['purpose']> {
+  if (input.nb === 'NOW' && input.type === 'LOG' && /^Heartbeat\b/i.test(input.name)) {
+    return 'pointer';
+  }
+  return 'anchor';
+}
+
 function extractBodyFromMarkdown(markdown: string): string {
   const frontmatterEnd = markdown.indexOf('\n---\n');
   if (frontmatterEnd < 0) return markdown.trimEnd();
@@ -303,9 +288,6 @@ function defaultBodyFor(nb: string, type: string): string | null {
   if (nb === 'WHO' && type === 'CT') {
     return '## Role / Relationship\n_Not specified_\n\n## Background\n_Not specified_\n\n## Notes\n_No notes yet_';
   }
-  if (nb === 'WHAT' && type === 'PJ') {
-    return '## Description\n_Not specified_\n\n## Initial Request\n_Not specified_\n\n## Status\nActive\n\n## Tasks\n_No tasks recorded yet_\n\n## Notes\n_No notes yet_';
-  }
   if (nb === 'PLAN' && type === 'PJ') {
     return '## Initial Request\n_Not specified_\n\n## Goal\n_Not specified_\n\n## Phase\n_Not specified_\n\n## Key Decisions\n_None recorded yet_\n\n## Progress Notes\n_Updated as milestones complete_\n\n## Conclusions\n_Project ongoing_';
   }
@@ -315,9 +297,17 @@ function defaultBodyFor(nb: string, type: string): string | null {
 export function createEntry(input: CreateEntryInput): IndexEntry {
   const d = getDb();
 
+  // Phase 23 Stage 1: Gate A — deterministic write quality gate.
+  // Throws WriteGateError on reject when MEMORY_GATE_A_ENFORCE=1.
+  // Optional WHAT.KN duplicate warnings via the supplied db handle.
+  enforceGateA(input, d);
+
   // Step 1: Generate code (atomic counter increment in its own implicit transaction)
   const code = generateCode(input.nb, input.type);
   const updated = localDateString();
+  const handle = deriveHandle(input.nb, input.type, input.name, { code });
+  const projectCode = input.project_code ?? (input.nb === 'PLAN' && input.type === 'PJ' ? code : null);
+  const purpose = input.purpose ?? inferDefaultPurpose(input);
 
   // FIX 5: NOW.LOG defaults to status 'logged', not 'active'
   const resolvedStatus = (input.nb === 'NOW' && input.type === 'LOG' && (!input.status || input.status === 'active'))
@@ -334,6 +324,9 @@ export function createEntry(input: CreateEntryInput): IndexEntry {
     nb: input.nb,
     type: input.type,
     name: input.name,
+    handle,
+    project_code: projectCode,
+    purpose,
     status: resolvedStatus,
     updated,
     summary: input.summary,
@@ -454,12 +447,16 @@ export function upsertEntry(
     // BUG-C4 fix: if the Markdown file is missing, treat as a create operation —
     // write the new file and update the SQLite row with the new path/content.
     if (entry && !fs.existsSync(entry.path)) {
+      const handle = deriveHandle(input.nb, input.type, input.name, { code: existing.code });
       const newFilePath = resolveEntryPath(input.nb, input.type, existing.code, input.name);
       const entryMeta: Omit<IndexEntry, 'path'> = {
         code: existing.code,
         nb: input.nb,
         type: input.type,
         name: input.name,
+        handle,
+        project_code: input.project_code ?? entry.project_code ?? null,
+        purpose: input.purpose ?? entry.purpose ?? inferDefaultPurpose(input),
         status: input.status ?? 'active',
         updated,
         summary: input.summary ?? '',
@@ -475,9 +472,12 @@ export function upsertEntry(
       }
       try {
         d.prepare(
-          'UPDATE index_entries SET name = ?, summary = ?, status = ?, updated = ?, path = ?, due_date = ? WHERE code = ?'
+          'UPDATE index_entries SET name = ?, handle = ?, project_code = ?, purpose = ?, summary = ?, status = ?, updated = ?, path = ?, due_date = ? WHERE code = ?'
         ).run(
           input.name,
+          handle,
+          entryMeta.project_code ?? null,
+          entryMeta.purpose ?? null,
           input.summary ?? '',
           input.status ?? 'active',
           updated,
@@ -503,11 +503,15 @@ export function upsertEntry(
 
     // FIX F: upsertEntry existing-row branch: regenerate full frontmatter from current data.
     // Build new frontmatter + old body. File write first, then SQLite.
+    const handle = deriveHandle(input.nb, input.type, input.name, { code: existing.code });
     const newEntryMeta: Omit<IndexEntry, 'path'> = {
       code: existing.code,
       nb: input.nb,
       type: input.type,
       name: input.name,
+      handle,
+      project_code: input.project_code ?? entry?.project_code ?? null,
+      purpose: input.purpose ?? entry?.purpose ?? inferDefaultPurpose(input),
       status: input.status ?? 'active',
       updated,
       summary: input.summary ?? '',
@@ -533,9 +537,12 @@ export function upsertEntry(
     try {
       // SQLite update after file write
       d.prepare(
-        'UPDATE index_entries SET name = ?, summary = ?, status = ?, updated = ?, path = ?, due_date = ? WHERE code = ?'
+        'UPDATE index_entries SET name = ?, handle = ?, project_code = ?, purpose = ?, summary = ?, status = ?, updated = ?, path = ?, due_date = ? WHERE code = ?'
       ).run(
         input.name,
+        handle,
+        newEntryMeta.project_code ?? null,
+        newEntryMeta.purpose ?? null,
         input.summary ?? '',
         input.status ?? 'active',
         updated,
@@ -633,30 +640,52 @@ export async function upsertEntryWithRetry(
   throw lastErr;
 }
 
-export function updateEntry(code: string, updates: { status?: string; summary?: string }): IndexEntry {
+export function updateEntry(
+  code: string,
+  updates: {
+    status?: string;
+    summary?: string;
+    project_code?: string | null;
+    purpose?: IndexEntry['purpose'];
+  },
+): IndexEntry {
   const entry = getEntryByCode(code);
   if (!entry) throw new Error(`Entry not found: ${code}`);
 
   const updated = localDateString();
   const newStatus = updates.status ?? entry.status;
   const newSummary = updates.summary ?? entry.summary;
+  const newProjectCode = updates.project_code !== undefined ? updates.project_code : (entry.project_code ?? null);
+  const newPurpose = updates.purpose !== undefined ? updates.purpose : (entry.purpose ?? null);
 
   const d = getDb();
   d.prepare(
-    'UPDATE index_entries SET status = ?, summary = ?, updated = ? WHERE code = ?'
-  ).run(newStatus, newSummary, updated, code);
+    'UPDATE index_entries SET status = ?, summary = ?, project_code = ?, purpose = ?, updated = ? WHERE code = ?'
+  ).run(newStatus, newSummary, newProjectCode, newPurpose, updated, code);
 
   // Update markdown frontmatter on disk
   if (fs.existsSync(entry.path)) {
     const content = fs.readFileSync(entry.path, 'utf-8');
-    const newContent = content
-      .replace(/^status: .+$/m, `status: ${newStatus}`)
-      .replace(/^summary: .+$/m, `summary: ${newSummary}`)
-      .replace(/^updated: .+$/m, `updated: ${updated}`);
-    atomicWriteFile(entry.path, newContent);
+    const body = extractBodyFromMarkdown(content);
+    const rebuilt = buildMarkdown({
+      ...entry,
+      project_code: newProjectCode,
+      purpose: newPurpose,
+      status: newStatus,
+      summary: newSummary,
+      updated,
+    }, body);
+    atomicWriteFile(entry.path, rebuilt);
   }
 
-  const updatedEntry = { ...entry, status: newStatus, summary: newSummary, updated };
+  const updatedEntry = {
+    ...entry,
+    project_code: newProjectCode,
+    purpose: newPurpose,
+    status: newStatus,
+    summary: newSummary,
+    updated,
+  };
   // Phase 15: update session cache
   sessionCache.set(code, updatedEntry);
   return updatedEntry;

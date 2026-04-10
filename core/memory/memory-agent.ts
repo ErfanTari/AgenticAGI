@@ -136,7 +136,7 @@ async function processUpdate(update: MemoryUpdate): Promise<void> {
             const wm = await loadWorkingMemory(update.workingMemoryId);
             if (wm) {
               await addToActiveContext(wm, entry.code, entry.summary ?? entry.name);
-              // FIX 6: Write `contains` relationship from WHAT.PJ → NOW.TD
+              // FIX 6: Write `contains` relationship from PLAN.PJ → NOW.TD
               if (entry.nb === 'NOW' && entry.type === 'TD' && wm.projectCode) {
                 const { addRelationship } = await import('./relationships.js');
                 try {

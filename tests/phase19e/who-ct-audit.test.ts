@@ -40,9 +40,9 @@ describe('Phase 19e — WHO.CT-000076 Audit Fixes', () => {
     });
 
     it('extracts multiple codes including suffixed ones', () => {
-      const codes = extractCodes('Compare WHO.CT-000076_zaraban with WHAT.PJ-000075_dashboard');
+      const codes = extractCodes('Compare WHO.CT-000076_zaraban with PLAN.PJ-000075_dashboard');
       expect(codes).toContain('WHO.CT-000076');
-      expect(codes).toContain('WHAT.PJ-000075');
+      expect(codes).toContain('PLAN.PJ-000075');
       expect(codes).toHaveLength(2);
     });
 
@@ -119,8 +119,8 @@ describe('Phase 19e — WHO.CT-000076 Audit Fixes', () => {
       expect(extractNotebookHint('WHO.CT-000076_zaraban')).toBe('WHO');
     });
 
-    it('extracts WHAT from code-like query', () => {
-      expect(extractNotebookHint('WHAT.PJ-000075')).toBe('WHAT');
+    it('extracts PLAN from code-like query', () => {
+      expect(extractNotebookHint('PLAN.PJ-000075')).toBe('PLAN');
     });
 
     it('extracts WHEN from code-like query', () => {
@@ -137,7 +137,7 @@ describe('Phase 19e — WHO.CT-000076 Audit Fixes', () => {
     });
 
     it('extracts notebook from message with multiple patterns', () => {
-      const hint = extractNotebookHint('WHO.CT-000076_zaraban and WHAT.PJ-000075');
+      const hint = extractNotebookHint('WHO.CT-000076_zaraban and PLAN.PJ-000075');
       // Should extract the first one
       expect(hint).toBe('WHO');
     });

@@ -7,12 +7,14 @@ import { transparency } from './transparency.js';
 import { queryEntries } from './memory/index.js';
 import { fetchByCode } from './memory/fetch.js';
 import { sessionCache } from './memory/session-cache.js';
+import { createLMStudioChatSessionHandler } from './llm.js';
+import { applyProjectGravityToScores } from './memory/search.js';
 
 const SYSTEM_PROMPT = `You are a personal AI agent with memory, skills, and reasoning capabilities.
 
 Your capabilities:
 - Memory system: WHO, WHAT, WHEN, HOW, WHY, NOW, PLAN notebooks
-- Skills: web_search, calculator, file_reader, file_writer, run_bash, web_fetch, url_extract, memory_read, content_writer, relationship_write, implement_and_test
+- Skills: web_search, calculator, file_reader, file_writer, run_bash, web_fetch, download_file, url_extract, memory_read, content_writer, relationship_write, implement_and_test
 - You can search the web, write files, run code, and remember information across sessions
 
 Use skills for their domains. Never substitute your own reasoning:
@@ -42,7 +44,7 @@ Valid memory entry codes follow this format: [NOTEBOOK].[TYPE]-[NUMBER]
 
 Valid notebooks and their types:
 WHO: CT (contact), ORG (organization)
-WHAT: PJ (project), KN (knowledge)
+WHAT: KN (knowledge)
 WHEN: CA (calendar), DL (deadline)
 HOW: PR (procedure)
 WHY: MT (meta reflection), QU (open question)
@@ -146,7 +148,11 @@ export function trimHistoryToTokenBudget(history: Message[], budget: number): Me
  * BM25F-inspired ranking with recency decay, importance, utility, and page boost.
  * Replaces the old rankByRelevance for richer scoring.
  */
-export function rankByLightRAG(entries: IndexEntry[], message: string): IndexEntry[] {
+export function rankByLightRAG(
+  entries: IndexEntry[],
+  message: string,
+  currentProjectCode?: string | null,
+): IndexEntry[] {
   const msgWords = message.toLowerCase().split(/\s+/).filter(w => w.length > 2);
   const msgWordSet = new Set(msgWords);
   const now = Date.now();
@@ -198,15 +204,20 @@ export function rankByLightRAG(entries: IndexEntry[], message: string): IndexEnt
     return { entry, score: totalScore };
   });
 
-  return scored.sort((a, b) => b.score - a.score).map(s => s.entry);
+  const projectAdjusted = applyProjectGravityToScores(scored, currentProjectCode);
+  return projectAdjusted.sort((a, b) => b.score - a.score).map(s => s.entry);
 }
 
 /**
  * Rank memory entries by relevance to the current message.
  * Alias for rankByLightRAG for backwards compatibility.
  */
-export function rankByRelevance(entries: IndexEntry[], message: string): IndexEntry[] {
-  return rankByLightRAG(entries, message);
+export function rankByRelevance(
+  entries: IndexEntry[],
+  message: string,
+  currentProjectCode?: string | null,
+): IndexEntry[] {
+  return rankByLightRAG(entries, message, currentProjectCode);
 }
 
 export function getIndexSummary(): string {
@@ -231,6 +242,7 @@ export async function buildRollingContext(
   history: Message[],
   llmHandler: LLMHandler,
 ): Promise<ContextHistory> {
+  const sessionLLM = createLMStudioChatSessionHandler(llmHandler);
   // Count turns (pair of user+assistant messages)
   const turnCount = Math.floor(history.length / 2);
 
@@ -260,7 +272,7 @@ export async function buildRollingContext(
     // Wrap summarization with 5000ms timeout
     const SUMMARIZATION_TIMEOUT = 5000;
     const summary = await Promise.race([
-      llmHandler(summaryPrompt, { maxTokens: 150 }),
+      sessionLLM(summaryPrompt, { maxTokens: 150 }),
       new Promise<string>((_, reject) =>
         setTimeout(() => reject(new Error('Summarization timeout after 5000ms')), SUMMARIZATION_TIMEOUT)
       ),
@@ -316,10 +328,12 @@ export async function buildContext(
   history: Message[],
   skills: Skill[],
   intent?: Intent,
+  currentProjectCode?: string | null,
   skillOutput?: string,
   llmHandler?: LLMHandler,
   contextMode?: ContextMode,
 ): Promise<Message[]> {
+  const sessionLLM = llmHandler ? createLMStudioChatSessionHandler(llmHandler) : undefined;
   // Phase 18 — contextMode overrides token limits for coding tasks
   const effectiveMaxTokens = contextMode === 'agentic_coding' ? 8000 : MAX_TOKENS;
   const effectiveHardCeiling = contextMode === 'agentic_coding' ? 16000 : HARD_CEILING;
@@ -347,7 +361,10 @@ export async function buildContext(
   // BUG-H2 fix: rank memory entries by relevance BEFORE formatting and injecting into prompt.
   // Previously rankByRelevance was called AFTER formatResolved, making it dead code.
   if (resolved && resolved.entries.length > 1) {
-    resolved = { ...resolved, entries: rankByRelevance(resolved.entries, userMessage) };
+    resolved = {
+      ...resolved,
+      entries: rankByRelevance(resolved.entries, userMessage, currentProjectCode),
+    };
   }
 
   systemParts.push(formatResolved(resolved));
@@ -379,8 +396,8 @@ export async function buildContext(
   // Then trim to token budget
   let recentHistory: Message[];
   let conversationSummary: string | undefined;
-  if (llmHandler && history.length > SUMMARY_THRESHOLD * 2) {
-    const rollingContext = await buildRollingContext(history, llmHandler);
+  if (sessionLLM && history.length > SUMMARY_THRESHOLD * 2) {
+    const rollingContext = await buildRollingContext(history, sessionLLM);
     recentHistory = rollingContext.turns;
     conversationSummary = rollingContext.summary;
   } else {
@@ -408,7 +425,7 @@ export async function buildContext(
   let tokens = estimateTokens(messages);
   let alreadyCompacted = false;
 
-  if (tokens > effectiveCompactionThreshold && llmHandler && history.length > 4 && _compactionFailures < COMPACTION_MAX_FAILURES) {
+  if (tokens > effectiveCompactionThreshold && sessionLLM && history.length > 4 && _compactionFailures < COMPACTION_MAX_FAILURES) {
     // Compact non-pinned history
     const nonPinned = recentHistory.filter(m => !m.content.startsWith('[PINNED]'));
     const pinned = recentHistory.filter(m => m.content.startsWith('[PINNED]'));
@@ -425,7 +442,7 @@ export async function buildContext(
             content: nonPinned.map(m => `${m.role}: ${m.content}`).join('\n\n'),
           },
         ];
-        const compactedSummary = await llmHandler(summaryPrompt, { maxTokens: 150 });
+        const compactedSummary = await sessionLLM(summaryPrompt, { maxTokens: 150 });
         // Compaction summary is appended to the system message content, not a separate entry
         const compactedContent = messages[0].content + '\n\n## Compacted History\n' + compactedSummary.trim();
         messages[0] = { role: 'system', content: compactedContent };
@@ -452,7 +469,7 @@ export async function buildContext(
 
   // Auto-compact token threshold trigger (100K)
   const AUTO_COMPACT_THRESHOLD = 100_000;
-  if (tokens > AUTO_COMPACT_THRESHOLD && llmHandler && _compactionFailures < COMPACTION_MAX_FAILURES && !alreadyCompacted) {
+  if (tokens > AUTO_COMPACT_THRESHOLD && sessionLLM && _compactionFailures < COMPACTION_MAX_FAILURES && !alreadyCompacted) {
     const nonPinned = recentHistory.filter(m => !m.content.startsWith('[PINNED]'));
     const pinned = recentHistory.filter(m => m.content.startsWith('[PINNED]'));
 
@@ -468,7 +485,7 @@ export async function buildContext(
             content: nonPinned.map(m => `${m.role}: ${m.content}`).join('\n\n'),
           },
         ];
-        const compactedSummary = await llmHandler(summaryPrompt, { maxTokens: 150 });
+        const compactedSummary = await sessionLLM(summaryPrompt, { maxTokens: 150 });
         const compactedContent = messages[0].content + '\n\n## Compacted History\n' + compactedSummary.trim();
         messages[0] = { role: 'system', content: compactedContent };
         recentHistory = [...pinned];

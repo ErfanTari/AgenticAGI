@@ -31,13 +31,13 @@ export const PATHS = {
   db: path.join(ROOT, 'index', 'memory.sqlite'),
   workspace: path.join(ROOT, 'workspace'),
   logs: path.join(ROOT, 'workspace', 'logs'),
+  transparency: path.join(ROOT, 'workspace', 'transparency'),
   projects: path.join(ROOT, 'workspace', 'projects'),
 } as const;
 
 export const TYPE_MAP = {
   'WHO.CT':   { notebook: 'WHO',  type: 'CT',  meaning: 'Contact',         subfolder: 'WHO/contacts' },
   'WHO.ORG':  { notebook: 'WHO',  type: 'ORG', meaning: 'Organization',    subfolder: 'WHO/contacts' },
-  'WHAT.PJ':  { notebook: 'WHAT', type: 'PJ',  meaning: 'Project',         subfolder: 'WHAT/projects' },
   'WHAT.KN':  { notebook: 'WHAT', type: 'KN',  meaning: 'Knowledge entry', subfolder: 'WHAT/knowledge' },
   'WHEN.CA':  { notebook: 'WHEN', type: 'CA',  meaning: 'Calendar event',  subfolder: 'WHEN/calendar' },
   'WHEN.DL':  { notebook: 'WHEN', type: 'DL',  meaning: 'Deadline',        subfolder: 'WHEN/deadlines' },
@@ -77,13 +77,36 @@ function getTimeoutForModel(modelName: string): number {
   return 120000;
 }
 
+function parseOptionalNumberEnv(value: string | undefined): number | undefined {
+  if (value === undefined || value.trim() === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseThinkingModeEnv(): 'inherit' | 'disable' | 'stage' {
+  const explicit = process.env.LLM_THINKING_MODE?.trim().toLowerCase();
+  if (explicit === 'inherit' || explicit === 'disable' || explicit === 'stage') {
+    return explicit;
+  }
+  if (process.env.DISABLE_THINKING === 'true') {
+    return 'disable';
+  }
+  return 'stage';
+}
+
 const _llmModel = process.env.LLM_MODEL ?? '';
+const _llmTemperature = parseOptionalNumberEnv(process.env.LLM_TEMPERATURE);
+
+export const LLM_BEHAVIOR = {
+  defaultTemperature: _llmTemperature,
+  thinkingMode: parseThinkingModeEnv(),
+} as const;
 
 export const LLM_CONFIG = {
   endpoint: process.env.LLM_ENDPOINT ?? '',
   model: _llmModel,
   maxTokens: 8000,
-  temperature: 0.3,
+  temperature: _llmTemperature,
   timeoutMs: getTimeoutForModel(_llmModel),
 };
 
@@ -125,7 +148,7 @@ export const PLANNER_CONFIG = {
   endpoint: process.env.LLM_ENDPOINT ?? '',
   model: _plannerModel,
   maxTokens: 8000,
-  temperature: 0.2,
+  temperature: parseOptionalNumberEnv(process.env.PLANNER_TEMPERATURE) ?? _llmTemperature,
   timeoutMs: getTimeoutForModel(_plannerModel),
 };
 
@@ -133,7 +156,7 @@ export const EXECUTOR_CONFIG = {
   endpoint: process.env.LLM_ENDPOINT ?? '',
   model: _executorModel,
   maxTokens: 8000,
-  temperature: 0.3,
+  temperature: parseOptionalNumberEnv(process.env.EXECUTOR_TEMPERATURE) ?? _llmTemperature,
   timeoutMs: getTimeoutForModel(_executorModel),
 };
 

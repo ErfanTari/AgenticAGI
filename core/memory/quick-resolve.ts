@@ -169,7 +169,7 @@ export function detectListingQuery(message: string): { nb: string; type: string 
     { keywords: ['people', 'person'], nb: 'WHO', type: 'CT' },
     { keywords: ['organization', 'organizations', 'companies', 'company'], nb: 'WHO', type: 'ORG' },
     // WHAT notebook
-    { keywords: ['project', 'projects'], nb: 'WHAT', type: 'PJ' },
+    { keywords: ['project', 'projects'], nb: 'PLAN', type: 'PJ' },
     { keywords: ['knowledge', 'notes', 'note'], nb: 'WHAT', type: 'KN' },
     // NOW notebook
     { keywords: ['todo', 'todos', 'task', 'tasks', 'to-do', 'to-dos'], nb: 'NOW', type: 'TD' },

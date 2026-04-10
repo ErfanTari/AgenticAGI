@@ -210,7 +210,7 @@ describe('DVD Log Analysis Fix Sprint', () => {
 
     it('T21: set() with an updated entry (different updated timestamp) does emit session_cache_store', () => {
       const entry1: IndexEntry = {
-        code: 'WHAT.PJ-000001',
+        code: 'PLAN.PJ-000001',
         nb: 'WHAT',
         type: 'PJ',
         name: 'Project A',

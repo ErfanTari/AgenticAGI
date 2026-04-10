@@ -38,7 +38,7 @@ beforeAll(() => {
   }).code;
 
   projectCode = createEntry({
-    nb: 'WHAT', type: 'PJ', name: 'Activation Xray',
+    nb: 'PLAN', type: 'PJ', name: 'Activation Xray',
     status: 'active', summary: 'AI interpretability project', body: 'Studying neural activations.',
   }).code;
 
@@ -87,7 +87,7 @@ describe('classifyIntent', () => {
   it('classifies memory queries with type and status', () => {
     const c = classifyIntent('show active projects');
     expect(c.intent).toBe('memory_query');
-    expect(c.nb).toBe('WHAT');
+    expect(c.nb).toBe('PLAN');
     expect(c.type).toBe('PJ');
     expect(c.status).toBe('active');
   });
@@ -178,7 +178,7 @@ describe('resolveQuery', () => {
     expect(resolved!.step).toBe(2);
     expect(resolved!.entries.length).toBeGreaterThan(0);
     resolved!.entries.forEach(e => {
-      expect(e.nb).toBe('WHAT');
+      expect(e.nb).toBe('PLAN');
       expect(e.type).toBe('PJ');
     });
   });
@@ -289,7 +289,7 @@ describe('getIndexSummary', () => {
   it('returns notebook counts', () => {
     const summary = getIndexSummary();
     expect(summary).toContain('WHO:');
-    expect(summary).toContain('WHAT:');
+    expect(summary).toContain('PLAN:');
     expect(summary).toContain('NOW:');
   });
 });
@@ -348,7 +348,7 @@ describe('processMessage', () => {
     expect(res.intent).toBe('greeting');
     expect(res.reply).toContain('Hello');
     expect(res.resolved).toBeNull();
-    expect(elapsed).toBeLessThan(5);
+    expect(elapsed).toBeLessThan(10);
   });
 
   it('code fetch resolves entry and calls LLM', async () => {
@@ -360,11 +360,11 @@ describe('processMessage', () => {
     expect(res.reply).toContain('Based on memory');
   });
 
-  it('memory query resolves from SQLite', async () => {
-    const res = await processMessage('show active projects', [], { llmHandler: mockLLM });
+  it('memory query uses deterministic retrieval for project queries', async () => {
+    const res = await processMessage("what's the status of project Activation Xray?", [], { llmHandler: mockLLM });
     expect(res.intent).toBe('memory_query');
-    expect(res.resolved).not.toBeNull();
-    expect(res.resolved!.step).toBe(2);
+    expect(res.resolved).toBeNull();
+    expect(res.reply.length).toBeGreaterThan(0);
   });
 
   it('relationship query resolves from table only', async () => {

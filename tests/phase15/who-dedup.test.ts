@@ -124,7 +124,7 @@ describe('Phase 15: WHO Deduplication', () => {
       body: 'alpha@company.com related',
     });
 
-    // WHAT.PJ entries don't get deduped by fingerprint/fuzzy
+    // PLAN.PJ entries don't get deduped by fingerprint/fuzzy
     // "Alpha Project" vs "Alpha" — different names, different types, no dedup
     expect(result1.created).toBe(true);
     expect(result2.created).toBe(true);

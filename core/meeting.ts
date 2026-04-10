@@ -6,6 +6,7 @@ import { queryEntries } from './memory/index.js';
 import { upsertEntry } from './memory/write.js';
 import { transparency } from './transparency.js';
 import { localDateString } from './utils/date.js';
+import { createLMStudioChatSessionHandler } from './llm.js';
 
 export interface MeetingBriefing {
   prompt: string;
@@ -21,17 +22,14 @@ export async function runMeetingMode(
   _history: Message[],
   llmHandler: LLMHandler,
 ): Promise<MeetingBriefing> {
+  const sessionLLM = createLMStudioChatSessionHandler(llmHandler);
   // Gather relevant memory for the meeting
   const todos = queryEntries({ nb: 'NOW', type: 'TD', status: 'open' }).slice(0, 5);
-  const projects = queryEntries({ nb: 'WHAT', type: 'PJ', status: 'active' }).slice(0, 5);
-  const planProjects = queryEntries({ nb: 'PLAN', type: 'PJ', status: 'active' }).slice(0, 3);
+  const planProjects = queryEntries({ nb: 'PLAN', type: 'PJ', status: 'active' }).slice(0, 5);
   const upcoming = queryEntries({ nb: 'WHEN', status: 'upcoming' }).slice(0, 5);
 
   const contextParts: string[] = [];
 
-  if (projects.length > 0) {
-    contextParts.push('## Active Projects\n' + projects.map(e => `- [${e.code}] ${e.name}: ${e.summary}`).join('\n'));
-  }
   if (planProjects.length > 0) {
     contextParts.push('## Project Brain Entries\n' + planProjects.map(e => `- [${e.code}] ${e.name}: ${e.summary}`).join('\n'));
   }
@@ -46,7 +44,7 @@ export async function runMeetingMode(
 
   // Generate a structured briefing prompt
   const suggestedUpdates: string[] = [];
-  for (const entry of [...projects, ...planProjects]) {
+  for (const entry of planProjects) {
     suggestedUpdates.push(`Update status of "${entry.name}" (${entry.code})`);
   }
   for (const todo of todos) {
@@ -83,7 +81,7 @@ End with a single clarifying question like "Review projects or proceed with [nex
       },
     ];
 
-    briefingText = await llmHandler(messages, { maxTokens: 400, disableThinking: true });
+    briefingText = await sessionLLM(messages, { maxTokens: 400, disableThinking: true });
     briefingText = briefingText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   } catch {
     briefingText = `Meeting Mode started.\n\n${context}\n\nWhat would you like to update?`;
@@ -102,6 +100,7 @@ export async function processMeetingResponse(
   briefing: MeetingBriefing,
   llmHandler: LLMHandler,
 ): Promise<{ updatesWritten: string[]; nextStep: string }> {
+  const sessionLLM = createLMStudioChatSessionHandler(llmHandler);
   const updatesWritten: string[] = [];
 
   if (/^\s*(done|finish|end|complete)\s*$/i.test(response)) {
@@ -124,7 +123,7 @@ export async function processMeetingResponse(
       },
     ];
 
-    const extracted = await llmHandler(messages, { maxTokens: 400, disableThinking: true });
+    const extracted = await sessionLLM(messages, { maxTokens: 400, disableThinking: true });
     const cleaned = extracted.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
     const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
 

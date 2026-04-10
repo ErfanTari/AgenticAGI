@@ -81,7 +81,7 @@ export const relationshipWriteSkill: MCPSkill = {
       },
       to_code: {
         type: 'string',
-        description: 'Code (WHAT.PJ-000003) or name ("AgenticAGI") of the target entry',
+        description: 'Code (PLAN.PJ-000003) or name ("AgenticAGI") of the target entry',
       },
       note: {
         type: 'string',
@@ -116,14 +116,14 @@ export const relationshipWriteSkill: MCPSkill = {
       return {
         success: false,
         output: '',
-        error: `Could not find entry for: "${rawFrom}". Use the entry code directly (e.g. WHAT.PJ-000014) or create the entry first.`,
+        error: `Could not find entry for: "${rawFrom}". Use the entry code directly (e.g. PLAN.PJ-000014) or create the entry first.`,
       };
     }
     if (!toCode) {
       return {
         success: false,
         output: '',
-        error: `Could not find entry for: "${rawTo}". Use the entry code directly (e.g. WHAT.PJ-000014) or create the entry first.`,
+        error: `Could not find entry for: "${rawTo}". Use the entry code directly (e.g. PLAN.PJ-000014) or create the entry first.`,
       };
     }
 

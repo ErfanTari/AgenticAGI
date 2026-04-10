@@ -129,11 +129,11 @@ describe('FIX 4: Grounded verification snapshot', () => {
 
   it('buildGroundTruthSnapshot extracts memory codes from outputs', () => {
     const completed: CompletedStep[] = [
-      makeStep({ skill: 'memory_write', output: 'Created WHAT.PJ-000001' }),
+      makeStep({ skill: 'memory_write', output: 'Created PLAN.PJ-000001' }),
     ];
     const snapshot = buildGroundTruthSnapshot(completed);
     expect(snapshot.memoryStates).toBeInstanceOf(Array);
-    expect(snapshot.memoryStates.some(s => s.code === 'WHAT.PJ-000001')).toBe(true);
+    expect(snapshot.memoryStates.some(s => s.code === 'PLAN.PJ-000001')).toBe(true);
   });
 
   it('buildGroundTruthSnapshot handles empty completed steps', () => {

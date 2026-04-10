@@ -65,15 +65,15 @@ describe('Bug A — Direct Code Fast-Path Regex', () => {
   });
 
   it('matches a code with leading whitespace', () => {
-    const codes = extractCodes('  WHAT.PJ-000003');
-    expect(codes).toEqual(['WHAT.PJ-000003']);
+    const codes = extractCodes('  PLAN.PJ-000003');
+    expect(codes).toEqual(['PLAN.PJ-000003']);
   });
 
   it('matches multiple codes', () => {
-    const codes = extractCodes('Compare WHO.CT-000001 with WHAT.PJ-000003');
+    const codes = extractCodes('Compare WHO.CT-000001 with PLAN.PJ-000003');
     expect(codes).toHaveLength(2);
     expect(codes).toContain('WHO.CT-000001');
-    expect(codes).toContain('WHAT.PJ-000003');
+    expect(codes).toContain('PLAN.PJ-000003');
   });
 
   it('deduplicates repeated codes', () => {
@@ -93,7 +93,7 @@ describe('Bug A — Direct Code Fast-Path Regex', () => {
   it('matches all valid code types', () => {
     const testCodes = [
       'WHO.CT-000001', 'WHO.ORG-000002',
-      'WHAT.PJ-000001', 'WHAT.KN-000002',
+      'PLAN.PJ-000001', 'WHAT.KN-000002',
       'WHEN.CA-000001', 'WHEN.DL-000002', 'WHEN.EV-000003', 'WHEN.RF-000004', 'WHEN.HX-000005',
       'HOW.PR-000001', 'HOW.SK-000002',
       'WHY.MT-000001', 'WHY.QU-000002',

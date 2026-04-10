@@ -201,8 +201,8 @@ describe('NOTEBOOK_VOCABULARY map', () => {
     expect(NOTEBOOK_VOCABULARY['people']).toEqual({ nb: 'WHO' });
   });
 
-  it('test 14: "projects" maps to { nb: "WHAT", type: "PJ" }', () => {
-    expect(NOTEBOOK_VOCABULARY['projects']).toEqual({ nb: 'WHAT', type: 'PJ' });
+  it('test 14: "projects" maps to { nb: "PLAN", type: "PJ" }', () => {
+    expect(NOTEBOOK_VOCABULARY['projects']).toEqual({ nb: 'PLAN', type: 'PJ' });
   });
 
   it('test 15: "todos" maps to { nb: "NOW" }', () => {
@@ -226,9 +226,9 @@ describe('detectListIntent', () => {
     expect(result).toEqual({ nb: 'WHO', type: 'CT' });
   });
 
-  it('test 19: "show me all my projects" → { nb: "WHAT", type: "PJ" }', () => {
+  it('test 19: "show me all my projects" → { nb: "PLAN", type: "PJ" }', () => {
     const result = detectListIntent('show me all my projects');
-    expect(result).toEqual({ nb: 'WHAT', type: 'PJ' });
+    expect(result).toEqual({ nb: 'PLAN', type: 'PJ' });
   });
 
   it('test 20: "what are my todos" → { nb: "NOW" }', () => {

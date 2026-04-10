@@ -5,7 +5,7 @@
  *
  * Expected flow:
  *   planned_workflow
- *   → memory_write WHAT.PJ (PersianPoetry project)
+ *   → memory_write PLAN.PJ (PersianPoetry project)
  *   → memory_write NOW.TD (research Persian poetry APIs)
  *   → file_writer (workspace/poetry.html)
  *   → run_bash (verify file exists + has content)
@@ -190,10 +190,10 @@ describe('Test 1: Memory → Plan → Execute → Verify (PersianPoetry)', () =>
     const htmlLower = html.toLowerCase();
     expect(htmlLower.includes('hafiz') || htmlLower.includes('hafez') || htmlLower.includes('persian'), 'HTML should mention Hafiz/Hafez or Persian').toBe(true);
 
-    // A4: Reply must contain WHAT.PJ code
+    // A4: Reply must contain PLAN.PJ code
     const projectCode = res.reply.match(/WHAT\.PJ-\d+/)?.[0];
-    console.log('WHAT.PJ code:', projectCode ?? 'NOT FOUND ❌');
-    expect(projectCode, 'Reply must include WHAT.PJ entry code').toBeTruthy();
+    console.log('PLAN.PJ code:', projectCode ?? 'NOT FOUND ❌');
+    expect(projectCode, 'Reply must include PLAN.PJ entry code').toBeTruthy();
 
     // A5: Reply must contain NOW.TD code
     const todoCode = res.reply.match(/NOW\.TD-\d+/)?.[0];

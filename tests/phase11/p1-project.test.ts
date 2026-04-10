@@ -252,12 +252,12 @@ describe('Phase 11 P1: PLAN.PJ Project Brain', () => {
     const entry = createProjectEntry({
       name: 'BlockedProject', priority: 1, vision: 'Test',
       status: 'blocked', current: '', next_action: '',
-      blocked_by: ['WHO.CT-000001', 'WHAT.PJ-000002'],
+      blocked_by: ['WHO.CT-000001', 'PLAN.PJ-000002'],
       phase: '', last_worked: '2026-03-05', notes: '',
     });
 
     const content = fs.readFileSync(entry.path, 'utf-8');
     expect(content).toContain('WHO.CT-000001');
-    expect(content).toContain('WHAT.PJ-000002');
+    expect(content).toContain('PLAN.PJ-000002');
   });
 });

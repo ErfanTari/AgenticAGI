@@ -141,7 +141,7 @@ export function checkPlanCalibration(): Notification | null {
 
 export function checkStaleProjects(): Notification | null {
   const cutoff = daysAgo(7);
-  const entries = queryStale('WHAT', 'PJ', 'active', cutoff);
+  const entries = queryStale('PLAN', 'PJ', 'active', cutoff);
 
   if (entries.length === 0) return null;
   return {
@@ -240,7 +240,7 @@ export function checkVisionAlignment(): Notification | null {
 
   // Get active plans AND projects
   const entries = d.prepare(
-    "SELECT * FROM index_entries WHERE ((nb = 'PLAN' AND type = 'PL') OR (nb = 'WHAT' AND type = 'PJ')) AND status = 'active'"
+    "SELECT * FROM index_entries WHERE ((nb = 'PLAN' AND type = 'PL') OR (nb = 'PLAN' AND type = 'PJ')) AND status = 'active'"
   ).all() as IndexEntry[];
 
   if (entries.length === 0) return null; // No plans/projects — nothing to compare
@@ -315,6 +315,12 @@ export async function checkNowTTL(): Promise<Notification | null> {
           WHERE nb = ? AND type = ? AND status = 'active'
           AND updated < ?
         `).all(nb, type, cutoff) as IndexEntry[];
+        const loggedEntries = d.prepare(`
+          SELECT * FROM index_entries
+          WHERE nb = ? AND type = ? AND status = 'logged'
+          AND updated < ?
+        `).all(nb, type, cutoff) as IndexEntry[];
+        entries = [...entries, ...loggedEntries];
 
         // Compress logs into a weekly summary if there are enough
         if (entries.length >= 7) {
@@ -400,8 +406,8 @@ async function checkGitMaintenance(): Promise<void> {
 }
 
 /**
- * FIX 4 — Idempotent heartbeat alert creation.
- * If an active WHY.MT alert with the same type already exists, updates it in place
+ * Phase 23 Stage 2A — heartbeat alerts are NOW.LOG pointer entries.
+ * If an active/logged pointer row with the same type already exists, updates it in place
  * instead of creating a duplicate. Prevents alert accumulation on extended absence.
  */
 function upsertHeartbeatAlert(
@@ -413,26 +419,28 @@ function upsertHeartbeatAlert(
   const d = getDb();
   const existing = d.prepare(`
     SELECT code FROM index_entries
-    WHERE nb = 'WHY' AND type = 'MT'
-    AND status = 'active'
+    WHERE nb = 'NOW' AND type = 'LOG'
+    AND purpose = 'pointer'
+    AND status IN ('active', 'logged')
     AND name LIKE ?
     LIMIT 1
   `).get(`%${type}%`) as { code: string } | undefined;
 
   if (existing) {
     // Update timestamp and summary — no new entry created
-    d.prepare('UPDATE index_entries SET updated = ?, summary = ? WHERE code = ?')
+    d.prepare("UPDATE index_entries SET updated = ?, summary = ?, status = 'logged', purpose = 'pointer' WHERE code = ?")
       .run(ran_at, summary, existing.code);
     const row = d.prepare('SELECT * FROM index_entries WHERE code = ?').get(existing.code) as IndexEntry;
     return row;
   }
   return createEntry({
-    nb: 'WHY',
-    type: 'MT',
+    nb: 'NOW',
+    type: 'LOG',
     name: `Heartbeat — ${type}`,
-    status: 'active',
+    status: 'logged',
     summary,
     body,
+    purpose: 'pointer',
   });
 }
 

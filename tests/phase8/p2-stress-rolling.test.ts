@@ -644,14 +644,14 @@ describe('Phase 8 Stress: Rolling Context Summarization', () => {
         step: 2,
         entries: [
           {
-            code: 'WHAT.PJ-000001',
+            code: 'PLAN.PJ-000001',
             nb: 'WHAT',
             type: 'PJ',
             name: 'Test Project',
             status: 'active',
             updated: '2026-02-24',
             summary: 'A test project entry',
-            path: 'memory/WHAT/projects/WHAT.PJ-000001.md',
+            path: 'memory/PLAN/projects/PLAN.PJ-000001.md',
           },
         ],
         contents: ['Full content of Test Project...'],

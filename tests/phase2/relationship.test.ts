@@ -39,7 +39,7 @@ beforeAll(() => {
   }).code;
 
   projectCode = createEntry({
-    nb: 'WHAT', type: 'PJ', name: 'Activation X-Ray',
+    nb: 'PLAN', type: 'PJ', name: 'Activation X-Ray',
     status: 'active', summary: 'AI interpretability project', body: 'Project details.',
   }).code;
 
@@ -101,8 +101,8 @@ describe('addRelationship', () => {
     expect(() => addRelationship({
       from_code: contactCode,
       relation: 'owns',
-      to_code: 'WHAT.PJ-999999',
-    })).toThrow('Entry not found: WHAT.PJ-999999');
+      to_code: 'PLAN.PJ-999999',
+    })).toThrow('Entry not found: PLAN.PJ-999999');
   });
 });
 

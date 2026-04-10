@@ -50,7 +50,7 @@ beforeAll(() => {
   ceramicCode = ceramicEntry.code;
 
   const projectEntry = createEntry({
-    nb: 'WHAT', type: 'PJ', name: 'Activation Xray',
+    nb: 'PLAN', type: 'PJ', name: 'Activation Xray',
     status: 'active',
     summary: 'AI interpretability project',
     body: 'Studying neural network activation patterns for interpretability research.',

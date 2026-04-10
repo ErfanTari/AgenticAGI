@@ -42,7 +42,7 @@ describe('H3/H4 — Debounced git batch commits', () => {
   it('scheduleMemoryCommit accepts messages without throwing', () => {
     expect(() => {
       scheduleMemoryCommit('WHO.CT-000001: Test Contact [agent]');
-      scheduleMemoryCommit('WHAT.PJ-000001: Test Project [agent]');
+      scheduleMemoryCommit('PLAN.PJ-000001: Test Project [agent]');
     }).not.toThrow();
   });
 

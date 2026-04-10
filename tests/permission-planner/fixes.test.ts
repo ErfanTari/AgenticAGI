@@ -52,7 +52,7 @@ describe('FIX 1: Permission-aware planner', () => {
       path.join(process.cwd(), 'core/router.ts'),
       'utf-8'
     );
-    expect(routerSrc).toContain('getSkillDescriptionsForPermission');
+    expect(routerSrc).toContain('getRelevantSkillSelection');
     expect(routerSrc).toContain('getActivePermissionMode');
   });
 
@@ -92,7 +92,7 @@ describe('FIX 1: Permission-aware planner', () => {
       path.join(process.cwd(), 'core/query-loop.ts'),
       'utf-8'
     );
-    expect(qlSrc).toContain('getSkillDescriptionsForPermission');
+    expect(qlSrc).toContain('getRelevantSkillSelection');
     expect(qlSrc).toContain('getActivePermissionMode');
   });
 });

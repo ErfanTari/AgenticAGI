@@ -150,7 +150,7 @@ describe('Group 5: Regression', () => {
       status: 'active', summary: 'Person A', body: 'A',
     });
     const b = createEntry({
-      nb: 'WHAT', type: 'PJ', name: 'Rel Stress B',
+      nb: 'PLAN', type: 'PJ', name: 'Rel Stress B',
       status: 'active', summary: 'Project B', body: 'B',
     });
     addRelationship({ from_code: a.code, relation: 'owns', to_code: b.code });

@@ -33,8 +33,8 @@ function seedDatabase(): void {
     { code: 'WHO.CT-000076', nb: 'WHO', type: 'CT', name: 'Zaraban', status: 'active', summary: 'AI agent platform', path: '/tmp/zaraban.md', updated: '2026-04-07' },
     { code: 'WHO.CT-000001', nb: 'WHO', type: 'CT', name: 'Erfan Tari', status: 'active', summary: 'Owner and developer', path: '/tmp/erfan.md', updated: '2026-04-07' },
     { code: 'WHO.ORG-000001', nb: 'WHO', type: 'ORG', name: 'Acme Inc', status: 'active', summary: 'Partner company', path: '/tmp/acme.md', updated: '2026-04-07' },
-    { code: 'WHAT.PJ-000003', nb: 'WHAT', type: 'PJ', name: 'Activation X-Ray', status: 'active', summary: 'AI interpretability project', path: '/tmp/xray.md', updated: '2026-04-07' },
-    { code: 'WHAT.PJ-000002', nb: 'WHAT', type: 'PJ', name: 'Tennis 3D', status: 'active', summary: '3D visualization project', path: '/tmp/tennis.md', updated: '2026-04-07' },
+    { code: 'PLAN.PJ-000003', nb: 'PLAN', type: 'PJ', name: 'Activation X-Ray', status: 'active', summary: 'AI interpretability project', path: '/tmp/xray.md', updated: '2026-04-07' },
+    { code: 'PLAN.PJ-000002', nb: 'PLAN', type: 'PJ', name: 'Tennis 3D', status: 'active', summary: '3D visualization project', path: '/tmp/tennis.md', updated: '2026-04-07' },
     { code: 'WHAT.KN-000010', nb: 'WHAT', type: 'KN', name: 'Favorite Color', status: 'active', summary: 'Ceramic blue', path: '/tmp/color.md', updated: '2026-04-07' },
     { code: 'HOW.PR-000044', nb: 'HOW', type: 'PR', name: 'Code Review Procedure', status: 'active', summary: 'Standard review steps', path: '/tmp/review.md', updated: '2026-04-07' },
     { code: 'NOW.TD-000020', nb: 'NOW', type: 'TD', name: 'Fix bug in agent', status: 'active', summary: 'High priority', path: '/tmp/bug.md', updated: '2026-04-07' },
@@ -68,9 +68,9 @@ describe('Phase 20 — Pre-Fetch Gate', () => {
     });
 
     it('extracts multiple codes with suffixes', () => {
-      const codes = extractCodes('Compare WHO.CT-000076_zaraban with WHAT.PJ-000003_xray');
+      const codes = extractCodes('Compare WHO.CT-000076_zaraban with PLAN.PJ-000003_xray');
       expect(codes).toContain('WHO.CT-000076');
-      expect(codes).toContain('WHAT.PJ-000003');
+      expect(codes).toContain('PLAN.PJ-000003');
     });
 
     it('returns empty for non-codes', () => {
@@ -123,7 +123,7 @@ describe('Phase 20 — Pre-Fetch Gate', () => {
 
     it('detects "list projects"', () => {
       const result = detectListingQuery('list projects');
-      expect(result).toEqual({ nb: 'WHAT', type: 'PJ' });
+      expect(result).toEqual({ nb: 'PLAN', type: 'PJ' });
     });
 
     it('detects "what are my todos"', () => {

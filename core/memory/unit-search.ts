@@ -319,8 +319,8 @@ export const NOTEBOOK_VOCABULARY: Record<string, { nb: string; type?: string }> 
   organizations: { nb: 'WHO', type: 'ORG' },
   companies:     { nb: 'WHO', type: 'ORG' },
   // WHAT notebook
-  projects:      { nb: 'WHAT', type: 'PJ' },
-  project:       { nb: 'WHAT', type: 'PJ' },
+  projects:      { nb: 'PLAN', type: 'PJ' },
+  project:       { nb: 'PLAN', type: 'PJ' },
   // NOW notebook
   todos:         { nb: 'NOW' },
   tasks:         { nb: 'NOW' },
@@ -363,7 +363,7 @@ function detectListingQuery(content: string): { nb: string; type: string } | nul
 
   const patterns: Array<{ keywords: string[]; nb: string; type: string }> = [
     { keywords: ['contact', 'contacts', 'people', 'person'], nb: 'WHO', type: 'CT' },
-    { keywords: ['project', 'projects', 'working on'], nb: 'WHAT', type: 'PJ' },
+    { keywords: ['project', 'projects', 'working on'], nb: 'PLAN', type: 'PJ' },
     { keywords: ['todo', 'todos', 'task', 'tasks', 'to-do'], nb: 'NOW', type: 'TD' },
     { keywords: ['note', 'notes', 'knowledge'], nb: 'WHAT', type: 'KN' },
     { keywords: ['procedure', 'procedures', 'skill', 'skills', 'how to'], nb: 'HOW', type: 'PR' },
@@ -399,7 +399,6 @@ function searchPerson(content: string): UnitMemoryResult | null {
 function searchProjectByName(name: string): UnitMemoryResult {
   const entries = uniqueByCode([
     ...queryEntries({ nb: 'PLAN', type: 'PJ', name }),
-    ...queryEntries({ nb: 'WHAT', name }),
   ]).slice(0, DEFAULT_LIMIT);
   const matched = searchExactOrFuzzy(entries, name);
   return {
@@ -417,7 +416,6 @@ function searchProject(content: string): UnitMemoryResult | null {
 
   const entries = uniqueByCode([
     ...queryEntries({ nb: 'PLAN', type: 'PJ', name: reference }),
-    ...queryEntries({ nb: 'WHAT', name: reference }),
   ]).slice(0, DEFAULT_LIMIT);
   const matched = searchExactOrFuzzy(entries, reference);
   return {

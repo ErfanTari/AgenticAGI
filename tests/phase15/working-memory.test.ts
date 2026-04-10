@@ -148,14 +148,14 @@ describe('Phase 15: Working Memory', () => {
     const wm = await createWorkingMemory('Test goal', intake, db);
 
     await addToActiveContext(wm, 'WHO.CT-000001', 'Alice Smith — contact');
-    await addToActiveContext(wm, 'WHAT.PJ-000002', 'Alpha project');
+    await addToActiveContext(wm, 'PLAN.PJ-000002', 'Alpha project');
     await addToActiveContext(wm, 'WHO.CT-000001', 'Alice Smith — contact'); // duplicate
 
     expect(wm.activeContext).toHaveLength(2);
 
     const content = fs.readFileSync(wm.filePath, 'utf-8');
     expect(content).toContain('WHO.CT-000001');
-    expect(content).toContain('WHAT.PJ-000002');
+    expect(content).toContain('PLAN.PJ-000002');
   });
 
   it('archiveWorkingMemory sets status to archived', async () => {

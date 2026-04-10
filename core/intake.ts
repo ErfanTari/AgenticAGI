@@ -15,6 +15,24 @@ import { stripThinkingTags } from './llm.js';
 import { promptLoader } from './prompt-loader.js';
 import { TOKEN_BUDGETS } from '../config/agent.config.js';
 
+const GREETING_ONLY = /^\s*(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy|greetings)\s*[!.?]*\s*$/i;
+
+function normalizeGroundingText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gi, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function isGroundedInMessage(message: string, candidate: string | null): boolean {
+  if (!candidate) return false;
+  const normalizedMessage = normalizeGroundingText(message);
+  const normalizedCandidate = normalizeGroundingText(candidate);
+  if (!normalizedMessage || !normalizedCandidate) return false;
+  return normalizedMessage.includes(normalizedCandidate);
+}
+
 export interface IntakeSignals {
   summary: string;
   /** Name string when confidence > 0.7, otherwise null */
@@ -96,6 +114,44 @@ export async function runIntake(
   db: Database.Database,
   llm: LLMHandler,
 ): Promise<IntakeResult> {
+  if (GREETING_ONLY.test(message)) {
+    const signals: IntakeSignals = {
+      summary: message.trim(),
+      personSignal: null,
+      projectSignal: null,
+      timeSignal: null,
+      agenticSignal: false,
+      procedureSignal: false,
+      querySignal: false,
+    };
+
+    transparency.emit({
+      type: 'intake_signals',
+      data: {
+        personSignal: null,
+        projectSignal: null,
+        querySignal: false,
+        agenticSignal: false,
+      },
+    });
+
+    transparency.emit({
+      type: 'intake',
+      data: {
+        summary: signals.summary,
+        signals: signals as unknown as Record<string, unknown>,
+        resolvedCodes: [],
+      },
+    });
+
+    return {
+      summary: signals.summary,
+      signals,
+      resolvedContext: [],
+      projectCode: null,
+    };
+  }
+
   // Call LLM for classification
   const classifyMessages: Message[] = [
     { role: 'system', content: getIntakeSystemPrompt() },
@@ -121,8 +177,14 @@ export async function runIntake(
 
   const signals: IntakeSignals = {
     summary: parsed?.summary ?? message.slice(0, 100),
-    personSignal: (parsed?.person?.confidence ?? 0) > 0.7 ? (parsed!.person!.name) : null,
-    projectSignal: (parsed?.project?.confidence ?? 0) > 0.7 ? (parsed!.project!.name) : null,
+    personSignal:
+      (parsed?.person?.confidence ?? 0) > 0.7 && isGroundedInMessage(message, parsed?.person?.name ?? null)
+        ? parsed!.person!.name
+        : null,
+    projectSignal:
+      (parsed?.project?.confidence ?? 0) > 0.7 && isGroundedInMessage(message, parsed?.project?.name ?? null)
+        ? parsed!.project!.name
+        : null,
     timeSignal: parsed?.time?.description ?? null,
     agenticSignal: parsed?.agentic === true,
     procedureSignal: parsed?.procedure === true,
@@ -168,21 +230,7 @@ export async function runIntake(
   if (signals.projectSignal) {
     lookups.push((async () => {
       try {
-        // Search WHAT.PJ
-        const whatEntries = fuzzyNameSearch(db, signals.projectSignal!, 'WHAT', 'PJ');
-        for (const entry of whatEntries) {
-          if (!resolvedContext.some(r => r.code === entry.code)) {
-            resolvedContext.push({
-              code: entry.code,
-              summary: entry.summary ?? entry.name,
-              nb: entry.nb,
-              name: entry.name,
-            });
-            if (!projectCode) projectCode = entry.code;
-          }
-        }
-
-        // Search PLAN.PJ (project brains)
+        // Search PLAN.PJ project brains
         const planEntries = fuzzyNameSearch(db, signals.projectSignal!, 'PLAN', 'PJ');
         for (const entry of planEntries) {
           if (!resolvedContext.some(r => r.code === entry.code)) {
@@ -265,10 +313,9 @@ export async function runIntake(
     });
   }
 
-  // FIX-C4: Prefer PLAN.PJ over WHAT.PJ for projectCode (project brain keys on PLAN.PJ)
+  // FIX-C4: Project keys are PLAN.PJ only after the Stage 2B collapse.
   const planPj = resolvedContext.find(e => e.code.startsWith('PLAN.PJ'));
-  const whatPj = resolvedContext.find(e => e.code.startsWith('WHAT.PJ'));
-  projectCode = planPj?.code ?? whatPj?.code ?? projectCode;
+  projectCode = planPj?.code ?? projectCode;
 
   // FIX-C4: Emit transparency event after resolution
   transparency.emit({

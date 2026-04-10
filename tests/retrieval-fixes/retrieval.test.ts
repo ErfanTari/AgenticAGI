@@ -117,7 +117,7 @@ describe('Signal Parser', () => {
 // ─── Strategy Selection (4 tests) ─────────────────────────────────────────
 
 describe('Strategy Selection', () => {
-  it('test 5: content + projectSignal → strategy project, searches WHAT.PJ + PLAN.PJ', async () => {
+  it('test 5: content + projectSignal → strategy project, searches PLAN.PJ + PLAN.PJ', async () => {
     // Seed a PLAN.PJ entry
     upsertEntry({ nb: 'PLAN', type: 'PJ', name: 'tennis 3d game', status: 'active', summary: 'Tennis 3D game project', body: 'A tennis simulation.' });
     const unit = makeUnit('tennis 3d game plans');
@@ -170,7 +170,7 @@ describe('Listing Fast Path', () => {
   });
 
   it('test 10: "list all projects" → type_scan, nb=WHAT, type=PJ', async () => {
-    upsertEntry({ nb: 'WHAT', type: 'PJ', name: 'Alpha', status: 'active', summary: 'Project alpha', body: 'Body.' });
+    upsertEntry({ nb: 'PLAN', type: 'PJ', name: 'Alpha', status: 'active', summary: 'Project alpha', body: 'Body.' });
     const unit = makeUnit('list all projects');
     const results = await searchMemoryForUnits([unit]);
 

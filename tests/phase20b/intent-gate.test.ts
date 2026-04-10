@@ -42,7 +42,7 @@ function seedDatabase(): void {
   const entries = [
     { code: 'WHO.CT-000076', nb: 'WHO', type: 'CT', name: 'Zaraban', status: 'active', summary: 'AI agent', path: '/tmp/zaraban.md', updated: '2026-04-07' },
     { code: 'WHO.CT-000001', nb: 'WHO', type: 'CT', name: 'Erfan Tari', status: 'active', summary: 'Owner', path: '/tmp/erfan.md', updated: '2026-04-07' },
-    { code: 'WHAT.PJ-000003', nb: 'WHAT', type: 'PJ', name: 'Activation X-Ray', status: 'active', summary: 'Project', path: '/tmp/xray.md', updated: '2026-04-07' },
+    { code: 'PLAN.PJ-000003', nb: 'PLAN', type: 'PJ', name: 'Activation X-Ray', status: 'active', summary: 'Project', path: '/tmp/xray.md', updated: '2026-04-07' },
   ];
 
   for (const e of entries) {

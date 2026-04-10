@@ -162,8 +162,8 @@ describe('BUG-C3: UNIQUE constraint on (nb, type, LOWER(name))', () => {
   });
 
   it('BUG-C3B: two upsertEntry calls with same name produce exactly one row', () => {
-    upsertEntry({ nb: 'WHAT', type: 'PJ', name: 'Duplicate Project', status: 'active', summary: 's1', body: 'b1' });
-    upsertEntry({ nb: 'WHAT', type: 'PJ', name: 'Duplicate Project', status: 'active', summary: 's2', body: 'b2' });
+    upsertEntry({ nb: 'PLAN', type: 'PJ', name: 'Duplicate Project', status: 'active', summary: 's1', body: 'b1' });
+    upsertEntry({ nb: 'PLAN', type: 'PJ', name: 'Duplicate Project', status: 'active', summary: 's2', body: 'b2' });
 
     const d = getDb();
     const rows = d.prepare("SELECT code FROM index_entries WHERE nb='WHAT' AND type='PJ' AND LOWER(name)='duplicate project'").all();

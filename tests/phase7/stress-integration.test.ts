@@ -75,7 +75,7 @@ describe('Group 4: Full Loop Integration', () => {
       if (messages[0].content.includes('memory writing assistant')) {
         if (callCount === 1) return 'invalid JSON garbage {{{{';
         return JSON.stringify({
-          nb: 'WHAT', type: 'PJ', name: 'AgenticAGI',
+          nb: 'PLAN', type: 'PJ', name: 'AgenticAGI',
           status: 'active', summary: 'Erfan owns this project',
           body: 'AgenticAGI project owned by Erfan',
         });
@@ -100,12 +100,12 @@ describe('Group 4: Full Loop Integration', () => {
       body: 'Vision',
     });
     createEntry({
-      nb: 'WHAT', type: 'PJ', name: 'Shoe Marketing',
+      nb: 'PLAN', type: 'PJ', name: 'Shoe Marketing',
       status: 'active', summary: 'marketing shoes online',
       body: 'Unconnected 1',
     });
     createEntry({
-      nb: 'WHAT', type: 'PJ', name: 'Yoga App',
+      nb: 'PLAN', type: 'PJ', name: 'Yoga App',
       status: 'active', summary: 'yoga scheduling platform',
       body: 'Unconnected 2',
     });

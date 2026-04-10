@@ -22,7 +22,7 @@ export const memoryWriteMCPSkill: MCPSkill = {
       },
       type: {
         type: 'string',
-        description: 'Type code: CT|ORG (WHO), PJ|KN (WHAT), CA|DL (WHEN), PR (HOW), MT|QU (WHY), TD|RP (NOW), PL (PLAN)',
+        description: 'Type code: CT|ORG (WHO), KN (WHAT), CA|DL (WHEN), PR (HOW), MT|QU (WHY), TD|RP|LOG (NOW), PL|EX|CT|MS|PJ (PLAN)',
       },
       name: {
         type: 'string',
@@ -50,7 +50,7 @@ export const memoryWriteMCPSkill: MCPSkill = {
     let type = (input.type as string)?.toUpperCase?.();
     let name = input.name as string;
 
-    // Handle "code": "WHAT.PJ-NEW" or "entry_type": "WHAT.PJ" format
+    // Handle "code": "PLAN.PJ-NEW" or "entry_type": "PLAN.PJ" format
     const codeStr = (input.code as string) ?? (input.entry_type as string) ?? '';
     if ((!nb || !type) && codeStr) {
       const m = codeStr.match(/^([A-Z]+)\.([A-Z]+)/i);

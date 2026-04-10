@@ -160,4 +160,40 @@ describe('Phase 15: runIntake()', () => {
     expect(result.signals.personSignal).toBeNull();
     expect(result.signals.projectSignal).toBeNull();
   });
+
+  it('bypasses the LLM entirely for plain greetings', async () => {
+    let called = false;
+    const llm: LLMHandler = async () => {
+      called = true;
+      throw new Error('Greeting path should not call the LLM');
+    };
+    const { initDatabase: idb } = await import('../../core/memory/index.js');
+    const db = idb(PATHS.db);
+
+    const result = await runIntake('hi', db, llm);
+
+    expect(called).toBe(false);
+    expect(result.signals.summary).toBe('hi');
+    expect(result.signals.querySignal).toBe(false);
+    expect(result.signals.agenticSignal).toBe(false);
+    expect(result.resolvedContext).toHaveLength(0);
+  });
+
+  it('drops ungrounded project signals hallucinated by the model', async () => {
+    const llm = makeLLM(JSON.stringify({
+      summary: 'Generic greeting',
+      person: null,
+      project: { name: 'Alpha', confidence: 1.0 },
+      time: null,
+      agentic: false,
+      procedure: false,
+      query: false,
+    }));
+    const { initDatabase: idb } = await import('../../core/memory/index.js');
+    const db = idb(PATHS.db);
+
+    const result = await runIntake('hello there', db, llm);
+
+    expect(result.signals.projectSignal).toBeNull();
+  });
 });

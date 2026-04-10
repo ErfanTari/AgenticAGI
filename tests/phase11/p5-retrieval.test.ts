@@ -41,7 +41,7 @@ describe('Phase 11 P5: LightRAG Relevance + RRF', () => {
     const entries = [
       { code: 'A', nb: 'WHAT', type: 'KN', name: 'AgenticAGI Project', status: 'active', updated: now, summary: 'AI agent platform' },
       { code: 'B', nb: 'WHO', type: 'CT', name: 'John Smith', status: 'active', updated: now, summary: 'contact' },
-      { code: 'C', nb: 'WHAT', type: 'PJ', name: 'AgenticAGI roadmap planning', status: 'active', updated: now, summary: 'roadmap' },
+      { code: 'C', nb: 'PLAN', type: 'PJ', name: 'AgenticAGI roadmap planning', status: 'active', updated: now, summary: 'roadmap' },
     ];
 
     const ranked = rankByLightRAG(entries, 'AgenticAGI project planning');
@@ -54,8 +54,8 @@ describe('Phase 11 P5: LightRAG Relevance + RRF', () => {
     const { rankByRelevance, rankByLightRAG } = await import('../../core/context.js') as any;
     const now = new Date().toISOString().slice(0, 10);
     const entries = [
-      { code: 'A', nb: 'WHAT', type: 'PJ', name: 'Alpha Project', status: 'active', updated: now, summary: 'alpha' },
-      { code: 'B', nb: 'WHAT', type: 'PJ', name: 'Beta Project', status: 'active', updated: now, summary: 'beta' },
+      { code: 'A', nb: 'PLAN', type: 'PJ', name: 'Alpha Project', status: 'active', updated: now, summary: 'alpha' },
+      { code: 'B', nb: 'PLAN', type: 'PJ', name: 'Beta Project', status: 'active', updated: now, summary: 'beta' },
     ];
 
     const result1 = rankByRelevance(entries, 'alpha project');
@@ -67,8 +67,8 @@ describe('Phase 11 P5: LightRAG Relevance + RRF', () => {
     const { rankByLightRAG } = await import('../../core/context.js') as any;
     const now = new Date().toISOString().slice(0, 10);
     const entries = [
-      { code: 'A', nb: 'WHAT', type: 'PJ', name: 'Pinned Project', status: 'active', updated: now, summary: 'pinned entry', pinned: 1, active_page: 1 },
-      { code: 'B', nb: 'WHAT', type: 'PJ', name: 'Pinned Project Match', status: 'active', updated: now, summary: 'another entry', pinned: 0, active_page: 1 },
+      { code: 'A', nb: 'PLAN', type: 'PJ', name: 'Pinned Project', status: 'active', updated: now, summary: 'pinned entry', pinned: 1, active_page: 1 },
+      { code: 'B', nb: 'PLAN', type: 'PJ', name: 'Pinned Project Match', status: 'active', updated: now, summary: 'another entry', pinned: 0, active_page: 1 },
     ];
 
     const ranked = rankByLightRAG(entries, 'pinned project');
@@ -79,8 +79,8 @@ describe('Phase 11 P5: LightRAG Relevance + RRF', () => {
     const { rankByLightRAG } = await import('../../core/context.js') as any;
     const now = new Date().toISOString().slice(0, 10);
     const entries = [
-      { code: 'A', nb: 'WHAT', type: 'PJ', name: 'Active Page Entry', status: 'active', updated: now, summary: 'test', active_page: 1, pinned: 0 },
-      { code: 'B', nb: 'WHAT', type: 'PJ', name: 'Inactive Page Entry', status: 'active', updated: now, summary: 'test', active_page: 0, pinned: 0 },
+      { code: 'A', nb: 'PLAN', type: 'PJ', name: 'Active Page Entry', status: 'active', updated: now, summary: 'test', active_page: 1, pinned: 0 },
+      { code: 'B', nb: 'PLAN', type: 'PJ', name: 'Inactive Page Entry', status: 'active', updated: now, summary: 'test', active_page: 0, pinned: 0 },
     ];
 
     const ranked = rankByLightRAG(entries, 'test entry');

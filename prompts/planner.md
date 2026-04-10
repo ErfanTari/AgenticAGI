@@ -118,17 +118,17 @@ More correct examples:
 - calculator: { "expression": "5 + 3" }
 - run_bash: { "command": "ls -la" }
 - memory_read: { "query": "projects and skills for Erfan", "nb": "WHAT", "limit": 6 }
-- memory_write (project): { "nb": "WHAT", "type": "PJ", "name": "ProjectName", "summary": "one line summary", "body": "details" }
+- memory_write (project): { "nb": "PLAN", "type": "PJ", "name": "ProjectName", "summary": "one line summary", "body": "details" }
 - memory_write (todo): { "nb": "NOW", "type": "TD", "name": "Task description", "summary": "brief", "body": "details" }
 - memory_write (contact): { "nb": "WHO", "type": "CT", "name": "Full Name", "summary": "role or note", "body": "contact details" }
 - memory_write (event): { "nb": "WHEN", "type": "CA", "name": "Event name", "summary": "brief", "body": "date and details" }
 - memory_write (knowledge): { "nb": "WHAT", "type": "KN", "name": "Entry name", "summary": "one line", "body": "full content" }
 - memory_write (procedure): { "nb": "HOW", "type": "PR", "name": "Procedure name", "summary": "brief", "body": "steps" }
-- relationship_write: { "from_code": "WHO.CT-000001", "relation": "interested_in", "to_code": "WHAT.PJ-000003" }
+- relationship_write: { "from_code": "WHO.CT-000001", "relation": "interested_in", "to_code": "PLAN.PJ-000003" }
 
 VALID MEMORY TYPES — use ONLY these notebook+type combinations:
 WHO   → CT (contact), ORG (organization)
-WHAT  → PJ (project), KN (knowledge entry)
+WHAT  → KN (knowledge entry)
 WHEN  → CA (calendar event), DL (deadline), EV (event), RF (reflection), HX (history)
 HOW   → PR (procedure), SK (skill)
 WHY   → MT (meta reflection), QU (open question)
@@ -143,7 +143,7 @@ SKILL ROUTING — FILE vs SYNTHESIS:
 Use generate_and_save_file when: the output is a FILE to be saved to disk (html, js, md, txt, json, etc.)
 Use content_writer ONLY when: generating text that stays in memory / gets piped to another step / returned to user WITHOUT saving to a file (reports, comparisons, summaries)
 
-- generate_and_save_file (html file): { "path": "index.html", "spec_code": "PLAN.EX-000042" }
+- generate_and_save_file (html file): { "path": "index.html", "spec_code": "<memory_code>" }
 - generate_and_save_file (code file): { "path": "src/game.js", "description": "A short spec under 200 chars" }
 - generate_and_save_file (modify file): { "path": "src/game.js", "description": "Add keyboard controls", "context": "{{existing_source}}" }
 - content_writer (synthesis report): { "prompt": "Write a weekly status report using: {{projects}}", "format": "markdown" }
@@ -151,7 +151,7 @@ Use content_writer ONLY when: generating text that stays in memory / gets piped 
 
 CRITICAL: spec_code vs memory_read OUTPUT MISMATCH
 
-spec_code ONLY accepts a memory code string like "PLAN.EX-000042" (14–20 chars, format NOTEBOOK.TYPE-NNNNNN).
+spec_code ONLY accepts a memory code string in NOTEBOOK.TYPE-NNNNNN format (for example: "<memory_code>").
 memory_read returns a JSON metadata object — this is NEVER a valid spec_code.
 
 WRONG PATTERN (causes STATE_ERROR — memory_read output is not a code):
@@ -232,15 +232,15 @@ RELATIONSHIP_WRITE RULES:
 → If a prior step stored a code via storeResultAs, use that template in relationship_write input
 → CORRECT pattern:
   Step 1: memory_write { "name": "Sara Ahmadi", ... } storeResultAs: "sara_code"
-  Step 2: relationship_write { "from_code": "{{sara_code}}", "relation": "interested_in", "to_code": "WHAT.PJ-000014" }
+  Step 2: relationship_write { "from_code": "{{sara_code}}", "relation": "interested_in", "to_code": "PLAN.PJ-000014" }
 → WRONG pattern:
   Step 2: relationship_write { "from_code": "Sara Ahmadi", "to_code": "AgenticAGI" }
   ← names cause ambiguous lookup when duplicates exist
 → If you don't have a code from a prior step, use the exact full name as it appears in memory
-→ For well-known entries like AgenticAGI, use the known code directly: WHAT.PJ-000014
+→ For well-known entries like AgenticAGI, use the known code directly: PLAN.PJ-000014
 
 CRITICAL SKILL SELECTION RULES:
-- Use memory_write when: saving contacts, projects, todos, knowledge, plans, deadlines, procedures, reflections, or ANY notebook entry (WHO/WHAT/WHEN/HOW/WHY/NOW/PLAN). Memory entries use codes like WHO.CT-000001, WHAT.PJ-000003 etc.
+- Use memory_write when: saving contacts, projects, todos, knowledge, plans, deadlines, procedures, reflections, or ANY notebook entry (WHO/WHAT/WHEN/HOW/WHY/NOW/PLAN). Memory entries use codes like WHO.CT-000001, PLAN.PJ-000003 etc.
 - Use relationship_write when: linking two entries with a directional relationship (interested_in, owns, works_for, blocks, refers). NEVER use memory_write for relationships.
 - Use file_writer ONLY when: the user explicitly asks to write/save/create an actual file on disk (.txt, .md, .json, .sh etc.)
 - NEVER use file_writer for notebook memory entries
@@ -264,6 +264,21 @@ FILE CREATION RULES:
 - For test+fix loops: mark run_bash steps as optional: true so the plan continues to fix steps even if tests fail
 - PREFER implement_and_test over manual write→run→fix steps when the task is: write code + run tests + fix failures. This collapses the loop into ONE plan step, freeing the remaining steps for memory_write or other tasks. Do NOT encode write→test→fix as separate plan steps when implement_and_test is available.
 - For "check/debug/fix existing code" tasks, implement_and_test reuses existing workspace files when the provided filename/test_filename already exist. Use the real existing filenames so the skill edits the current artifact instead of generating a fresh one.
+
+## ARTIFACT TYPE RULES
+
+For binary office artifacts (xlsx/docx/pptx/pdf), the plan must use create_artifact
+or modify_artifact, NEVER content_writer or file_writer. The plan must include a
+verify_artifact step after creation.
+
+CORRECT (xlsx task):
+  step 1: create_artifact { path: "sales.xlsx", description: "..." }
+  step 2: verify_artifact { path: "sales.xlsx" }
+
+WRONG (xlsx task):
+  step 1: content_writer { format: "code", prompt: "Python script that creates ..." }
+  step 2: file_writer { path: "create_xlsx.py", content: "{{step1_result}}" }
+  step 3: run_bash { command: "python create_xlsx.py" }   ← solves wrong problem
 
 implement_and_test input format:
 {

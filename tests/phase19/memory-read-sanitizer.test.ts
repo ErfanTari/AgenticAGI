@@ -26,7 +26,7 @@ describe('cleanCode — bracket sanitizer', () => {
     expect(cleanCode('  [WHO.CT-000001]  ')).toBe('WHO.CT-000001');
   });
 
-  it('handles WHAT.PJ codes', () => {
-    expect(cleanCode('[WHAT.PJ-000003]')).toBe('WHAT.PJ-000003');
+  it('handles PLAN.PJ codes', () => {
+    expect(cleanCode('[PLAN.PJ-000003]')).toBe('PLAN.PJ-000003');
   });
 });

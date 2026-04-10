@@ -12,7 +12,9 @@ const mocks = vi.hoisted(() => ({
   updateEntry: vi.fn(),
   upsertEntry: vi.fn(),
   writeReflection: vi.fn(),
+  applyUtilityFeedback: vi.fn(),
   getSkillDescriptions: vi.fn(),
+  getRelevantSkillSelection: vi.fn(),
   runSkill: vi.fn(),
   addRelationship: vi.fn(),
   getRelationshipsFrom: vi.fn(),
@@ -46,6 +48,10 @@ vi.mock('../../core/memory/episodic.js', () => ({
   writeReflection: mocks.writeReflection,
 }));
 
+vi.mock('../../core/memory/lifecycle.js', () => ({
+  applyUtilityFeedback: mocks.applyUtilityFeedback,
+}));
+
 vi.mock('../../core/memory/relationships.js', () => ({
   addRelationship: mocks.addRelationship,
   getRelationshipsFrom: mocks.getRelationshipsFrom,
@@ -53,6 +59,7 @@ vi.mock('../../core/memory/relationships.js', () => ({
 
 vi.mock('../../core/skills/registry.js', () => ({
   getSkillDescriptions: mocks.getSkillDescriptions,
+  getRelevantSkillSelection: mocks.getRelevantSkillSelection,
   getSkillDescriptionsForPermission: mocks.getSkillDescriptions,
   getSkillsByPermission: vi.fn(() => []),
   getAllSkills: vi.fn(() => []),
@@ -76,6 +83,10 @@ describe('Phase 13: route dispatcher', () => {
       { role: 'user', content: 'context user' },
     ]);
     mocks.getSkillDescriptions.mockReturnValue('file_writer: write files');
+    mocks.getRelevantSkillSelection.mockReturnValue({
+      descriptions: 'file_writer: write files',
+      names: ['file_writer'],
+    });
     // Route to the full executor path: plan self-assesses as HIGH (complex)
     mocks.decomposeTask.mockResolvedValue({
       goal: 'Build app',
@@ -143,8 +154,8 @@ describe('Phase 13: route dispatcher', () => {
         strategy: 'bm25' as const,
         confidence: 0.7,
         entries: [{
-          code: 'WHAT.PJ-000001',
-          nb: 'WHAT',
+          code: 'PLAN.PJ-000001',
+          nb: 'PLAN',
           type: 'PJ',
           name: 'Project Atlas',
           status: 'active',
@@ -165,7 +176,7 @@ describe('Phase 13: route dispatcher', () => {
     expect(mocks.decomposeTask.mock.calls[0][0]).toBe('build the client\nwrite tests for it');
     expect(mocks.decomposeTask.mock.calls[0][1].goals).toHaveLength(2);
     expect(mocks.decomposeTask.mock.calls[0][1].memoryContext).toContain('PRIOR QUERY CONTEXT');
-    expect(mocks.decomposeTask.mock.calls[0][1].memoryContext).toContain('WHAT.PJ-000001');
+    expect(mocks.decomposeTask.mock.calls[0][1].memoryContext).toContain('PLAN.PJ-000001');
     expect(mocks.hybridSearch).not.toHaveBeenCalled();
     expect(mocks.writeReflection).toHaveBeenCalledTimes(1);
     expect(routed.reply).toContain('conversation reply');
@@ -178,8 +189,8 @@ describe('Phase 13: route dispatcher', () => {
     const llm = vi.fn(async () => 'should not be used');
     mocks.hybridSearch.mockResolvedValue([{
       entry: {
-        code: 'WHAT.PJ-000002',
-        nb: 'WHAT',
+        code: 'PLAN.PJ-000002',
+        nb: 'PLAN',
         type: 'PJ',
         name: 'Recovered Project',
         status: 'active',
@@ -222,7 +233,7 @@ describe('Phase 13: route dispatcher', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
 
     expect(mocks.upsertEntry).toHaveBeenCalledWith(expect.objectContaining({
-      nb: 'WHAT',
+      nb: 'PLAN',
       type: 'PJ',
       name: 'Zaraban Analytics',
     }));

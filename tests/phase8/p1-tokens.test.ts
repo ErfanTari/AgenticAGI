@@ -100,7 +100,7 @@ More text to pad this out to over 1000 characters total. `.repeat(5);
     // Use 12 messages (6 turns) with medium content
     const mediumHistory: Message[] = Array.from({ length: 12 }, (_, i) => ({
       role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
-      content: `Turn ${i}: Here is discussion about project WHAT.PJ-000001 including technical specifications, architectural diagrams, implementation timelines, and stakeholder feedback.`.repeat(3), // ~250 tokens each
+      content: `Turn ${i}: Here is discussion about project PLAN.PJ-000001 including technical specifications, architectural diagrams, implementation timelines, and stakeholder feedback.`.repeat(3), // ~250 tokens each
     }));
 
     const userMessage = 'Show me the detailed summary of all active projects and their current status';

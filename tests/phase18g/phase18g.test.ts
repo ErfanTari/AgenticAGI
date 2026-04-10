@@ -51,7 +51,7 @@ describe('Listing Fast-Path Wiring', () => {
   });
 
   it('test 2: searchMemoryForUnits with non-listing signals → listing content still wins', async () => {
-    upsertEntry({ nb: 'WHAT', type: 'PJ', name: 'Alpha', status: 'active', summary: 'Project alpha', body: 'Body.' });
+    upsertEntry({ nb: 'PLAN', type: 'PJ', name: 'Alpha', status: 'active', summary: 'Project alpha', body: 'Body.' });
     const unit = makeUnit('list all projects');
     // Even if options has an unrelated signal, listing content detection fires first
     const results = await searchMemoryForUnits([unit], undefined, { timeSignal: 'yesterday' });
@@ -66,12 +66,12 @@ describe('Listing Fast-Path Wiring', () => {
     expect(results[0].entries.every(e => e.nb === 'WHO')).toBe(true);
   });
 
-  it('test 4: "list all active projects" → type_scan, nb=WHAT', async () => {
-    upsertEntry({ nb: 'WHAT', type: 'PJ', name: 'Beta', status: 'active', summary: 'Project beta', body: 'Body.' });
+  it('test 4: "list all active projects" → type_scan, nb=PLAN', async () => {
+    upsertEntry({ nb: 'PLAN', type: 'PJ', name: 'Beta', status: 'active', summary: 'Project beta', body: 'Body.' });
     const unit = makeUnit('list all active projects');
     const results = await searchMemoryForUnits([unit]);
     expect(results[0].strategy).toBe('type_scan');
-    expect(results[0].entries.every(e => e.nb === 'WHAT')).toBe(true);
+    expect(results[0].entries.every(e => e.nb === 'PLAN')).toBe(true);
   });
 
   it('test 5: type_scan with 2 entries → confidence=1, entries.length=2', async () => {
@@ -95,11 +95,22 @@ describe('Memory Body Templates', () => {
     expect(fetched?.content).toContain('_Not specified_');
   });
 
-  it('test 7: createEntry WHAT.PJ with empty body → body contains ## Initial Request', () => {
-    const entry = createEntry({ nb: 'WHAT', type: 'PJ', name: 'Test Project', status: 'active', summary: 'Test', body: '' });
+  it('test 7: createEntry PLAN.PJ with empty body → body contains ## Initial Request', () => {
+    const entry = createEntry({ nb: 'PLAN', type: 'PJ', name: 'Test Project', status: 'active', summary: 'Test', body: '' });
     const fetched = fetchByCode(entry.code);
     expect(fetched?.content).toContain('## Initial Request');
-    expect(fetched?.content).toContain('## Tasks');
+    expect(fetched?.content).toContain('## Goal');
+  });
+
+  it('test 7b: createEntry WHAT.PJ throws invalid notebook+type', () => {
+    expect(() => createEntry({
+      nb: 'WHAT',
+      type: 'PJ',
+      name: 'Legacy Project',
+      status: 'active',
+      summary: 'Should fail',
+      body: '',
+    })).toThrow('Invalid notebook+type: WHAT.PJ');
   });
 
   it('test 8: createEntry WHO.CT with custom body → template NOT applied, body used as-is', () => {

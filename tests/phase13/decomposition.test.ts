@@ -361,6 +361,6 @@ describe('Phase 13: decomposition', () => {
     // Non-destructive file writes no longer gate on confirmation
     expect(result.reply).not.toContain('Confirmation required before executing this plan.');
     expect(result.reply).toContain('Existing Project');
-    expect(result.reply).not.toContain('Created WHAT.PJ');
+    expect(result.reply).not.toContain('Created PLAN.PJ');
   });
 });

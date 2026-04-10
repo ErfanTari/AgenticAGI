@@ -118,10 +118,10 @@ describe('FIX 6: MEMORY.md relevance filtering', () => {
     '# Memory Index',
     'WHO.CT-000001: Sara Ahmadi — lead designer',
     'WHO.CT-000002: John Doe — backend developer',
-    'WHAT.PJ-000001: Street of Rage Game — HTML game project',
-    'WHAT.PJ-000002: Street of Rage v2 — second attempt',
-    'WHAT.PJ-000003: Street of Rage v3 — third attempt',
-    'WHAT.PJ-000004: Milky Way Sim — 3D galaxy simulation',
+    'PLAN.PJ-000001: Street of Rage Game — HTML game project',
+    'PLAN.PJ-000002: Street of Rage v2 — second attempt',
+    'PLAN.PJ-000003: Street of Rage v3 — third attempt',
+    'PLAN.PJ-000004: Milky Way Sim — 3D galaxy simulation',
     'WHAT.KN-000001: Three.js Tips — rendering knowledge',
     'NOW.TD-000001: Fix bug in router — active todo',
     'NOW.TD-000002: Write tests — active todo',
@@ -131,15 +131,17 @@ describe('FIX 6: MEMORY.md relevance filtering', () => {
     'PLAN.PL-000002: Security audit — planning entry',
     'WHY.MT-000001: Architecture decision — meta reflection',
     'WHY.MT-000002: Performance review — meta reflection',
-    'WHAT.PJ-000005: Calculator App — math utility',
-    'WHAT.PJ-000006: Portfolio Website — web portfolio',
-    'WHAT.PJ-000007: Chat Bot — AI assistant',
-    'WHAT.PJ-000008: Blog Engine — CMS system',
+    'PLAN.PJ-000005: Calculator App — math utility',
+    'PLAN.PJ-000006: Portfolio Website — web portfolio',
+    'PLAN.PJ-000007: Chat Bot — AI assistant',
+    'PLAN.PJ-000008: Blog Engine — CMS system',
   ].join('\n');
 
-  it('returns full index when entries <= maxEntries', () => {
+  it('preserves owner persona and drops irrelevant entries when goal has no matches', () => {
     const result = filterPointerIndex(sampleIndex, 'anything', 50);
-    expect(result).toBe(sampleIndex);
+    expect(result).toContain('WHO.CT-000001');
+    expect(result).toContain('WHO.CT-000002');
+    expect(result).not.toContain('Street of Rage Game');
   });
 
   it('keeps entries matching goal keywords', () => {

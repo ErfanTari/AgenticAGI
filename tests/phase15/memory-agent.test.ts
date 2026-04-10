@@ -56,7 +56,7 @@ describe('Phase 15: MemoryAgent', () => {
       type: 'step_complete',
       stepId: 'step-x',
       result: 'done',
-      codes: ['WHO.CT-000001', 'WHAT.PJ-000002'],
+      codes: ['WHO.CT-000001', 'PLAN.PJ-000002'],
     };
     memoryAgent.enqueue(update);
     await memoryAgent.drain();

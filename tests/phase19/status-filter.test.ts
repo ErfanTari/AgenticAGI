@@ -6,7 +6,7 @@
  *   WHO.CT: 22 entries, all status='active'
  *   HOW.PR: 38 active + 6 open
  *   PLAN.PJ: 7 active + 1 open
- *   WHAT.PJ: 7 active + 1 open
+ *   PLAN.PJ: 7 active + 1 open
  *   PLAN.EX: 46 complete + 5 failed (terminal — correct to keep hidden from listing)
  *   The prior status='active' filter was silently hiding 'open' entries in HOW, PLAN, WHAT.
  */

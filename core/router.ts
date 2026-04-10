@@ -5,19 +5,21 @@ import { executePlan, runPostFlightSynthesis, buildUserReport } from './executor
 import { transparency } from './transparency.js';
 import { localDateString } from './utils/date.js';
 import type { WorkingMemory } from './memory/working-memory.js';
-import { stripThinkingTags } from './llm.js';
+import { createLMStudioChatSessionHandler, stripThinkingTags } from './llm.js';
 import { decomposeTask } from './planner.js';
 import { fetchByCode, hybridSearch, queryEntries, updateEntry, upsertEntry } from './memory/mod.js';
 import { writeReflection } from './memory/episodic.js';
 import { addRelationship, getRelationshipsFrom } from './memory/relationships.js';
-import { getSkillDescriptionsForPermission, getSkillsByPermission, getAllSkills } from './skills/registry.js';
+import { getSkillsByPermission, getAllSkills, getRelevantSkillSelection } from './skills/registry.js';
 import { getActivePermissionMode } from './permission.js';
 import { runSkill } from './skills/runner.js';
 import { memoryAgent } from './memory/memory-agent.js';
 import { type ArtifactContext, runQueryLoop } from './query-loop.js';
+import { resolveNumberedOutputVariant, wantsFreshOutputVariant } from './output-paths.js';
 import { PATHS } from '../config/agent.config.js';
 import { runWithRetry } from './react.js';
 import { resolveTemplates } from './planner.js';
+import { applyUtilityFeedback } from './memory/lifecycle.js';
 
 // Fix 3/5: Module-level session artifact cache — persists across turns in the same session
 let _lastSessionArtifact: ArtifactContext | undefined = undefined;
@@ -147,7 +149,7 @@ function inferRelationLabel(fromNb: string, toNb: string, toType: string, contex
 
 function maybeAddRelationship(fromCode: string, toCode: string, note: string): void {
   // Use inferRelationLabel for person→project relationships
-  const relation = inferRelationLabel('WHO', 'WHAT', 'PJ', note);
+  const relation = inferRelationLabel('WHO', 'PLAN', 'PJ', note);
   const existing = getRelationshipsFrom(fromCode, relation);
   if (existing.some(rel => rel.to_code === toCode)) {
     // Also check works_for for backward compat
@@ -171,7 +173,7 @@ function persistFactualAssertions(unitTexts: string[]): void {
         const projectName = detectProjectStart(text);
         if (projectName) {
           const project = upsertEntry({
-            nb: 'WHAT',
+            nb: 'PLAN',
             type: 'PJ',
             name: projectName,
             status: 'active',
@@ -203,7 +205,7 @@ function persistFactualAssertions(unitTexts: string[]): void {
             ? currentProject
             : (() => {
                 const created = upsertEntry({
-                  nb: 'WHAT',
+                  nb: 'PLAN',
                   type: 'PJ',
                   name: relatedProjectName,
                   status: 'active',
@@ -237,7 +239,7 @@ function persistFactualAssertions(unitTexts: string[]): void {
               ? currentProject
               : (() => {
                   const created = upsertEntry({
-                    nb: 'WHAT',
+                    nb: 'PLAN',
                     type: 'PJ',
                     name: projectName,
                     status: 'active',
@@ -437,10 +439,14 @@ async function handleConversationalUnits(
     history,
     [],
     'general',
+    null,
     arithmeticNotes.length > 0 ? arithmeticNotes.join('\n') : undefined,
     llmHandler,
   );
   const reply = stripThinkingTags(await llmHandler(messages, { disableThinking: true })).trim();
+  if (resolved?.entries?.length) {
+    applyUtilityFeedback(resolved.entries, reply);
+  }
 
   // FIX D: fire-and-forget factual assertion persistence (no-await, doesn't affect reply)
   persistFactualAssertions(units.map(unit => unit.content));
@@ -463,7 +469,9 @@ async function handleQueryUnits(
     if (!current) continue;
 
     if (current.entries.length > 0) {
-      parts.push({ order: unit.order, route: 'query', reply: formatQueryReply(unit, current) });
+      const reply = formatQueryReply(unit, current);
+      parts.push({ order: unit.order, route: 'query', reply });
+      applyUtilityFeedback(current.entries, reply);
       resolvedResults.push(current);
       continue;
     }
@@ -479,7 +487,11 @@ async function handleQueryUnits(
         return fetched ? [fetched.content] : [];
       }),
     };
-    parts.push({ order: unit.order, route: 'query', reply: formatQueryReply(unit, broadResult) });
+    const reply = formatQueryReply(unit, broadResult);
+    parts.push({ order: unit.order, route: 'query', reply });
+    if (broadResult.entries.length > 0) {
+      applyUtilityFeedback(broadResult.entries, reply);
+    }
     resolvedResults.push(broadResult);
   }
 
@@ -572,6 +584,14 @@ async function runSimplePlan(
       step.input as Record<string, unknown>,
       stepResults,
     ) as Record<string, string>;
+
+    if (wantsFreshOutputVariant(plan.goal, step.skill, resolvedInput)) {
+      const rawPath = typeof resolvedInput.path === 'string' ? resolvedInput.path : '';
+      const resolution = resolveNumberedOutputVariant(rawPath);
+      if (resolution.variantApplied) {
+        resolvedInput.path = resolution.resolvedPath;
+      }
+    }
 
     const result = await runWithRetry(step.skill, resolvedInput, llmHandler, 2);
 
@@ -686,8 +706,22 @@ async function handleAgenticUnits(
     }
   }
 
+  // FIX 3: Dynamic tool catalog — use relevant skills for this goal
+  const skillSelection = getRelevantSkillSelection(goalMessage, ['file_writer', 'file_reader', 'patch_file'], permissionMode);
+  const skills = skillSelection.descriptions;
+  transparency.emit({
+    type: 'skills_injected',
+    data: {
+      count: skillSelection.names.length,
+      names: skillSelection.names,
+      rulesFired: skillSelection.rulesFired,
+      droppedByExclude: skillSelection.droppedByExclude,
+      droppedCount: skillSelection.droppedCount,
+    },
+  });
+
   const plan = await decomposeTask(goalMessage, {
-    skills: getSkillDescriptionsForPermission(permissionMode),
+    skills,
     goals,
     memoryContext,
     decompositionSummary: buildDecompositionSummary(units),
@@ -802,6 +836,7 @@ export async function routeDecomposedUnits(
   llmHandler: LLMHandler,
   workingMemory?: WorkingMemory,
 ): Promise<RouteExecutionResult> {
+  const sessionLLM = createLMStudioChatSessionHandler(llmHandler);
   const conversationalUnits = units.filter(unit => unit.route === 'conversational');
   const queryUnits = units.filter(unit => unit.route === 'query');
   const agenticUnits = units.filter(unit => unit.route === 'agentic');
@@ -811,7 +846,7 @@ export async function routeDecomposedUnits(
       conversationalUnits,
       results.filter(result => conversationalUnits.some(unit => unit.id === result.unitId)),
       history,
-      llmHandler,
+      sessionLLM,
     )
     : Promise.resolve(null);
 
@@ -828,7 +863,7 @@ export async function routeDecomposedUnits(
     ? handleAgenticUnits(
       agenticUnits,
       results.filter(result => agenticUnits.some(unit => unit.id === result.unitId)),
-      llmHandler,
+      sessionLLM,
       queryResult?.resolved ?? null,
       workingMemory,
       history,

@@ -1,7 +1,7 @@
 /**
  * FIX 4 — Heartbeat Idempotency.
  * Verifies that running the same heartbeat check twice on the same stale entry
- * produces only ONE WHY.MT alert entry (not duplicates).
+ * produces only ONE NOW.LOG pointer alert entry (not duplicates).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs';
@@ -35,7 +35,7 @@ afterAll(async () => {
 });
 
 describe('FIX 4 — Heartbeat Idempotency', () => {
-  it('running heartbeat twice does not create duplicate WHY.MT alert entries', async () => {
+  it('running heartbeat twice does not create duplicate NOW.LOG pointer alert entries', async () => {
     // Create a stale question (older than 3 days)
     const staleDate = new Date();
     staleDate.setDate(staleDate.getDate() - 10);
@@ -59,10 +59,10 @@ describe('FIX 4 — Heartbeat Idempotency', () => {
     await runHeartbeat();
     await runHeartbeat();
 
-    // Count WHY.MT alert entries
-    const alerts = queryEntries({ nb: 'WHY', type: 'MT' });
+    // Count NOW.LOG pointer alert entries
+    const alerts = queryEntries({ nb: 'NOW', type: 'LOG' });
     const staleQuestionAlerts = alerts.filter(e =>
-      e.name.toLowerCase().includes('stale_question') || e.name.toLowerCase().includes('stale question')
+      (e.purpose === 'pointer') && (e.name.toLowerCase().includes('stale_question') || e.name.toLowerCase().includes('stale question'))
     );
 
     // Should be exactly 1, not 2
@@ -93,9 +93,9 @@ describe('FIX 4 — Heartbeat Idempotency', () => {
     await runHeartbeat();
     await runHeartbeat();
 
-    const alerts = queryEntries({ nb: 'WHY', type: 'MT' });
+    const alerts = queryEntries({ nb: 'NOW', type: 'LOG' });
     const overdueTodoAlerts = alerts.filter(e =>
-      e.name.toLowerCase().includes('overdue_todo') || e.name.toLowerCase().includes('overdue todo')
+      (e.purpose === 'pointer') && (e.name.toLowerCase().includes('overdue_todo') || e.name.toLowerCase().includes('overdue todo'))
     );
 
     // Should be exactly 1
