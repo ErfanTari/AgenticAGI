@@ -1578,36 +1578,20 @@
       ],
       cloud: [
         {
-          id: 'gemini-2.5-flash',
-          label: 'Gemini 2.5 Flash',
-          tag: 'fast cloud',
+          id: 'gemini',
+          label: 'Gemini',
+          tag: 'cloud',
           tagColor: 'cyan',
           size: '—',
-          note: 'Google, low latency'
+          note: 'Uses the configured Gemini cloud profile'
         },
         {
-          id: 'gemini-2.5-pro',
-          label: 'Gemini 2.5 Pro',
-          tag: 'strong cloud',
-          tagColor: 'purple',
-          size: '—',
-          note: 'Google, deeper reasoning'
-        },
-        {
-          id: 'claude-sonnet-4-6',
-          label: 'Claude Sonnet 4.6',
-          tag: 'balanced cloud',
+          id: 'claude',
+          label: 'Claude',
+          tag: 'cloud',
           tagColor: 'blue',
           size: '—',
-          note: 'Anthropic, strong all-round'
-        },
-        {
-          id: 'claude-opus-4-6',
-          label: 'Claude Opus 4.6',
-          tag: 'strongest cloud',
-          tagColor: 'purple',
-          size: '—',
-          note: 'Anthropic, highest quality'
+          note: 'Uses the configured Anthropic cloud profile'
         },
       ],
     };
@@ -1869,6 +1853,12 @@
         Storage.set('provider', legacyProvider);
         localStorage.removeItem('zaraban-provider-mode');
       }
+
+      const legacyCloud = Storage.get('model.cloud');
+      const normalizedCloud = normalizeCloudModelId(legacyCloud);
+      if (legacyCloud !== normalizedCloud) {
+        Storage.set('model.cloud', normalizedCloud);
+      }
     }
 
     function resolveTheme(preference) {
@@ -1995,14 +1985,26 @@
       return catalog[0] ? catalog[0].id : '';
     }
 
+    function normalizeCloudModelId(modelId) {
+      if (!modelId) return getDefaultModelId('cloud');
+      if (modelId === 'gemini' || modelId === 'claude') return modelId;
+      if (String(modelId).startsWith('gemini-')) return 'gemini';
+      if (String(modelId).startsWith('claude-')) return 'claude';
+      return modelId;
+    }
+
     function getStoredModelId(provider) {
-      const stored = Storage.get(`model.${provider}`, getDefaultModelId(provider));
-      if (stored && BLOCKED_MODEL_IDS.has(stored)) {
-        const fallback = getDefaultModelId(provider);
+      const fallback = getDefaultModelId(provider);
+      const stored = Storage.get(`model.${provider}`, fallback);
+      const normalized = provider === 'cloud' ? normalizeCloudModelId(stored) : stored;
+      if (normalized !== stored) {
+        Storage.set(`model.${provider}`, normalized);
+      }
+      if (normalized && BLOCKED_MODEL_IDS.has(normalized)) {
         Storage.set(`model.${provider}`, fallback);
         return fallback;
       }
-      return stored;
+      return normalized;
     }
 
     function getModelEntry(provider, modelId) {
@@ -2075,16 +2077,17 @@
 
     function sendCloudModel(modelId) {
       if (!state.connected || !state.socket) return;
-      state.socket.send(JSON.stringify({ type: 'set_cloud_model', model: modelId }));
+      state.socket.send(JSON.stringify({ type: 'set_cloud_model', model: normalizeCloudModelId(modelId) }));
     }
 
     function setModelSelection(provider, modelId) {
-      Storage.set(`model.${provider}`, modelId);
-      ensureCatalogEntry(provider, modelId);
+      const normalizedModelId = provider === 'cloud' ? normalizeCloudModelId(modelId) : modelId;
+      Storage.set(`model.${provider}`, normalizedModelId);
+      ensureCatalogEntry(provider, normalizedModelId);
       if (provider === 'local') {
-        sendLocalModel(modelId);
+        sendLocalModel(normalizedModelId);
       } else {
-        sendCloudModel(modelId);
+        sendCloudModel(normalizedModelId);
       }
       closeModelPopover();
       syncProviderUi();
@@ -2417,6 +2420,7 @@
         state.transparencyLog.shift();
       }
       elements.rawLogCount.textContent = String(state.transparencyLog.length);
+      refreshDerivedTransparencyV2();
 
       if (event === 'query_loop_iteration') {
         stream.appendChild(createIterationHeader(payload));
@@ -2482,12 +2486,43 @@
       }
     }
 
-    function setTransparencyV2(runId, sequence) {
-      state.traceV2 = { runId, sequence };
+    function setTransparencyV2(runId, sequence, derived = false) {
+      state.traceV2 = { runId, sequence, derived };
       elements.traceV2Run.textContent = runId || '';
       elements.traceV2Body.textContent = sequence || '';
       elements.traceV2Card.classList.toggle('hidden', !sequence);
-      elements.thinkingStream.scrollTop = 0;
+      if (!derived) {
+        elements.thinkingStream.scrollTop = 0;
+      }
+    }
+
+    function deriveTraceRunId(events) {
+      if (!events.length) return '';
+      return 'derived-' + formatClock(events[0].ts);
+    }
+
+    function buildDerivedTraceSequence(events) {
+      const lines = [];
+      const relevant = events
+        .filter(entry => !['llm_raw', 'llm_stripped', 'heartbeat'].includes(entry.event))
+        .slice(-40);
+
+      for (const entry of relevant) {
+        const preview = eventPreview(entry.event, entry.payload);
+        if (!preview) continue;
+        lines.push(`[${formatClock(entry.ts)}] ${entry.event}`);
+        lines.push(preview);
+        lines.push('');
+      }
+
+      return lines.join('\n').trim();
+    }
+
+    function refreshDerivedTransparencyV2() {
+      if (state.traceV2 && state.traceV2.derived === false) return;
+      const sequence = buildDerivedTraceSequence(state.transparencyLog);
+      if (!sequence) return;
+      setTransparencyV2(deriveTraceRunId(state.transparencyLog), sequence, true);
     }
 
     function createIterationHeader(payload) {
@@ -2567,10 +2602,13 @@
       const text = buildTransparencyLogText();
       copyTextToClipboard(text).then(() => {
         elements.copyLogButton.textContent = 'Copied';
+        toast('Trace copied', 'success');
         setTimeout(() => {
           elements.copyLogButton.textContent = 'Copy Trace';
         }, 1500);
-      }).catch(() => {});
+      }).catch(() => {
+        toast('Copy failed', 'error');
+      });
     }
 
     function clearTransparencyLog() {
