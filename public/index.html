@@ -504,6 +504,26 @@
       color: var(--text-faint);
     }
 
+    .token-counter {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-faint);
+      background: var(--bg-base);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      margin-right: var(--sp-2);
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    .token-counter.hidden { display: none; }
+    .token-val { color: var(--text-muted); }
+    .token-sep { color: var(--text-faint); margin: 0 1px; }
+    .token-cost { color: var(--accent, #7c6ff7); margin-left: 4px; }
+
     .raw-log-toggle {
       padding: 0;
       font-size: 10px;
@@ -1413,6 +1433,9 @@
           <div class="panel-title">Transparency</div>
           <div class="panel-subtle">AI trace first, raw events on demand</div>
         </div>
+        <div id="tokenCounter" class="token-counter hidden" title="Session token usage">
+          <span id="tokenIn" class="token-val">0</span><span class="token-sep">↑</span><span id="tokenOut" class="token-val">0</span><span class="token-sep">↓</span><span id="tokenCost" class="token-cost">$0.0000</span>
+        </div>
         <div class="panel-actions">
           <button id="clear-log-btn" class="btn btn-ghost" type="button">Clear</button>
           <button id="copy-log-btn" class="btn btn-ghost" type="button">Copy Trace</button>
@@ -1706,6 +1729,10 @@
       resetPreferencesButton: document.getElementById('resetPreferencesButton'),
       clearLogButton: document.getElementById('clear-log-btn'),
       copyLogButton: document.getElementById('copy-log-btn'),
+      tokenCounter: document.getElementById('tokenCounter'),
+      tokenIn: document.getElementById('tokenIn'),
+      tokenOut: document.getElementById('tokenOut'),
+      tokenCost: document.getElementById('tokenCost'),
     };
 
     migrateLegacyPreferences();
@@ -2422,6 +2449,14 @@
       elements.rawLogCount.textContent = String(state.transparencyLog.length);
       refreshDerivedTransparencyV2();
 
+      if (event === 'token_usage' && payload) {
+        const fmt = n => n.toLocaleString();
+        elements.tokenIn.textContent = fmt(payload.inputTokens ?? 0);
+        elements.tokenOut.textContent = fmt(payload.outputTokens ?? 0);
+        elements.tokenCost.textContent = '$' + (payload.estimatedCostUSD ?? 0).toFixed(4);
+        elements.tokenCounter.classList.remove('hidden');
+      }
+
       if (event === 'query_loop_iteration') {
         stream.appendChild(createIterationHeader(payload));
       }
@@ -2619,6 +2654,10 @@
       elements.traceV2Body.textContent = '';
       elements.traceV2Run.textContent = '';
       elements.traceV2Card.classList.add('hidden');
+      elements.tokenIn.textContent = '0';
+      elements.tokenOut.textContent = '0';
+      elements.tokenCost.textContent = '$0.0000';
+      elements.tokenCounter.classList.add('hidden');
     }
 
     function eventPreview(event, payload) {

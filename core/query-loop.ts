@@ -23,7 +23,7 @@ import type { WorkingMemory } from './memory/working-memory.js';
 import { runWithRetry } from './react.js';
 import { stripThinkingTags } from './llm.js';
 import { transparency } from './transparency.js';
-import { loadPointerIndex } from './memory/pointer-index.js';
+import { loadPointerIndex, loadActiveLoopsSection } from './memory/pointer-index.js';
 import { getSkillDescriptionsForPermission } from './skills/registry.js';
 import { getActivePermissionMode } from './permission.js';
 import { promptLoader } from './prompt-loader.js';
@@ -211,6 +211,28 @@ function getLargeInlineFileWriteError(toolCall: ToolCall): string | null {
   ].join(' ');
 }
 
+function getRepeatedGeneratedFileError(toolCall: ToolCall, filesWritten: string[]): string | null {
+  if (toolCall.action !== 'generate_and_save_file') return null;
+  const pathValue = typeof toolCall.input.path === 'string' ? toolCall.input.path.trim() : '';
+  if (!pathValue || !filesWritten.includes(pathValue)) return null;
+
+  return [
+    `File "${pathValue}" was already generated earlier in this task.`,
+    'Do not call generate_and_save_file again for the same path.',
+    'If the file already satisfies the goal, respond with a plain-text completion summary and NO JSON action block.',
+    'If you need to modify the existing file, use patch_file instead.',
+  ].join(' ');
+}
+
+function getTerminalSpecCodeError(toolCall: ToolCall, entryStatus: string): string | null {
+  if (toolCall.action !== 'generate_and_save_file') return null;
+  return [
+    `spec_code points to a terminal PLAN.EX entry with status "${entryStatus}".`,
+    'Do not generate from completed or failed execution specs.',
+    'Write a fresh spec with memory_write or use a new inline description instead.',
+  ].join(' ');
+}
+
 // ─── Input Fingerprinting (Fix 3: semantic normalization) ────────────────────
 
 function normalizeInput(input: Record<string, unknown>): string {
@@ -241,6 +263,13 @@ function failureSignature(skillName: string, input: Record<string, unknown>, err
 
 function inputHash(input: Record<string, unknown>): string {
   return createHash('sha1').update(JSON.stringify(input)).digest('hex').slice(0, 8);
+}
+
+function replySignature(text: string): string {
+  return createHash('sha1')
+    .update(text.replace(/\s+/g, ' ').trim().slice(0, 500))
+    .digest('hex')
+    .slice(0, 12);
 }
 
 function circuitKey(skillName: string, input: Record<string, unknown>): string {
@@ -279,9 +308,15 @@ function buildResetNote(goal: string, iteration: number, recentFailures: string[
 
 // ─── System Prompt ────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(goal: string, pointerIndex: string): string {
+function buildSystemPrompt(goal: string, pointerIndex: string, activeLoops: string): string {
   const skillList = getSkillDescriptionsForPermission(getActivePermissionMode());
 
+  // Active loops section: always shown, tells the model where it is in a multi-milestone plan.
+  const activeLoopsSection = activeLoops.trim()
+    ? `\n\n## Your current task state\n${activeLoops.trim()}\n\nUse this to know where you are. Do NOT re-read all memory entries to orient yourself — this section is your anchor.`
+    : '';
+
+  // Known entries: goal-filtered subset, shown below task state.
   const indexSection = pointerIndex.trim()
     ? `\n\n## Known Entries (MEMORY.md)\n${pointerIndex.trim()}`
     : '';
@@ -289,7 +324,7 @@ function buildSystemPrompt(goal: string, pointerIndex: string): string {
   return promptLoader.load('query-loop', {
     skill_list: skillList,
     goal,
-    index_section: indexSection,
+    index_section: activeLoopsSection + indexSection,
   });
 }
 
@@ -341,16 +376,21 @@ export async function runQueryLoop(
   history?: Message[],
   lastArtifactContext?: ArtifactContext,
 ): Promise<QueryLoopResult> {
+  // Load MEMORY.md zones:
+  //   activeLoops  — always-fresh task state, injected as task state anchor (~100 tokens)
+  //   knownEntries — goal-filtered subset for reference (~200 tokens max)
   const rawPointerIndex = loadPointerIndex();
+  const activeLoops = loadActiveLoopsSection();
   const pointerIndex = filterPointerIndex(rawPointerIndex, goal);
-  const systemPrompt = buildSystemPrompt(goal, pointerIndex);
+  const systemPrompt = buildSystemPrompt(goal, pointerIndex, activeLoops);
   const loopMaxTokens = resolveLoopMaxTokens(goal);
 
   // Fix 5/7: Detect continuation/modification request
   const isContinuationGoal = MODIFICATION_KEYWORDS.test(goal);
   const taskMode: 'edit' | 'create' = (isContinuationGoal && !!lastArtifactContext) ? 'edit' : 'create';
 
-  // Inject conversation history (skip system messages from prior turns) then the goal block
+  // Inject conversation history — cap at 2 turns inside a running loop to save tokens.
+  // The task state anchor (## Your current task state) replaces the need for deep history.
   const priorTurns = (history ?? [])
     .filter(m => m.role !== 'system')
     .map(message => (
@@ -358,7 +398,7 @@ export async function runQueryLoop(
         ? { ...message, content: stripThinkingTags(message.content).trim() }
         : message
     ))
-    .slice(-6);
+    .slice(-2);
 
   // Fix 3/5: Build initial user message — in edit mode inject artifact context + skip-read instruction
   function buildInitialUserContent(): string {
@@ -402,7 +442,7 @@ export async function runQueryLoop(
   const skillFailureCounts = new Map<string, number>(); // per-skill failure count
 
   // Fix 1: Per-iteration format repair counter (max 2 repairs before giving up)
-  const formatRepairCounts = new Map<number, number>();
+  const formatRepairCounts = new Map<string, number>();
 
   const skillsUsed: string[] = [];
   const filesWritten: string[] = [];  // track files generated this session
@@ -452,8 +492,9 @@ export async function runQueryLoop(
     if (!toolCall) {
       // Fix 1: Detect malformed tagged tool calls (e.g. <|tool_call>call:skill:{...})
       if (looksLikeMalformedTaggedToolCall(reply)) {
-        const repairCount = (formatRepairCounts.get(iteration) ?? 0) + 1;
-        formatRepairCounts.set(iteration, repairCount);
+        const sig = replySignature(reply);
+        const repairCount = (formatRepairCounts.get(sig) ?? 0) + 1;
+        formatRepairCounts.set(sig, repairCount);
         if (repairCount <= 2) {
           transparency.emit({ type: 'query_loop_narration', data: { narration: `[format-repair ${repairCount}/2] malformed tagged tool call detected`, iteration } });
           messages.push({ role: 'assistant', content: reply });
@@ -476,11 +517,18 @@ export async function runQueryLoop(
       }
 
       if (looksLikeIncompleteToolCall(reply)) {
+        const sig = replySignature(reply);
+        const repairCount = (formatRepairCounts.get(sig) ?? 0) + 1;
+        formatRepairCounts.set(sig, repairCount);
+        transparency.emit({ type: 'query_loop_narration', data: { narration: `[json-repair ${repairCount}/2] incomplete tool call detected`, iteration } });
+        const escalation = repairCount >= 2
+          ? 'You have repeated an incomplete JSON tool call. Do NOT truncate. Emit exactly one complete JSON object with all closing braces.'
+          : 'Your previous response looked like an incomplete or truncated JSON tool call.';
         messages.push({ role: 'assistant', content: reply });
         messages.push({
           role: 'user',
           content: [
-            'Your previous response looked like an incomplete or truncated JSON tool call.',
+            escalation,
             'Resend exactly one complete JSON object only.',
             'Required format: {"action":"<skill_name>","input":{...}}',
             '',
@@ -492,8 +540,9 @@ export async function runQueryLoop(
 
       // Fix 6: Detect tool intent without valid JSON — repair instead of exiting
       if (looksLikeToolIntent(reply)) {
-        const repairCount = (formatRepairCounts.get(iteration) ?? 0) + 1;
-        formatRepairCounts.set(iteration, repairCount);
+        const sig = replySignature(reply);
+        const repairCount = (formatRepairCounts.get(sig) ?? 0) + 1;
+        formatRepairCounts.set(sig, repairCount);
         if (repairCount <= 2) {
           transparency.emit({ type: 'query_loop_narration', data: { narration: `[intent-repair ${repairCount}/2] tool intent without valid JSON`, iteration } });
           messages.push({ role: 'assistant', content: reply });
@@ -588,6 +637,13 @@ export async function runQueryLoop(
           messages.push({ role: 'user', content: `[TOOL ERROR] ${errorMsg}\n\n${buildGoalBlock(goal, iteration + 1, filesWritten)}` });
           continue;
         }
+        if (entry.nb === 'PLAN' && entry.type === 'EX' && (entry.status === 'complete' || entry.status === 'failed')) {
+          const errorMsg = getTerminalSpecCodeError(toolCall, entry.status)!;
+          messages.push({ role: 'assistant', content: stripThinkingTags(reply).trim() });
+          messages.push({ role: 'user', content: `[TOOL ERROR] ${errorMsg}\n\n${buildGoalBlock(goal, iteration + 1, filesWritten)}` });
+          transparency.emit({ type: 'query_loop_skill_result', data: { skill: toolCall.action, success: false, error: errorMsg } });
+          continue;
+        }
       }
     }
 
@@ -625,6 +681,32 @@ export async function runQueryLoop(
         ].join('\n'),
       });
       transparency.emit({ type: 'query_loop_skill_result', data: { skill: toolCall.action, success: false, error: inlineFileWriteError } });
+      continue;
+    }
+
+    const repeatedGeneratedFileError = getRepeatedGeneratedFileError(toolCall, filesWritten);
+    if (repeatedGeneratedFileError) {
+      circuitFailures.set(ck, ckFailures + 1);
+      consecutiveFailures++;
+      recentFailures.push(`${toolCall.action}: ${repeatedGeneratedFileError}`);
+      while (recentFailures.length > FAILURE_RESET_THRESHOLD) {
+        recentFailures.shift();
+      }
+
+      const prevFailures = skillFailureCounts.get(toolCall.action) ?? 0;
+      skillFailureCounts.set(toolCall.action, prevFailures + 1);
+
+      messages.push({ role: 'assistant', content: stripThinkingTags(reply).trim() });
+      messages.push({
+        role: 'user',
+        content: [
+          `SKILL ERROR [${toolCall.action}]: ${repeatedGeneratedFileError}`,
+          'STRATEGY CHANGE REQUIRED: either finish with a plain-text summary or use patch_file for modifications.',
+          '',
+          buildGoalBlock(goal, iteration + 1, filesWritten),
+        ].join('\n'),
+      });
+      transparency.emit({ type: 'query_loop_skill_result', data: { skill: toolCall.action, success: false, error: repeatedGeneratedFileError } });
       continue;
     }
 

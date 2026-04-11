@@ -23,6 +23,7 @@ import { getDb } from './memory/index.js';
 import { addRelationship, getRelationshipsFrom } from './memory/relationships.js';
 import { writeEpisodicEvent } from './memory/episodic.js';
 import { memoryAgent } from './memory/memory-agent.js';
+import { upsertActiveLoop, removeActiveLoop } from './memory/pointer-index.js';
 
 // Flatten nested objects to primitives (fixes [object Object] issue)
 function flattenInput(input: Record<string, unknown>): Record<string, unknown> {
@@ -719,6 +720,21 @@ export async function executePlan(
     planEx = { ...initialPlanEx, code: '' };
   }
 
+  // Write initial active loop entry into MEMORY.md so queryLoop and /resume
+  // can orient without hitting SQLite.
+  if (planExCode) {
+    try {
+      upsertActiveLoop({
+        code: planExCode,
+        taskName: plan.goal.slice(0, 40),
+        mCurrent: 0,
+        mTotal: milestones.length,
+        nextTitle: milestones[0]?.title ?? 'Start',
+        files: [],
+      });
+    } catch { /* best-effort */ }
+  }
+
   for (let milestoneIndex = 0; milestoneIndex < milestones.length; milestoneIndex++) {
     const milestone = milestones[milestoneIndex];
     transparency.emit({
@@ -933,6 +949,30 @@ export async function executePlan(
       planEx = cycle.planEx;
     }
 
+    // Update active loop entry: milestone completed, advance pointer
+    if (planExCode) {
+      try {
+        const nextMilestone = milestones[milestoneIndex + 1];
+        const filesWritten = state.completed
+          .map(s => (s as any).output)
+          .filter((o): o is string => typeof o === 'string')
+          .flatMap(o => {
+            // Extract workspace/... file paths from step outputs
+            const matches = o.match(/workspace\/\S+\.\w+/g) ?? [];
+            return matches;
+          });
+        const uniqueFiles = [...new Set(filesWritten)];
+        upsertActiveLoop({
+          code: planExCode,
+          taskName: plan.goal.slice(0, 40),
+          mCurrent: milestoneIndex + 1,
+          mTotal: milestones.length,
+          nextTitle: nextMilestone?.title ?? 'memory write',
+          files: uniqueFiles.slice(0, 6), // cap at 6 to stay within 80-char guideline
+        });
+      } catch { /* best-effort */ }
+    }
+
     milestoneResults.push({
       milestoneId: milestone.id,
       title: milestone.title,
@@ -962,6 +1002,11 @@ export async function executePlan(
     } else {
       transparency.emit({ type: 'milestone_revision_skipped', data: { milestoneId: milestone.id, reason: 'no_failures' } });
     }
+  }
+
+  // Remove active loop from MEMORY.md — plan reached terminal state.
+  if (planExCode) {
+    try { removeActiveLoop(planExCode); } catch { /* best-effort */ }
   }
 
   try {

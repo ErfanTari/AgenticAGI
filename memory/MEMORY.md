@@ -1,12 +1,15 @@
 # Memory Index
 # Auto-maintained. Edit with caution.
 
-WHO.CT-000001: Erfan Tari — Contact entry for Erfan Tari
+## Active loops
+
+## Known entries
+WHO.CT-000001: Sara Moradi — Reviewer
 WHO.CT-000010: Sara — Developer
 WHO.CT-000011: James — Developer
 WHO.CT-000012: James Chen — Team Lead
 WHO.CT-000002: Bob Jones — Summary for Bob Jones
-WHO.CT-000003: Charlie — Summary for Charlie
+WHO.CT-000003: Jane Doe — Test contact 2
 WHO.CT-000004: Dave — Summary for Dave
 PLAN.EX-000001: create alpha.txt and beta.txt in the workspace — Execution state for: create alpha.txt and beta.txt in the workspace
 WHEN.RF-000002: Reflection: write a web scraper that saves results to memory — Thinking Process:
@@ -32,7 +35,7 @@ WHO.CT-000094: Charlie B. — Contact for Charlie B.
 WHEN.EV-000185: Charlie B. Presentation — Charlie B. will present on Friday.
 WHEN.EV-000189: Charlie B. reviewed code — Charlie B. completed a code review.
 WHEN.EV-000196: Charlie reviewed code — Charlie completed a code review.
-PLAN.EX-000002: Create an HTML Snake game in the specified directory. — Execution state for: Create an HTML Snake game in the specified directory.
+PLAN.EX-000002: Test execution — Test
 WHAT.PJ-000001: Test execution — Test
 NOW.LOG-000001: Log 2026-03-17 10:21 — just finished the session
 WHO.CT-000015: Farzad Hamadi — Software engineer from Tehran interested in AI; personal contact of ERFAN TARI

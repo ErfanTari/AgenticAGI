@@ -87,7 +87,9 @@ export type TransparencyEvent =
   // Phase 5, Task 5 — Startup prefetch + lazy loading
   | { type: 'startup_prefetch'; data: { pointerEntryCount: number; entriesPrefetched: number; timeMs: number } }
   | { type: 'startup_prefetch_error'; data: { error: string } }
-  | { type: 'context_lazy_loaded'; data: Record<string, never> };
+  | { type: 'context_lazy_loaded'; data: Record<string, never> }
+  // Token counter
+  | { type: 'token_usage'; data: { inputTokens: number; outputTokens: number; callCount: number; estimatedCostUSD: number } };
 
 type TransparencyHandler = (event: TransparencyEvent) => void;
 

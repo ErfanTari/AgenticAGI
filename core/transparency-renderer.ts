@@ -190,6 +190,15 @@ function render(event: TransparencyEvent): string {
         c('green', '\n└─────────────────')
       );
 
+    case 'token_usage': {
+      const fmt = (n: number) => n.toLocaleString();
+      return (
+        c('dim', `  ◆ TOKENS`) +
+        ` in:${fmt(event.data.inputTokens)} out:${fmt(event.data.outputTokens)}` +
+        c('dim', ` calls:${event.data.callCount} ~$${event.data.estimatedCostUSD.toFixed(4)}`)
+      );
+    }
+
     case 'error':
       return c('red', `\n⚠ ERROR [${event.data.source}]`) + ` ${event.data.error}`;
 

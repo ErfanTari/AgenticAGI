@@ -566,6 +566,8 @@ async function runSimplePlan(
   let lastOutput = '';
   let artifactContext: ArtifactContext | undefined;
 
+  transparency.emit({ type: 'route', data: { level: 'simple', reason: 'plan self-assessed as simple', path: 'simple_runner' } });
+
   for (const step of plan.steps) {
     // Resolve {{template}} references from prior step outputs
     const resolvedInput = resolveTemplates(
@@ -597,7 +599,6 @@ async function runSimplePlan(
     }
   }
 
-  transparency.emit({ type: 'route', data: { level: 'simple', reason: 'plan self-assessed as simple', path: 'simple_runner' } });
   return { reply: lastOutput || 'Done.', artifactContext };
 }
 

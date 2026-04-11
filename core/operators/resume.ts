@@ -3,12 +3,13 @@
  */
 
 import { getDb, loadPendingPlan } from '../memory/index.js';
+import { parseActiveLoopEntries, loadPointerIndex } from '../memory/pointer-index.js';
 
 export interface ResumablePlan {
   code: string;
   name: string;
   status: 'paused' | 'in_progress' | 'active';
-  current_milestone?: string;
+  current_milestone?: string; // e.g. "M3/6" — from active loops section
   next_action?: string;
   abort_reason?: string;
 }
@@ -46,10 +47,11 @@ export function findResumablePlans(): ResumablePlan[] {
 }
 
 /**
- * selectResumablePlan — check for pending confirmation first, then PLAN.EX resumable plans
+ * selectResumablePlan — check for pending confirmation first, then MEMORY.md active loops,
+ * then PLAN.EX resumable plans from SQLite.
  */
 export function selectResumablePlan(nameOrCode?: string): ResumeResult {
-  // Check for pending confirmation first
+  // 1. Pending confirmation — highest priority
   const pendingPlan = loadPendingPlan() as any;
   if (pendingPlan) {
     return {
@@ -60,10 +62,42 @@ export function selectResumablePlan(nameOrCode?: string): ResumeResult {
         status: 'paused',
         next_action: 'Awaiting user confirmation',
       },
-      count: 1 + findResumablePlans().length, // Include pending + PLAN.EX entries
+      count: 1 + findResumablePlans().length,
     };
   }
 
+  // 2. MEMORY.md ## Active loops — more reliable than SQLite (atomic file writes survive hard kills)
+  try {
+    const activeLoops = parseActiveLoopEntries(loadPointerIndex())
+      .filter(e => !e.done);
+
+    if (activeLoops.length > 0) {
+      const match = nameOrCode
+        ? activeLoops.find(e =>
+            e.code.toLowerCase().includes(nameOrCode.toLowerCase()) ||
+            e.taskName.toLowerCase().includes(nameOrCode.toLowerCase())
+          )
+        : activeLoops[activeLoops.length - 1]; // most recently added
+
+      if (match) {
+        return {
+          found: true,
+          plan: {
+            code: match.code,
+            name: match.taskName,
+            status: 'in_progress',
+            current_milestone: `M${match.mCurrent}/${match.mTotal}`,
+            next_action: match.nextTitle,
+          },
+          count: activeLoops.length,
+        };
+      }
+    }
+  } catch {
+    // Fall through to SQLite
+  }
+
+  // 3. SQLite PLAN.EX fallback
   const plans = findResumablePlans();
 
   if (plans.length === 0) {
@@ -117,6 +151,10 @@ export function formatResumePrompt(result: ResumeResult): string {
     `Name: ${result.plan.name}`,
     `Status: ${result.plan.status}`,
   ];
+
+  if (result.plan.current_milestone) {
+    lines.push(`Progress: ${result.plan.current_milestone}`);
+  }
 
   if (result.plan.next_action) {
     lines.push(`Next: ${result.plan.next_action}`);

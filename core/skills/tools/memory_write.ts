@@ -1,5 +1,5 @@
 import type { MCPSkill, SkillResult } from '../types.js';
-import { upsertEntry } from '../../memory/write.js';
+import { upsertEntryWithRetry } from '../../memory/write.js';
 import { memoryAgent } from '../../memory/memory-agent.js';
 
 /**
@@ -89,7 +89,7 @@ export const memoryWriteMCPSkill: MCPSkill = {
     }
 
     try {
-      const result = upsertEntry({ nb, type, name, summary, body, status });
+      const result = await upsertEntryWithRetry({ nb, type, name, summary, body, status });
       const verb = result.created ? 'Created' : 'Updated';
       const suffix = result.created ? '' : ' (already existed)';
       // FIX-C3: enqueue new_code so session cache is updated

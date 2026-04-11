@@ -872,8 +872,47 @@ function normalizePlanPayload(
   if (flattenedSteps.length === 0) return null;
 
   // Layer 3: enforce file_reader prerequisite for existing workspace files.
-  // Operates on plan.steps — milestones are cosmetic groupings and don't need re-sync here.
+  // Operates on plan.steps; then syncs newly inserted auto_read steps into their milestones.
+  const preReaderCount = flattenedSteps.length;
   flattenedSteps = enforceFileReaderPrerequisite(flattenedSteps, context.workspaceFiles);
+
+  // Sync any auto_read steps back into the correct milestone so validatePlanIntegrity
+  // does not flag them as orphaned. Each auto_read step carries _insertedFor = the id of
+  // the step it precedes; find whichever milestone owns that target step and prepend.
+  if (flattenedSteps.length > preReaderCount) {
+    const stepMilestoneMap = new Map<string, typeof milestones[0]>();
+    for (const ms of milestones) {
+      for (const mStep of (ms.steps ?? [])) {
+        const id = typeof mStep === 'object' && mStep !== null && 'id' in mStep
+          ? (mStep as { id: string }).id
+          : null;
+        if (id) stepMilestoneMap.set(id, ms);
+      }
+    }
+    for (const step of flattenedSteps) {
+      const inserted = (step as TaskStep & { _insertedFor?: string })._insertedFor;
+      if (inserted) {
+        const targetMilestone = stepMilestoneMap.get(inserted);
+        if (targetMilestone) {
+          if (!targetMilestone.steps) targetMilestone.steps = [];
+          // Insert reader step just before the step it serves (if not already present)
+          const alreadyPresent = targetMilestone.steps.some(
+            s => typeof s === 'object' && s !== null && 'id' in s && (s as { id: string }).id === step.id,
+          );
+          if (!alreadyPresent) {
+            const targetIdx = targetMilestone.steps.findIndex(
+              s => typeof s === 'object' && s !== null && 'id' in s && (s as { id: string }).id === inserted,
+            );
+            if (targetIdx >= 0) {
+              targetMilestone.steps.splice(targetIdx, 0, step);
+            } else {
+              targetMilestone.steps.unshift(step);
+            }
+          }
+        }
+      }
+    }
+  }
 
   return {
     goal: typeof raw.goal === 'string' && raw.goal.trim() ? raw.goal : message,

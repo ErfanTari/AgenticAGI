@@ -7,8 +7,15 @@ import { fetchByCode } from '../../memory/fetch.js';
 import { TOKEN_BUDGETS } from '../../../config/agent.config.js';
 import { runSkill } from '../runner.js';
 import type { MCPSkill, SkillResult } from '../types.js';
+import type { IndexEntry } from '../../memory/types.js';
 
 type ContentFormat = 'markdown' | 'html' | 'plain';
+
+function isTerminalPlanExEntry(entry: IndexEntry): boolean {
+  return entry.nb === 'PLAN'
+    && entry.type === 'EX'
+    && (entry.status === 'complete' || entry.status === 'failed');
+}
 
 // ─── Structured HTML Validator (Fix 6) ───────────────────────────────────────
 
@@ -62,6 +69,13 @@ function resolveSpec(
     const fetched = fetchByCode(code);
     if (!fetched) {
       return { error: `spec_code "${code}" not found in memory. Write the spec first using memory_write, then pass the returned code here.` };
+    }
+    if (isTerminalPlanExEntry(fetched.entry)) {
+      return {
+        error: `spec_code "${code}" points to a terminal PLAN.EX entry with status "${fetched.entry.status}". ` +
+          'Do not generate from completed or failed execution specs. Write a fresh spec with memory_write, ' +
+          'or pass a new inline description instead.',
+      };
     }
     const spec = extractSpecBody(fetched.content);
     if (!spec) {

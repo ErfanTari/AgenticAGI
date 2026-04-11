@@ -6,6 +6,7 @@ import {
   hybridSearch,
   queryEntries,
 } from '../../memory/mod.js';
+import { transparency } from '../../transparency.js';
 import type { MCPSkill, SkillResult } from '../types.js';
 
 const DEFAULT_LIMIT = 6;
@@ -84,6 +85,27 @@ function dedupeEntries(entries: IndexEntry[]): IndexEntry[] {
   return unique;
 }
 
+export function isTerminalPlanExEntry(entry: IndexEntry): boolean {
+  return entry.nb === 'PLAN'
+    && entry.type === 'EX'
+    && (entry.status === 'complete' || entry.status === 'failed');
+}
+
+function filterTerminalPlanExEntries(entries: IndexEntry[]): IndexEntry[] {
+  const filtered: IndexEntry[] = [];
+  for (const entry of entries) {
+    if (isTerminalPlanExEntry(entry)) {
+      transparency.emit({
+        type: 'memory_context_filtered',
+        data: { code: entry.code, reason: 'terminal_plan_ex', status: entry.status },
+      });
+      continue;
+    }
+    filtered.push(entry);
+  }
+  return filtered;
+}
+
 function findByNameTokens(
   query: string,
   filter: { nb?: string; type?: string; status?: string },
@@ -156,6 +178,9 @@ const memoryReadSkill: MCPSkill = {
       const direction = toOptionalString(input.direction) ?? 'from';
       const limit = parseLimit(input.limit);
       const includeContent = toOptionalBoolean(input.includeContent) ?? false;
+      const allowTerminalPlanEx = nb === 'PLAN'
+        && type === 'EX'
+        && (status === 'complete' || status === 'failed');
 
       let entries: IndexEntry[] = [];
       let relationships: Relationship[] = [];
@@ -184,18 +209,34 @@ const memoryReadSkill: MCPSkill = {
           searchResults = [];
         }
 
-        entries = searchResults.slice(0, limit).map(result => result.entry);
+        entries = searchResults.map(result => result.entry);
+        if (!allowTerminalPlanEx) {
+          entries = filterTerminalPlanExEntries(entries);
+        }
+        entries = entries.slice(0, limit);
 
         if (entries.length === 0) {
-          entries = findByNameTokens(query, { nb, type, status }).slice(0, limit);
+          entries = findByNameTokens(query, { nb, type, status });
+          if (!allowTerminalPlanEx) {
+            entries = filterTerminalPlanExEntries(entries);
+          }
+          entries = entries.slice(0, limit);
         }
 
         if (entries.length === 0) {
-          entries = queryEntries({ nb, type, status, name }).slice(0, limit);
+          entries = queryEntries({ nb, type, status, name });
+          if (!allowTerminalPlanEx) {
+            entries = filterTerminalPlanExEntries(entries);
+          }
+          entries = entries.slice(0, limit);
         }
 
-      if (entries.length === 0 && !nb && !type && !status && !name) {
-          entries = queryEntries({}).slice(0, limit);
+        if (entries.length === 0 && !nb && !type && !status && !name) {
+          entries = queryEntries({});
+          if (!allowTerminalPlanEx) {
+            entries = filterTerminalPlanExEntries(entries);
+          }
+          entries = entries.slice(0, limit);
         }
 
         if (!entries.some(entry => entry.nb === 'WHO') && /\b(name|title|bio|contact|profile|personal|about)\b/i.test(query)) {
@@ -210,7 +251,11 @@ const memoryReadSkill: MCPSkill = {
           }
         }
       } else {
-        entries = queryEntries({ nb, type, status, name }).slice(0, limit);
+        entries = queryEntries({ nb, type, status, name });
+        if (!allowTerminalPlanEx) {
+          entries = filterTerminalPlanExEntries(entries);
+        }
+        entries = entries.slice(0, limit);
       }
 
       if (entries.length === 0) {

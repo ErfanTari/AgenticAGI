@@ -9,12 +9,14 @@ The live memory architecture is currently:
 
 - Stage 1 complete: Gate A, handle metadata, relationship uniqueness, prune tooling
 - Stage 2A complete: `project_code`, `purpose`, temporal relationship validity, project gravity, utility feedback, heartbeat pointer migration
-- Stage 2B complete: `WHAT.PJ` collapsed permanently into `PLAN.PJ`; new `WHAT.PJ` creation is no longer allowed
+- Stage 2B complete: `PLAN.PJ` is the canonical project brain. `WHAT.PJ` entries are still written by `persistFactualAssertions` in `router.ts` as lightweight stubs when project-name signals are detected in conversation; they are not the primary project record.
 - Stage 3 complete: Gate B classifier, rederivable rule, memory-as-hint prompt stance, real-DB verification
 - Living Memory foundation complete: heartbeat-driven distiller pass, `distiller_state`, `MEMORY_DIGEST.md`, transparency hooks
 
-Important current rule:
-- `PLAN.PJ` is the only project-entry type. Any old references to `WHAT.PJ` in historical notes below are legacy history, not the live design.
+Current project entry rules:
+- `PLAN.PJ` is the full project brain (vision, phase, priority, decisions, milestones).
+- `WHAT.PJ` remains active as a lightweight conversational stub (auto-written by `persistFactualAssertions`). It is not the primary record — use `PLAN.PJ` for intentional project tracking.
+- `WHAT.KN` is for generic knowledge not tied to a specific project.
 
 ---
 
@@ -188,6 +190,7 @@ PLAN.PJ-000003  → Project brain number 3
 | WHO      | CT        | Contact         |
 | WHO      | ORG       | Organization    |
 | WHAT     | KN        | Knowledge entry |
+| WHAT     | PJ        | Project stub (lightweight, auto-written) |
 | WHEN     | CA        | Calendar event  |
 | WHEN     | DL        | Deadline        |
 | WHEN     | EV        | Episodic event  |
@@ -220,33 +223,65 @@ The important current rule is still the same: files are canonical, SQLite is der
 
 ### Table: index_entries
 
+Core DDL (columns present at creation):
+
 ```sql
 CREATE TABLE index_entries (
   code      TEXT PRIMARY KEY,   -- e.g. WHO.CT-000024
   nb        TEXT NOT NULL,      -- e.g. WHO  (indexed for fast filter)
   type      TEXT NOT NULL,      -- e.g. CT   (indexed for fast filter)
   name      TEXT NOT NULL,      -- human readable name
-  status    TEXT NOT NULL,      -- active | archived | open | closed | upcoming
+  status    TEXT NOT NULL,      -- active | archived | open | closed | upcoming | logged
   updated   TEXT NOT NULL,      -- ISO date string
   summary   TEXT,               -- one line, agent answers simple queries from this
   path      TEXT NOT NULL,      -- full path to markdown file
   due_date  TEXT                -- optional ISO date for deadlines and plans
 );
 
+CREATE UNIQUE INDEX idx_unique_entry ON index_entries(nb, type, LOWER(name))
+  WHERE status != 'archived';
+
 CREATE INDEX idx_nb     ON index_entries(nb);
 CREATE INDEX idx_type   ON index_entries(type);
 CREATE INDEX idx_status ON index_entries(status);
 ```
 
+Migration-added columns (added idempotently; all present in live databases):
+
+```
+-- Phase 11
+importance_score   REAL DEFAULT 0.5
+utility_score      REAL DEFAULT 1.0
+usage_count        INTEGER DEFAULT 0
+last_accessed      TEXT
+decay_rate         REAL DEFAULT 0.1
+active_page        INTEGER DEFAULT 1
+pinned             INTEGER DEFAULT 0
+privacy_tier       TEXT DEFAULT 'MIXED'
+source             TEXT DEFAULT 'user'
+confidence         REAL DEFAULT 1.0
+atomic_facts       TEXT
+embedding          BLOB
+
+-- Phase 15
+ttl_days           INTEGER
+fingerprint        TEXT            -- WHO.CT identity fingerprint (email/phone/handle hash)
+project_brain_cache TEXT           -- cached PLAN.PJ summary for quick lookup
+```
+
+Phase 11 indexes: `idx_importance`, `idx_active_page`, `idx_privacy`
+
 ### Table: relationships
 
 ```sql
 CREATE TABLE relationships (
-  from_code  TEXT NOT NULL,   -- e.g. WHO.CT-000025
-  relation   TEXT NOT NULL,   -- e.g. supplies | owns | works_for | blocks | refers
-  to_code    TEXT NOT NULL,   -- e.g. WHO.CT-000024
-  note       TEXT,            -- optional human note about this relationship
-  created    TEXT NOT NULL,   -- ISO date string
+  from_code  TEXT NOT NULL,
+  relation   TEXT NOT NULL,
+  to_code    TEXT NOT NULL,
+  note       TEXT,
+  created    TEXT NOT NULL,
+  strength   REAL DEFAULT 1.0,   -- Phase 15: edge weight for weighted traversal
+  last_active TEXT,              -- Phase 15: last time relationship was traversed
 
   FOREIGN KEY (from_code) REFERENCES index_entries(code),
   FOREIGN KEY (to_code)   REFERENCES index_entries(code)
@@ -269,9 +304,16 @@ Used by the code generator. Each type key (e.g. `WHO.CT`) gets an atomic counter
 that is incremented inside a SQLite transaction when a new entry is created.
 This prevents the lexicographic sort bug and race conditions.
 
+### Additional tables
+
+- `settings (key TEXT, value TEXT)` — singleton key-value store. Used for: embedding model name string (not a hash — full model name enables exact equality; hash collisions were a prior bug), heartbeat state, and other singleton values.
+- `heartbeat_queue` — notification queue written by heartbeat, consumed at next user interaction.
+- `pending_plans` — singleton row holding a JSON plan awaiting user confirmation.
+- `fts_content` (FTS5) — tokenized body content for full-text search. Derived; rebuilt from files.
+- `chunks` — vector embeddings per content chunk. Cleared and rebuilt when embedding model changes.
+
 ### What SQLite is NOT used for
-- Do not store full content in SQLite
-- Do not store embeddings in SQLite initially (add only when hybrid search is needed)
+- Do not store full content in SQLite (that is what the markdown files are for)
 - Do not add tables without a clear, demonstrated need
 
 ---
@@ -356,62 +398,91 @@ Follow this order strictly. Do not skip steps.
 The runtime no longer starts by classifying the entire user message into one
 top-level intent. Understanding comes first, routing comes second.
 
-### Fast-path bypasses
-
-These stay in TypeScript and skip decomposition entirely:
-
-- `/log ...` → immediate `NOW.LOG` write
-- `/meeting` → immediate Meeting Mode
-- Direct code fetch like `WHO.CT-000001` → direct fetch path
-
-### Normal runtime flow
+### `processMessage()` — Full Execution Order
 
 ```
-1. Decompose the message into ordered semantic units
-   route ∈ { conversational | agentic | query }
+[0]  Pending confirmation intercept
+     → if pendingConfirmationPlan exists: call confirm_plan skill → approve/reject/unclear
 
-2. Search memory for every unit in parallel
-   - person signal     → WHO
-   - project signal    → PLAN.PJ first, WHAT only for supporting knowledge
-   - time signal       → WHEN.EV / WHEN.RF
-   - procedure signal  → HOW.PR
-   - otherwise         → BM25 first, vector only as fallback
+[1]  Fast-path bypasses (no LLM, no decomposition)
+     → /log ...   → direct NOW.LOG write
+     → /meeting   → Meeting Mode (core/meeting.ts)
 
-3. Execute by route
-   - conversational units → one batched LLM response
-   - query units          → direct retrieval / hybrid fallback
-   - agentic units        → multi-goal planner + executor
+[2]  Quick complexity pre-check (agentic fast-path, saves ~15s)
+     → Skipped if: likely compound, compound entity creation, greeting,
+       question prefix, or matches skill/memory/query compatibility patterns.
+     → assessComplexity() → if LOW or MEDIUM: runQueryLoop() directly, return.
+     → if HIGH/MAX: fall through to full pipeline.
 
-4. Merge route outputs by original unit order
+[3]  Quick-resolve gate (deterministic, no LLM)
+     → Skipped if relationship intent detected (extractRelation() !== undefined).
+     → quickResolve(message): 4 strategies in order —
+         1. Code lookup (regex, handles suffixed codes like WHO.CT-000076_zaraban)
+         2. Identity question ("who is X", "what is X") → WHO-first search
+         3. Listing query ("show all contacts") → type-scan via queryEntries
+         4. Name search (capitalized phrases / quoted strings, capped at 10 results)
+       Command-intent messages (isCommandIntent()) skip strategies 2–4.
+     → If resolved: single LLM synthesis call → return.
+
+[4]  Pre-decomposition action skill fast-path
+     → Matches file_writer or run_bash patterns directly.
+     → buildSkillCompatibilityClassification() + handleCompatibilityExecution()
+     → If handled: return.
+
+[5]  Intake (LLM call)
+     → runIntake() → IntakeSignals: personSignal, projectSignal, timeSignal,
+       agenticSignal, querySignal, procedureSignal
+
+[6]  Decomposition (LLM call)
+     → decomposeMessage() → units[ { id, route, content, order, taskType? } ]
+     → Retries with few-shot examples on no_valid_units.
+     → Heuristic repair on compound under-split.
+
+[7]  Unit memory search (parallel, signal-scoped)
+     → searchMemoryForUnits(units, db, intakeSignals)
+     → BM25 fallback has a relevance gate (hasMeaningfulOverlap):
+       if no non-stopword from the query appears in entry name/summary, result
+       is dropped. If all dropped → confidence 0, no context injected.
+
+[8]  Compatibility shim (runs AFTER decomposition, not instead of it)
+     → buildSingleUnitCompatibilityClassification() uses decomposition result.
+     → Handles: skill, memory_write, memory_query, relationship_query, code_fetch.
+     → Read-only skill outputs (web_search, calculator, file_reader, memory_read,
+       web_fetch, url_extract) returned directly — no second LLM paraphrase call.
+     → If handled: return.
+
+[9]  Working memory load / create (agentic units only)
+
+[10] routeDecomposedUnits(units, memoryResults, history, llmHandler, workingMemory)
+     → conversational → batched LLM call; persistFactualAssertions() fire-and-forget
+     → query          → direct retrieval; hybrid search if confidence = 0
+     → agentic        → handleAgenticUnits():
+         • taskType === 'coding' on any unit → runQueryLoop() (while-loop)
+         • LOW / MEDIUM complexity           → runSimplePlan() (sequential planner steps,
+                                               no PLAN.EX, no milestone overhead)
+         • HIGH / MAX complexity             → decomposeTask() + executePlan()
+                                               (full milestone pipeline with PLAN.EX)
+         • Unknown complexity value          → default to LOW (defensive guard)
+
+[11] Return AgentResponse
 ```
 
-### Important routing rules
+### Three execution engines
 
-- Query units that precede agentic work are resolved first and injected into the
-  planner as prior context. They are not treated as goals.
-- Compound messages must not be swallowed by a single legacy compatibility path.
-  If decomposition under-splits, the system retries with a stricter prompt and
-  then uses a narrow heuristic repair pass.
-- Legacy intent labels still exist for compatibility in tests and metadata, but
-  runtime routing in `processMessage()` is decomposition-first.
-- Greeting, `synthesis_query`, `relationship_write`, and old classifier-first
-  branching are no longer primary execution routes.
+| Engine | Trigger | What it does |
+|--------|---------|-------------|
+| `runQueryLoop` | `taskType=coding`, or LOW/MEDIUM in quick pre-check (step [2]) | Iterative while-loop; model picks each skill call. Max 20 iterations. Circuit breaker on repeated failures. History trimmed to last 2 turns. |
+| `runSimplePlan` | LOW/MEDIUM agentic (non-coding) from `handleAgenticUnits` | Calls `decomposeTask()` then runs steps sequentially. No PLAN.EX, no milestone overhead, no verification LLM call. |
+| `decomposeTask` + `executePlan` | HIGH/MAX agentic | Full milestone pipeline. Writes PLAN.EX. Reactive revision only on failures. Post-flight synthesis (single LLM call). |
 
 ### Skills in the current architecture
 
-- Skills are primarily execution steps inside plans.
-- Conversational arithmetic is the main exception (`calculator`).
-- A narrow single-unit compatibility shim still exists for simple cases like
-  `file_writer`, `run_bash`, `web_search`, `calculator`, and deterministic
-  memory writes, but it is not the source of truth for routing.
-- Deterministic read-only skills (`web_search`, `calculator`, `file_reader`,
-  `memory_read`, `web_fetch`, `url_extract`) now return their real output
-  directly in the compatibility path instead of asking the LLM to paraphrase
-  them. This prevents false-complete replies like "Let me search for you"
-  after the skill has already run.
-- If an LLM reply still starts with deferred-action narration (`Let me...`,
-  `I'll use...`, `I should...`) after a skill or conversational response, the
-  runtime strips that reasoning preamble before returning text to the user.
+- Skills are execution steps inside plans and QueryLoop iterations.
+- The compatibility shim (step [8]) handles direct single-skill calls post-decomposition.
+  It runs after decomposition — it does not bypass decomposition.
+- Deterministic read-only skills return output directly without a second LLM call.
+- If an LLM reply starts with deferred-action narration (`Let me...`, `I'll use...`,
+  `I should...`) the runtime strips that preamble before returning to the user.
 - `implement_and_test` is now grounded to the real workspace when filenames
   already exist: it reuses existing implementation/test files, syntax-checks
   both artifacts before execution, and can repair either file instead of only
@@ -772,18 +843,18 @@ descriptions from earlier implementation phases.
 
 ## Performance Targets
 
-LLM response times depend on model size. These are the realistic targets
-for local inference on Mac Studio hardware:
+LLM timeouts are model-size-based. Configured in `config/agent.config.ts` via `getTimeoutForModel`:
 
-| Model size | Acceptable response | Warning threshold | Abort timeout |
-|------------|--------------------:|------------------:|--------------:|
-| 70B+       | under 60s           | over 45s          | 90000ms (90s) |
-| 7B–14B     | under 10s           | —                 | 20000ms (20s) |
-| 1B–4B      | under 5s            | —                 | 10000ms (10s) |
+| Model name matches | Hard timeout |
+|--------------------|-------------|
+| `72b\|70b\|80b\|35b\|32b\|26b\|20b` | 600,000ms (10 min) |
+| `7b\|8b\|13b\|14b` | 120,000ms (2 min) |
+| `1b\|2b\|3b\|4b` | 60,000ms (1 min) |
+| Default (unknown size) | 120,000ms (2 min) |
 
-These timeouts are configured in `config/agent.config.ts` (`getTimeoutForModel`).
-The primary LLM call in `core/llm.ts` uses the configured timeout and logs
-a warning when the model is still processing near the threshold.
+`INTAKE_TIMEOUT_MS` is separately set to 120,000ms for intake classification calls.
+
+These are hard kill-timeouts, not warning thresholds. The model is given the full timeout.
 
 Non-LLM operations (memory reads, SQLite queries, file fetches) should
 complete in under 50ms. If they don't, fix the foundation before adding features.
@@ -1042,6 +1113,13 @@ Full audit of the planner/executor pipeline following the Fix Sprint. 29 bugs id
 | `llm_raw` | `core/llm.ts` | raw model output with elapsed ms |
 | `llm_stripped` | `core/llm.ts` | after `stripThinkingTags()` |
 | `memory_write` | `core/memory/write.ts` | already present |
+| `query_loop_narration` | `core/query-loop.ts` | model emits plain-text narration between skill calls |
+| `continuation_context_loaded` | `core/router.ts` | resumable PLAN.EX context injected into new message |
+| `list_intent_detected` | `core/memory/unit-search.ts` | `detectListingQuery()` fast-path triggered |
+| `startup_prefetch` | `core/agent.ts` | warm-up prefetch of pointer index at startup |
+| `startup_prefetch_error` | `core/agent.ts` | startup prefetch failed |
+| `context_lazy_loaded` | `core/context.ts` | context entries loaded lazily on first access |
+| `unit_search_filtered` | `core/memory/unit-search.ts` | BM25 results dropped by `hasMeaningfulOverlap` gate |
 
 Enable with `TRANSPARENT=true npx tsx chat.ts`. Overhead: ~0.004ms per event (negligible).
 
@@ -1346,6 +1424,17 @@ Phase 11 adds eight capabilities. 587 tests pass. Build clean.
 ### P6: Enhanced Planner (`core/planner.ts`)
 - `ComplexityLevel` type: `'LOW' | 'MEDIUM' | 'HIGH' | 'MAX'`
 - `assessComplexity(message, classification)` — multi-signal heuristic returning `{ level, estimatedSteps, reason }`
+  - Signal count → level: 0→LOW, 1-2→MEDIUM, 3-4→HIGH, 5+→MAX
+  - **FORCE_HIGH domains** — 4 named pattern groups that immediately force HIGH regardless of signal count:
+
+    | Domain | Key patterns |
+    |--------|-------------|
+    | `gameDev` | game, arcade, platformer, shooter, rpg, pygame, phaser, godot, unity, canvas game |
+    | `appDev` | web app, SPA, REST API, full-stack, dashboard, admin panel, CRUD, backend, frontend |
+    | `scaffolding` | scaffold, boilerplate, starter kit, project template, generate project |
+    | `rendering` | canvas API, WebGL, Three.js, 3D renderer, shader, animation loop |
+
+  - **`derivePlanComplexity(stepCount)`** — fallback when signal heuristic is unavailable: ≤2→LOW, ≤4→MEDIUM, ≤6→HIGH, 7+→MAX
 - `isComplexTask()` remains as backward-compatible wrapper
 - `extractThought(text)` — extracts `<thought>...</thought>` blocks from LLM output
 - `verifyPlanAssertions(plan, llm)` — post-plan assertion checking; returns `{ passed, failedAssertions }`
@@ -1715,18 +1804,36 @@ Phase 16 adds a while-loop execution engine for simple tasks, a thin always-load
 - MAX_ITERATIONS: 20 per run
 - Goal block (`GOAL / COMPLETION CONDITION / ITERATION`) reinjected after each tool result
 - When model emits plain text (no JSON action) → `stoppedBecause: 'no_action'` → returns that text as reply
-- History injection: last 6 non-system turns prepended before goal block
+- History injection: last **2** turns (1 user + 1 assistant) prepended before goal block — task state anchor replaces need for deep history
 - CRITICAL WORKSPACE RULE in system prompt: model must use `file_writer` skill — never write file content in text reply
 - Transparency events: `query_loop_start`, `query_loop_iteration`, `query_loop_skill_call`, `query_loop_skill_result`, `query_loop_end`
 
 ### Section 2: Pointer Index (`core/memory/pointer-index.ts`)
 
-- `upsertPointerEntry(entry)` — writes/updates a single line in `memory/MEMORY.md`
-- `loadPointerIndex()` — returns the full MEMORY.md string (always-loaded in queryLoop system prompt)
-- MAX_ENTRIES = 200 with LRU eviction (oldest lines removed when limit hit)
+`MEMORY.md` has two distinct zones:
+
+```
+## Active loops       ← machine-written task-state (max 5 entries, FIFO eviction)
+## Known entries      ← human-readable factual index (max 200, LRU eviction)
+```
+
+**Active loop entries** (updated by executor after each milestone):
+- Format: `PLAN.EX-000031: HackerNews API · M3/6 · next→ Express server · files: [src/cache.js]`
+- `files[]` extracted from step outputs via regex `workspace/\S+\.\w+`, capped at 6
+- Terminal state: `PLAN.EX-000031: HackerNews API · DONE · all milestones complete` (then removed)
+- QueryLoop system prompt injects active loop section as task state anchor
+
+**Known entries:**
+- Format: `WHO.CT-000001: Sara Ahmadi — lead designer, Zaraban Analytics`
+- MAX 200 with LRU eviction (oldest `lastActive` removed when over limit)
+
+**API:**
+- `upsertPointerEntry(entry)` / `removePointerEntry(code)` — known entries
+- `upsertActiveLoop(entry)` / `removeActiveLoop(code)` — active loop entries
+- `loadPointerIndex()` — full MEMORY.md string
+- `loadActiveLoopsSection()` / `parseActiveLoopEntries()` — active loop section only
 - Atomic writes via tmp file + rename — never throws
-- Line format: `WHO.CT-000001: Sara Ahmadi — lead designer`
-- Wired into: `write.ts` (all `upsertEntry` return paths), `session-cache.ts` (every `set()` with valid code), `heartbeat.ts` (AutoDream refresh)
+- Wired into: `write.ts` (all `upsertEntry` return paths), `session-cache.ts` (every `set()` with valid code), `heartbeat.ts` (AutoDream refresh), `executor.ts` (milestone lifecycle hooks)
 
 ### Section 3: Complexity Routing (`core/router.ts`)
 
@@ -1758,7 +1865,7 @@ Four bugs found in live use, all fixed:
 
 1. **Confirmation gate** (`core/planner.ts`): `parsePlan()` was trusting LLM's `"needsConfirmation": true`. LLMs over-eagerly set this. Fix: always compute via `shouldRequireConfirmation()` (only triggers for destructive ops / external side effects / risky overwrites) — never trust LLM's value.
 
-2. **History not passed to queryLoop**: `handleAgenticUnits()` and `runQueryLoop()` now accept `history?: Message[]`. Last 6 non-system turns injected before the goal block.
+2. **History not passed to queryLoop**: `handleAgenticUnits()` and `runQueryLoop()` now accept `history?: Message[]`. Last 2 turns injected before the goal block (reduced from 6; active loop anchor replaces deep history).
 
 3. **CRITICAL WORKSPACE RULE** added to queryLoop system prompt: prevents model from writing HTML/code directly into text reply instead of calling `file_writer`.
 
@@ -1826,9 +1933,9 @@ Phase 17A adds a hardened security layer across the skills system. 809 tests pas
 - `enforcePermission(skillName, requiredLevel, activeMode)` — returns `{ allowed: boolean, error?: string }` where errors always contain `'Permission denied'`
 - `getActivePermissionMode()` — reads `PERMISSION_MODE` env var, defaults to `'workspace-write'`
 - `runSkill()` in `runner.ts` calls `enforcePermission` before executing any skill; blocked skills return `{ success: false, error: '...' }` without executing
-- **All 15 skills annotated** with `permissionLevel`:
-  - `read-only`: `web_search`, `url_extract`, `web_fetch`, `memory_history`, `memory_read`, `content_writer`, `calculator`, `file_reader`, `verify_state`, `memory_history`
-  - `workspace-write`: `file_writer`, `memory_write`, `relationship_write`, `generate_and_save_file`
+- **All 20 skills annotated** with `permissionLevel`:
+  - `read-only`: `calculator`, `file_reader`, `web_search`, `web_fetch`, `url_extract`, `memory_read`, `memory_history`, `content_writer`, `verify_state`, `grep_workspace`, `list_dir`, `glob`
+  - `workspace-write`: `file_writer`, `patch_file`, `memory_write`, `relationship_write`, `generate_and_save_file`, `confirm_plan`
   - `full-access`: `run_bash`, `implement_and_test`
 
 ### Task 6: Config Zod Validation (`core/config.ts`, `chat.ts`)
@@ -2240,11 +2347,9 @@ future phase.
 - `coding_route_selected`: `{ unitIds, complexity, reason }`
 - `context_mode_applied`: `{ mode, softLimit, hardCeiling }`
 
-### Upgrade 4 — Deprecate `generate_and_save_file`
+### Upgrade 4 — `generate_and_save_file` (active, not deprecated)
 
-- JSDoc `@deprecated` comment added at file top
-- `console.warn('[generate_and_save_file] DEPRECATED — prefer content_writer + file_writer')` at start of `execute()`
-- Description string updated to note `[DEPRECATED: prefer content_writer + file_writer]`
+`generate_and_save_file` is the preferred tool for self-contained single-file generation (HTML, JS, CSS, etc.). All deprecation markers were removed in the Phase 20 portfolio-audit sprint after testing showed that the single-tool approach has fewer failure points than a separate `content_writer → file_writer` two-step chain. The skill is actively registered and listed in planner/queryLoop prompts.
 
 ### Test Results
 
@@ -2696,8 +2801,8 @@ User: "update WHO.CT-000076"
 
 28 tests in `tests/dvd-log-fixes/fixes.test.ts`. Build clean. Tag: `dvd-log-fixes-complete`.
 
-Five targeted bugs identified from a transparency log analysis of a DVD screensaver creation task,
-resolved with surgical fixes to unit-search, decomposition, session cache, planner, and router.
+Seven targeted bugs identified from a transparency log analysis of a DVD screensaver creation task,
+resolved with surgical fixes to unit-search, decomposition, session cache, planner, router, and planner milestone sync.
 
 ### FIX 1 — BM25 Relevance Gate (`core/memory/unit-search.ts`)
 
@@ -2797,13 +2902,36 @@ the planner prompt examples omitted them, and the retry feedback hid the actual 
 **Impact:** Planner retries now surface actionable schema errors, and valid plans no longer fail
 only because defaulted step fields were omitted in raw LLM output.
 
+### FIX 6 — Auto-Read Step Milestone Sync (`core/planner.ts`)
+
+**Bug:** `enforceFileReaderPrerequisite()` inserts auto-read `file_reader` steps into `plan.steps[]`
+but did NOT add them to `plan.milestones[*].steps[]`. Executor reported `plan_integrity_warning`
+for every auto-inserted step because it could not find the step in any milestone.
+
+**Fix:**
+- After `enforceFileReaderPrerequisite()` returns, sync newly inserted steps into the correct milestone
+- Each inserted step carries `_insertedFor` pointing to the step it precedes
+- Milestone sync: find milestone containing `_insertedFor` target, splice auto-read step before it
+- Guard: `alreadyPresent` check prevents double-insertion on repeated calls
+- Emits no new event — `plan_integrity_warning` no longer fires for auto-read steps
+
+### FIX 7 — Route Event Emitted Before Step Loop (`core/router.ts` → `runSimplePlan`)
+
+**Bug:** `route` transparency event was emitted AFTER the step loop completed in `runSimplePlan`.
+Clients listening for route events to know which engine was chosen would receive the event too late
+— after all steps had already executed.
+
+**Fix:**
+- Moved `transparency.emit({ type: 'route', ... })` to the TOP of `runSimplePlan`, before the step loop begins
+- Removed duplicate emit that was at the bottom of the function
+
 ### Files Modified
 
 1. `core/memory/unit-search.ts` — FIX 1: hasMeaningfulOverlap gate + filtered BM25 fallback
 2. `core/decomposition.ts` — FIX 2: Compound re-trigger bypass logic
 3. `core/memory/session-cache.ts` — FIX 4: Dedup guard in set() method
-4. `core/planner.ts` — FIX 5A: Legacy complexity coercion mapping + warning log
-5. `core/router.ts` — FIX 5B: Defensive complexity validation guard + route event
+4. `core/planner.ts` — FIX 5A: Legacy complexity coercion mapping + warning log; FIX 6: auto-read milestone sync
+5. `core/router.ts` — FIX 5B: Defensive complexity validation guard + route event; FIX 7: route event timing
 6. `core/transparency.ts` — New event: `unit_search_filtered { unitId, reason, droppedCount }`
 
 ### Test Results

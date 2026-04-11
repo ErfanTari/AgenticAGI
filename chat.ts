@@ -7,6 +7,7 @@ import { transparency } from './core/transparency.js';
 import { attachConsoleRenderer } from './core/transparency-renderer.js';
 import { currentSession } from './core/session/session-log.js';
 import { getCostReport, formatCostReport } from './core/operators/cost.js';
+import { getTokenStats } from './core/token-counter.js';
 import { runHealthCheck, formatHealthCheck } from './core/operators/doctor.js';
 import { captureContextSnapshot, formatContextSnapshot } from './core/operators/context.js';
 import { runStartupPrefetch, getPointerIndexCache } from './core/startup/prefetch.js';
@@ -46,7 +47,7 @@ const prefetchPromise = runStartupPrefetch().then(async (result) => {
 
   // Print ready message after prefetch completes
   console.log('Agent ready. Type a message and press Enter. Type "quit" to exit.');
-  console.log('Operators: /cost (session usage), /doctor (health check), /context (memory snapshot), /resume (resume plans)\n');
+  console.log('Operators: /cost (session usage), /doctor (health check), /context (memory snapshot), /resume (resume plans), /tokens (token usage)\n');
 
   // Check for active execution plans after prefetch
   await checkActivePlan();
@@ -61,7 +62,7 @@ const prefetchPromise = runStartupPrefetch().then(async (result) => {
 
   // Print ready message even on prefetch failure
   console.log('Agent ready. Type a message and press Enter. Type "quit" to exit.');
-  console.log('Operators: /cost (session usage), /doctor (health check), /context (memory snapshot), /resume (resume plans)\n');
+  console.log('Operators: /cost (session usage), /doctor (health check), /context (memory snapshot), /resume (resume plans), /tokens (token usage)\n');
 
   // Check for active execution plans even on prefetch failure
   await checkActivePlan();
@@ -150,6 +151,13 @@ function prompt() {
       return prompt();
     }
 
+    if (trimmed === '/tokens') {
+      const stats = getTokenStats();
+      const fmt = (n: number) => n.toLocaleString();
+      console.log(`\nagent > Session tokens — Input: ${fmt(stats.inputTokens)} | Output: ${fmt(stats.outputTokens)} | Calls: ${stats.callCount} | ~$${stats.estimatedCostUSD.toFixed(4)}`);
+      return prompt();
+    }
+
     if (trimmed === '/resume') {
       try {
         const result = selectResumablePlan();
@@ -203,3 +211,14 @@ function prompt() {
     prompt();
   });
 }
+
+// Print token stats on clean exit
+process.on('SIGINT', () => {
+  const stats = getTokenStats();
+  if (stats.callCount > 0) {
+    const fmt = (n: number) => n.toLocaleString();
+    console.log(`\nSession tokens — Input: ${fmt(stats.inputTokens)} | Output: ${fmt(stats.outputTokens)} | Calls: ${stats.callCount} | ~$${stats.estimatedCostUSD.toFixed(4)}`);
+  }
+  stopAgent();
+  process.exit(0);
+});

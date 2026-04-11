@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { LLM_CONFIG, LLM_FALLBACK_CONFIG, ANTHROPIC_CLOUD_CONFIG } from '../config/agent.config.js';
 import { transparency } from './transparency.js';
+import { recordTokens } from './token-counter.js';
 const llmRuntimeStore = new AsyncLocalStorage();
 function getTimeoutForModel(modelName) {
     const lower = modelName.toLowerCase();
@@ -326,11 +327,6 @@ export function sanitizeFinalOutput(text) {
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
     return cleaned.trim();
 }
-/**
- * Call the primary LLM (Mac Studio / OpenAI-compatible endpoint).
- * Timeout is tiered by model size (70B+=90s, 7B-14B=20s, 1B-4B=10s, default=20s).
- * On timeout, logs a warning with model name so caller knows what happened.
- */
 async function callOpenAICompatibleProfile(profile, messages, options) {
     const controller = new AbortController();
     const timeoutMs = profile.timeoutMs;
@@ -427,7 +423,11 @@ async function callOpenAICompatibleEndpoint(endpoint, model, apiKey, messages, o
         if (!retryContent) {
             throw new Error(`${label}: empty response content`);
         }
-        return retryContent;
+        return {
+            content: retryContent,
+            inputTokens: retryData.usage?.prompt_tokens ?? 0,
+            outputTokens: retryData.usage?.completion_tokens ?? 0,
+        };
     }
     if (!response.ok) {
         throw new Error(`${label}: ${response.status} ${response.statusText}`);
@@ -437,7 +437,11 @@ async function callOpenAICompatibleEndpoint(endpoint, model, apiKey, messages, o
     if (!content) {
         throw new Error(`${label}: empty response content`);
     }
-    return content;
+    return {
+        content,
+        inputTokens: data.usage?.prompt_tokens ?? 0,
+        outputTokens: data.usage?.completion_tokens ?? 0,
+    };
 }
 /**
  * Call the Anthropic Messages API as fallback.
@@ -467,7 +471,11 @@ async function callAnthropicProfile(profile, messages, options) {
         throw new Error(`${profile.label}: ${response.status} ${response.statusText}`);
     }
     const data = await response.json();
-    return data.content[0].text;
+    return {
+        content: data.content[0].text,
+        inputTokens: data.usage?.input_tokens ?? 0,
+        outputTokens: data.usage?.output_tokens ?? 0,
+    };
 }
 async function callProfile(profile, messages, options) {
     if (profile.kind === 'anthropic') {
@@ -496,9 +504,11 @@ export async function callLLM(messages, options) {
     if (runtime.primary) {
         const start = performance.now();
         try {
-            const raw = await callProfile(runtime.primary, messages, options);
+            const { content: raw, inputTokens: inT, outputTokens: outT } = await callProfile(runtime.primary, messages, options);
             const elapsed = Math.round(performance.now() - start);
             console.log('[llm] Provider: %s (%s) — %dms', runtime.primary.label, runtime.primary.model, elapsed);
+            if (inT > 0 || outT > 0)
+                recordTokens(inT, outT);
             transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
             const stripped = stripThinkingTags(raw);
             transparency.emit({ type: 'llm_stripped', data: { stripped } });
@@ -518,9 +528,11 @@ export async function callLLM(messages, options) {
     if (runtime.fallback) {
         const start = performance.now();
         try {
-            const raw = await callProfile(runtime.fallback, messages, options);
+            const { content: raw, inputTokens: inT, outputTokens: outT } = await callProfile(runtime.fallback, messages, options);
             const elapsed = Math.round(performance.now() - start);
             console.log('[llm] Provider: %s (%s) — %dms', runtime.fallback.label, runtime.fallback.model, elapsed);
+            if (inT > 0 || outT > 0)
+                recordTokens(inT, outT);
             transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
             const stripped = stripThinkingTags(raw);
             transparency.emit({ type: 'llm_stripped', data: { stripped } });

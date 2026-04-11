@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { LLM_CONFIG, LLM_FALLBACK_CONFIG, ANTHROPIC_CLOUD_CONFIG } from '../config/agent.config.js';
 import type { Message } from './types.js';
 import { transparency } from './transparency.js';
+import { recordTokens } from './token-counter.js';
 
 type LLMCallOptions = {
   responseSchema?: Record<string, unknown>;
@@ -405,11 +406,13 @@ export function sanitizeFinalOutput(text: string): string {
  * Timeout is tiered by model size (70B+=90s, 7B-14B=20s, 1B-4B=10s, default=20s).
  * On timeout, logs a warning with model name so caller knows what happened.
  */
+type LLMCallResult = { content: string; inputTokens: number; outputTokens: number };
+
 async function callOpenAICompatibleProfile(
   profile: OpenAICompatibleLLMProfile,
   messages: Message[],
   options?: LLMCallOptions,
-): Promise<string> {
+): Promise<LLMCallResult> {
   const controller = new AbortController();
   const timeoutMs = profile.timeoutMs;
   const timer = setTimeout(() => {
@@ -448,7 +451,7 @@ async function callOpenAICompatibleEndpoint(
   label: string,
   temperature: number,
   defaultMaxTokens: number,
-): Promise<string> {
+): Promise<LLMCallResult> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
@@ -530,12 +533,17 @@ async function callOpenAICompatibleEndpoint(
     }
     const retryData = await retryResponse.json() as {
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
     };
     const retryContent = retryData.choices?.[0]?.message?.content;
     if (!retryContent) {
       throw new Error(`${label}: empty response content`);
     }
-    return retryContent;
+    return {
+      content: retryContent,
+      inputTokens: retryData.usage?.prompt_tokens ?? 0,
+      outputTokens: retryData.usage?.completion_tokens ?? 0,
+    };
   }
 
   if (!response.ok) {
@@ -544,13 +552,18 @@ async function callOpenAICompatibleEndpoint(
 
   const data = await response.json() as {
     choices?: Array<{ message?: { content?: string } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
   const content = data.choices?.[0]?.message?.content;
   if (!content) {
     throw new Error(`${label}: empty response content`);
   }
 
-  return content;
+  return {
+    content,
+    inputTokens: data.usage?.prompt_tokens ?? 0,
+    outputTokens: data.usage?.completion_tokens ?? 0,
+  };
 }
 
 /**
@@ -561,7 +574,7 @@ async function callAnthropicProfile(
   profile: AnthropicLLMProfile,
   messages: Message[],
   options?: LLMCallOptions,
-): Promise<string> {
+): Promise<LLMCallResult> {
   if (!profile.apiKey) {
     throw new Error('Anthropic fallback not configured (missing API key)');
   }
@@ -590,16 +603,21 @@ async function callAnthropicProfile(
 
   const data = await response.json() as {
     content: Array<{ type: string; text: string }>;
+    usage?: { input_tokens?: number; output_tokens?: number };
   };
 
-  return data.content[0].text;
+  return {
+    content: data.content[0].text,
+    inputTokens: data.usage?.input_tokens ?? 0,
+    outputTokens: data.usage?.output_tokens ?? 0,
+  };
 }
 
 async function callProfile(
   profile: LLMProfile,
   messages: Message[],
   options?: LLMCallOptions,
-): Promise<string> {
+): Promise<LLMCallResult> {
   if (profile.kind === 'anthropic') {
     return await callAnthropicProfile(profile, messages, options);
   }
@@ -634,9 +652,10 @@ export async function callLLM(
   if (runtime.primary) {
     const start = performance.now();
     try {
-      const raw = await callProfile(runtime.primary, messages, options);
+      const { content: raw, inputTokens: inT, outputTokens: outT } = await callProfile(runtime.primary, messages, options);
       const elapsed = Math.round(performance.now() - start);
       console.log('[llm] Provider: %s (%s) — %dms', runtime.primary.label, runtime.primary.model, elapsed);
+      if (inT > 0 || outT > 0) recordTokens(inT, outT);
       transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
       const stripped = stripThinkingTags(raw);
       transparency.emit({ type: 'llm_stripped', data: { stripped } });
@@ -656,9 +675,10 @@ export async function callLLM(
   if (runtime.fallback) {
     const start = performance.now();
     try {
-      const raw = await callProfile(runtime.fallback, messages, options);
+      const { content: raw, inputTokens: inT, outputTokens: outT } = await callProfile(runtime.fallback, messages, options);
       const elapsed = Math.round(performance.now() - start);
       console.log('[llm] Provider: %s (%s) — %dms', runtime.fallback.label, runtime.fallback.model, elapsed);
+      if (inT > 0 || outT > 0) recordTokens(inT, outT);
       transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
       const stripped = stripThinkingTags(raw);
       transparency.emit({ type: 'llm_stripped', data: { stripped } });
