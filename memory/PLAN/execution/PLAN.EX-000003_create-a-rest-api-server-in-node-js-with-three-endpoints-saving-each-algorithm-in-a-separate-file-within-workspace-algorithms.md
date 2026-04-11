@@ -3,8 +3,8 @@ code: PLAN.EX-000003
 nb: PLAN
 type: EX
 name: Create a REST API server in Node.js with three endpoints, saving each algorithm in a separate file within workspace/algorithms.
-status: active
-updated: 2026-03-08
+status: failed
+updated: 2026-04-11
 summary: Execution state for: Create a REST API server in Node.js with three endpoints, saving each algorithm 
 importance_score: 0
 utility_score: 0

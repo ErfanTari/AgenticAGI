@@ -199,7 +199,7 @@ export function detectListingQuery(message: string): { nb: string; type: string 
  * Phase 20b fix: prevents "write a Tetris game" from being trapped by name search.
  */
 export function isCommandIntent(message: string): boolean {
-  const trimmed = message.trim();
+  const trimmed = normalizeLeadingCommandPrefix(message);
 
   // Command verbs at start of message
   const COMMAND_PATTERN = /^(write|create|build|make|run|implement|code|develop|design|generate|deploy|install|set\s?up|configure|fix|debug|refactor|delete|remove|update|change|modify|edit|rename|move|copy|merge|split|convert|transform|migrate|add|insert|append|replace|send|post|publish|upload|download|execute|launch|start|stop|restart|compile|test|benchmark|optimize|analyze)\b/i;
@@ -212,6 +212,28 @@ export function isCommandIntent(message: string): boolean {
   if (POLITE_COMMAND.test(trimmed)) return true;
 
   return false;
+}
+
+/**
+ * Strips leading salutations and assistant-name vocatives so imperative
+ * commands like "Hi Zaraban, build..." are detected correctly.
+ */
+function normalizeLeadingCommandPrefix(message: string): string {
+  let normalized = message.trim();
+  const PREFIX_PATTERNS: RegExp[] = [
+    /^(?:hi|hello|hey|yo|ok|okay|please)\b[\s,!.:;-]*/i,
+    /^(?:dear\s+)?(?:zaraban|assistant|agent)\b[\s,!.:;-]*/i,
+  ];
+
+  let previous = '';
+  while (normalized && normalized !== previous) {
+    previous = normalized;
+    for (const pattern of PREFIX_PATTERNS) {
+      normalized = normalized.replace(pattern, '').trimStart();
+    }
+  }
+
+  return normalized || message.trim();
 }
 
 /**

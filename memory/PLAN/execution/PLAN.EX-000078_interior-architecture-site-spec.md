@@ -3,8 +3,8 @@ code: PLAN.EX-000078
 nb: PLAN
 type: EX
 name: interior-architecture-site-spec
-status: active
-updated: 2026-04-08
+status: failed
+updated: 2026-04-11
 summary: Specification for modern interior architecture portfolio website with image gallery
 importance_score: 0
 utility_score: 0

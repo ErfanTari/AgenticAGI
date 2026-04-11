@@ -3,8 +3,8 @@ code: PLAN.EX-000002
 nb: PLAN
 type: EX
 name: Create an HTML Snake game in the specified directory.
-status: active
-updated: 2026-03-07
+status: failed
+updated: 2026-04-11
 summary: Execution state for: Create an HTML Snake game in the specified directory.
 importance_score: 0
 utility_score: 0

@@ -96,6 +96,14 @@ describe('Phase 20b — Intent-Aware Gate', () => {
       expect(isCommandIntent('fix the bug in main.ts')).toBe(true);
     });
 
+    it('detects agent-name prefixed imperative commands', () => {
+      expect(isCommandIntent('Zaraban, build me a website')).toBe(true);
+    });
+
+    it('detects greeting-prefixed assistant commands', () => {
+      expect(isCommandIntent('Hi Zaraban, create a Node.js API')).toBe(true);
+    });
+
     it('does NOT detect "who is Zaraban"', () => {
       expect(isCommandIntent('who is Zaraban')).toBe(false);
     });
@@ -125,6 +133,16 @@ describe('Phase 20b — Intent-Aware Gate', () => {
 
     it('returns resolved:false for "create a Snake game in JavaScript"', async () => {
       const result = await quickResolve('create a Snake game in JavaScript');
+      expect(result.resolved).toBe(false);
+    });
+
+    it('returns resolved:false for agent-name prefixed build requests', async () => {
+      const result = await quickResolve('Zaraban, build me a small Node.js REST API');
+      expect(result.resolved).toBe(false);
+    });
+
+    it('returns resolved:false for greeting-prefixed build requests', async () => {
+      const result = await quickResolve('Hi Zaraban, create a Node.js REST API with tests');
       expect(result.resolved).toBe(false);
     });
 

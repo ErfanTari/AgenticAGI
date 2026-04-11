@@ -3,8 +3,8 @@ code: PLAN.EX-000077
 nb: PLAN
 type: EX
 name: zaraban-portfolio-spec
-status: active
-updated: 2026-04-08
+status: failed
+updated: 2026-04-11
 summary: Spec for Zaraban Portfolio Website with colorful placeholder cards
 importance_score: 0
 utility_score: 0

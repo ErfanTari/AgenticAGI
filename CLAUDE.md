@@ -3,6 +3,19 @@
 This file defines the architecture, memory system, and build philosophy for this agent platform.
 Read this fully before writing any code. Every decision here exists for a reason.
 
+## Current Phase 23 Status
+
+The live memory architecture is currently:
+
+- Stage 1 complete: Gate A, handle metadata, relationship uniqueness, prune tooling
+- Stage 2A complete: `project_code`, `purpose`, temporal relationship validity, project gravity, utility feedback, heartbeat pointer migration
+- Stage 2B complete: `WHAT.PJ` collapsed permanently into `PLAN.PJ`; new `WHAT.PJ` creation is no longer allowed
+- Stage 3 complete: Gate B classifier, rederivable rule, memory-as-hint prompt stance, real-DB verification
+- Living Memory foundation complete: heartbeat-driven distiller pass, `distiller_state`, `MEMORY_DIGEST.md`, transparency hooks
+
+Important current rule:
+- `PLAN.PJ` is the only project-entry type. Any old references to `WHAT.PJ` in historical notes below are legacy history, not the live design.
+
 ---
 
 ## Phase 20C — Planner Contract Fix (Codex, 2026-04-08)
@@ -93,32 +106,45 @@ It tells you the notebook, the type, and the number — without opening anything
 ├── memory/
 │   ├── WHO/                   ← contacts, people, organizations
 │   │   └── contacts/
-│   ├── WHAT/                  ← projects, knowledge entries
-│   │   ├── projects/
+│   ├── WHAT/                  ← knowledge entries only
 │   │   └── knowledge/
-│   ├── WHEN/                  ← calendar events, deadlines
+│   ├── WHEN/                  ← calendar events, deadlines, episodic events, reflections
 │   │   ├── calendar/
-│   │   └── deadlines/
-│   ├── HOW/                   ← procedures, routines, learned patterns
-│   │   └── procedures/
+│   │   ├── deadlines/
+│   │   ├── events/
+│   │   ├── reflections/
+│   │   └── history/
+│   ├── HOW/                   ← procedures and reusable skills
+│   │   ├── procedures/
+│   │   └── skills/
 │   ├── WHY/                   ← meta reflections, open questions
 │   │   ├── meta/
 │   │   └── questions/
-│   ├── NOW/                   ← todos, reports, active tasks
+│   ├── NOW/                   ← todos, reports, logs
 │   │   ├── todos/
-│   │   └── reports/
-│   └── PLAN/                  ← planning entries, time estimates
-│       └── planning/
+│   │   ├── reports/
+│   │   └── logs/
+│   ├── MEMORY_DIGEST.md       ← weekly natural-language digest written by the distiller
+│   └── PLAN/                  ← planning entries, execution, milestones, constraints, project brains
+│       ├── planning/
+│       ├── execution/
+│       ├── constraints/
+│       ├── milestones/
+│       └── projects/
 ├── index/
 │   └── memory.sqlite          ← master index + relationships
 ├── core/
 │   ├── agent.ts               ← main agent loop
+│   ├── context.ts             ← memory-aware system prompt + LightRAG ranking
 │   ├── memory/
 │   │   ├── index.ts           ← SQLite interface
 │   │   ├── fetch.ts           ← file fetcher by code
 │   │   ├── search.ts          ← hybrid search (last resort)
-│   │   └── write.ts           ← memory writer
-│   ├── heartbeat.ts           ← background idle process
+│   │   ├── write.ts           ← memory writer
+│   │   ├── classifier.ts      ← Gate B async classifier
+│   │   ├── rederivable.ts     ← Stage 3 local-ground-truth check
+│   │   └── distiller.ts       ← heartbeat-driven synthesis pass
+│   ├── heartbeat.ts           ← background idle process + distiller trigger
 │   └── skills/                ← MCP-compatible skill modules
 │       ├── types.ts           ← MCPSkill + SkillResult interfaces
 │       ├── registry.ts        ← Map-based skill registry
@@ -144,13 +170,15 @@ Every memory entry has a universal code. Format:
 
 Examples:
 WHO.CT-000024   → Contact number 24
-WHAT.PJ-000003  → Project number 3
+WHAT.KN-000003  → Knowledge entry number 3
 WHEN.CA-000118  → Calendar event 118
 HOW.PR-000012   → Procedure number 12
 WHY.QU-000013   → Open question 13
 WHY.MT-000004   → Meta reflection 4
 NOW.TD-000041   → Todo item 41
+NOW.LOG-000002  → Log / pointer entry 2
 PLAN.PL-000007  → Planning entry 7
+PLAN.PJ-000003  → Project brain number 3
 ```
 
 ### Type Reference
@@ -159,16 +187,24 @@ PLAN.PL-000007  → Planning entry 7
 |----------|-----------|-----------------|
 | WHO      | CT        | Contact         |
 | WHO      | ORG       | Organization    |
-| WHAT     | PJ        | Project         |
 | WHAT     | KN        | Knowledge entry |
 | WHEN     | CA        | Calendar event  |
 | WHEN     | DL        | Deadline        |
+| WHEN     | EV        | Episodic event  |
+| WHEN     | RF        | Reflection      |
+| WHEN     | HX        | History entry   |
 | HOW      | PR        | Procedure       |
+| HOW      | SK        | Skill entry     |
 | WHY      | MT        | Meta reflection |
 | WHY      | QU        | Open question   |
 | NOW      | TD        | Todo item       |
 | NOW      | RP        | Report          |
+| NOW      | LOG       | Log / pointer   |
 | PLAN     | PL        | Planning entry  |
+| PLAN     | EX        | Execution state |
+| PLAN     | CT        | Constraint      |
+| PLAN     | MS        | Milestone       |
+| PLAN     | PJ        | Project brain   |
 
 ### Rules for codes
 - Codes are generated sequentially and never reused
@@ -179,8 +215,8 @@ PLAN.PL-000007  → Planning entry 7
 ---
 
 ## SQLite Schema
-
-Three tables. Nothing more until justified.
+The live store now contains the original core tables plus additive Phase 23 metadata.
+The important current rule is still the same: files are canonical, SQLite is derived.
 
 ### Table: index_entries
 
@@ -267,8 +303,8 @@ summary: Owner, developer, ceramic specialist
 - Thinks architecturally before diving into detail
 
 ## Projects
-- Owns WHAT.PJ-000003 (Activation X-Ray)
-- Owns WHAT.PJ-000002 (meeting_local)
+- Owns PLAN.PJ-000003 (Activation X-Ray)
+- Owns PLAN.PJ-000002 (meeting_local)
 
 ## Notes
 - Deep interest in AI interpretability
@@ -277,7 +313,7 @@ summary: Owner, developer, ceramic specialist
 
 ### Rules for markdown files
 - Frontmatter header is always present and always complete
-- References to other entries always use their code (e.g. WHAT.PJ-000003)
+- References to other entries always use their code (e.g. PLAN.PJ-000003)
 - Never duplicate information that lives in another file — use a code reference instead
 - Body content is written for a human to read, not just for the agent
 
@@ -294,7 +330,7 @@ Follow this order strictly. Do not skip steps.
    → NO: continue
 
 2. Can SQLite answer without opening a file?
-   (e.g. "show active projects" → WHERE type='PJ' AND status='active')
+   (e.g. "show active projects" → WHERE nb='PLAN' AND type='PJ' AND status='active')
    → YES: query index_entries, return names + summaries. Done.
    → NO: continue
 
@@ -336,7 +372,7 @@ These stay in TypeScript and skip decomposition entirely:
 
 2. Search memory for every unit in parallel
    - person signal     → WHO
-   - project signal    → PLAN.PJ / WHAT
+   - project signal    → PLAN.PJ first, WHAT only for supporting knowledge
    - time signal       → WHEN.EV / WHEN.RF
    - procedure signal  → HOW.PR
    - otherwise         → BM25 first, vector only as fallback
@@ -455,15 +491,22 @@ It does not respond to the user. It only reads and writes to memory.
    → compare estimated vs actual time on completed tasks
    → update accuracy score
 
-5. WHAT notebook — any active projects with no update in 7 days?
+5. PLAN notebook — any active project brains with no update in 7 days?
    → flag as stale, queue check-in question
 
 6. Vision alignment — any active plans/projects misaligned with North Star vision?
    → queries WHY.MT entries with name LIKE '%North Star%'
-   → compares active PLAN.PL and WHAT.PJ entries against vision keywords
+   → compares active PLAN.PL and PLAN.PJ entries against vision keywords
    → excludes entries with 'refers' relationship to vision entry
    → if no keyword overlap and no relationship: flags vision_drift notification
    → if no vision entry exists: skips silently (no false positives)
+
+7. Distiller pass — if the agent has been idle long enough and `MEMORY_DISTILLER=1`
+   → group recent `WHEN.EV` entries by `project_code`
+   → include recent transparency run summaries
+   → synthesize durable `WHEN.RF` reflections through the normal write path
+   → log possible stale facts as `NOW.LOG` pointer entries
+   → refresh weekly `MEMORY_DIGEST.md`
 ```
 
 ### Rules for heartbeat
@@ -642,8 +685,8 @@ total time → under 50ms
 
 **Phase 2:**
 ```
-add relationship WHO.CT-000001 owns WHAT.PJ-000001
-query "what does WHO.CT-000001 own?" → returns WHAT.PJ-000001 from table only
+add relationship WHO.CT-000001 owns PLAN.PJ-000001
+query "what does WHO.CT-000001 own?" → returns PLAN.PJ-000001 from table only
 no file reads triggered
 ```
 
