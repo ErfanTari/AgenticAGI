@@ -118,7 +118,13 @@ export type TransparencyEvent =
   | { type: 'coding_route_escalated'; data: { reason: string; constraints: import('./types.js').UserConstraint[] } }
   | { type: 'user_input_requested'; data: { question: string; context?: string } }
   | { type: 'user_input_received'; data: { question: string; answer: string } }
-  | { type: 'user_input_cleared'; data: Record<string, never> };
+  | { type: 'user_input_cleared'; data: Record<string, never> }
+  // Context Diet sprint — prompt budget accounting
+  | { type: 'prompt_budget'; data: { engine: string; promptId: string; totalTokens: number; iteration?: number; sources: Array<{ name: string; tokenEstimate: number }> } }
+  | { type: 'prompt_budget_exceeded'; data: { engine: string; promptId: string; totalTokens: number; limitTokens: number; overage: number } }
+  // Context Diet sprint — memory gate decisions
+  | { type: 'memory_gate_opened'; data: { gate: string; signal: string; reason: string } }
+  | { type: 'memory_gate_skipped'; data: { gate: string; reason: string } };
 
 export type TransparencyEventEnvelope = TransparencyEvent & { requestId?: string };
 

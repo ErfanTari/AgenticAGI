@@ -1,4 +1,5 @@
 import type { Message, ResolvedMemory, Intent, LLMHandler } from './types.js';
+import type { IntakeSignals } from './intake.js';
 import type { Skill } from './skills/types.js';
 import type { IndexEntry } from './memory/types.js';
 export declare function _resetCompactionCircuit(): void;
@@ -34,7 +35,7 @@ export declare function getIndexSummary(): string;
  */
 export declare function buildRollingContext(history: Message[], llmHandler: LLMHandler): Promise<ContextHistory>;
 export type ContextMode = 'default' | 'agentic_coding';
-export declare function buildContext(userMessage: string, resolved: ResolvedMemory | null, history: Message[], skills: Skill[], intent?: Intent, skillOutput?: string, llmHandler?: LLMHandler, contextMode?: ContextMode): Promise<Message[]>;
+export declare function buildContext(userMessage: string, resolved: ResolvedMemory | null, history: Message[], skills: Skill[], intent?: Intent, skillOutput?: string, llmHandler?: LLMHandler, contextMode?: ContextMode, signals?: IntakeSignals | null): Promise<Message[]>;
 /**
  * Count exact tokens using gpt-tokenizer.
  * Can accept either a string or Message array.

@@ -54,6 +54,7 @@ vi.mock('../../core/memory/relationships.js', () => ({
 vi.mock('../../core/skills/registry.js', () => ({
   getSkillDescriptions: mocks.getSkillDescriptions,
   getSkillDescriptionsForPermission: mocks.getSkillDescriptions,
+  getSkillCompactDescriptions: mocks.getSkillDescriptions,
   getSkillsByPermission: vi.fn(() => []),
   getAllSkills: vi.fn(() => []),
 }));

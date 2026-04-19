@@ -24,15 +24,20 @@ import { runWithRetry } from './react.js';
 import { stripThinkingTags } from './llm.js';
 import { transparency } from './transparency.js';
 import { loadPointerIndex, loadActiveLoopsSection } from './memory/pointer-index.js';
-import { getSkillDescriptionsForPermission } from './skills/registry.js';
-import { getActivePermissionMode } from './permission.js';
-import { getMemoryMode } from './memory-mode.js';
-import { promptLoader } from './prompt-loader.js';
 import { TOKEN_BUDGETS } from '../config/agent.config.js';
+import { buildQueryLoopSystemPrompt, emitPromptBudget } from './prompt-budget.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAX_ITERATIONS = 20;
+const HISTORY_KEEP_PAIRS = 3;
+
+export const COMPLEXITY_ITERATION_CAPS = {
+  LOW: 20,
+  MEDIUM: 40,
+  HIGH: 80,
+  MAX: 150,
+} as const;
 const CIRCUIT_MAX_FAILURES = 3;
 const FAILURE_RESET_THRESHOLD = 3;
 
@@ -46,6 +51,13 @@ function resolveLoopMaxTokens(goal: string): number {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface QueryLoopOptions {
+  /** Restrict which skills the loop may call. Defaults to all permitted skills. */
+  allowedSkillsOverride?: string[];
+  /** Override iteration cap. Defaults to MAX_ITERATIONS (20). */
+  maxIterationsOverride?: number;
+}
 
 export interface QueryLoopResult {
   reply: string;
@@ -279,11 +291,11 @@ function circuitKey(skillName: string, input: Record<string, unknown>): string {
 
 // ─── Goal Block ───────────────────────────────────────────────────────────────
 
-function buildGoalBlock(goal: string, iteration: number, filesWritten: string[] = []): string {
+function buildGoalBlock(goal: string, iteration: number, filesWritten: string[] = [], maxIter: number = MAX_ITERATIONS): string {
   const lines = [
     `GOAL: ${goal}`,
     `COMPLETION CONDITION: When ALL aspects of the goal are fully addressed, respond with a plain-text summary and NO JSON action block.`,
-    `ITERATION: ${iteration} / ${MAX_ITERATIONS}`,
+    `ITERATION: ${iteration} / ${maxIter}`,
   ];
   if (filesWritten.length > 0) {
     lines.push(`FILES WRITTEN SO FAR: ${filesWritten.join(', ')}`);
@@ -291,7 +303,7 @@ function buildGoalBlock(goal: string, iteration: number, filesWritten: string[] 
   return lines.join('\n');
 }
 
-function buildResetNote(goal: string, iteration: number, recentFailures: string[], filesWritten: string[] = []): string {
+function buildResetNote(goal: string, iteration: number, recentFailures: string[], filesWritten: string[] = [], maxIter: number = MAX_ITERATIONS): string {
   const latest = recentFailures.length > 0
     ? `Latest failure: ${recentFailures[recentFailures.length - 1]}`
     : 'Recent attempts encountered repeated tool failures.';
@@ -303,31 +315,20 @@ function buildResetNote(goal: string, iteration: number, recentFailures: string[
     'If a permission or bash error occurred, use file_reader to verify existing files instead of re-running bash.',
     latest,
     '',
-    buildGoalBlock(goal, iteration, filesWritten),
+    buildGoalBlock(goal, iteration, filesWritten, maxIter),
   ].join('\n');
 }
 
-// ─── System Prompt ────────────────────────────────────────────────────────────
+// ─── History Collapse ─────────────────────────────────────────────────────────
 
-function buildSystemPrompt(goal: string, pointerIndex: string, activeLoops: string): string {
-  const memoryEnabled = getMemoryMode() === 'enabled';
-  const skillList = getSkillDescriptionsForPermission(getActivePermissionMode(), { memoryEnabled });
-
-  // Active loops section: only shown when memory is enabled.
-  const activeLoopsSection = memoryEnabled && activeLoops.trim()
-    ? `\n\n## Your current task state\n${activeLoops.trim()}\n\nUse this to know where you are. Do NOT re-read all memory entries to orient yourself — this section is your anchor.`
-    : '';
-
-  // Known entries: only shown when memory is enabled.
-  const indexSection = memoryEnabled && pointerIndex.trim()
-    ? `\n\n## Known Entries (MEMORY.md)\n${pointerIndex.trim()}`
-    : '';
-
-  return promptLoader.load('query-loop', {
-    skill_list: skillList,
-    goal,
-    index_section: activeLoopsSection + indexSection,
-  });
+function collapseOldHistory(messages: Message[], baseCount: number): void {
+  // Keep system + priorTurns (baseCount) + last HISTORY_KEEP_PAIRS*2 tool turns
+  const keepTail = HISTORY_KEEP_PAIRS * 2;
+  const toolMessages = messages.slice(baseCount);
+  if (toolMessages.length <= keepTail) return;
+  const collapsed = toolMessages.slice(0, toolMessages.length - keepTail);
+  const summary = `[${collapsed.length} earlier turns collapsed to save context]`;
+  messages.splice(baseCount, collapsed.length, { role: 'user', content: summary });
 }
 
 // ─── MEMORY.md Relevance Filtering ──────────────────────────────────────────
@@ -377,15 +378,24 @@ export async function runQueryLoop(
   _workingMemory?: WorkingMemory,
   history?: Message[],
   lastArtifactContext?: ArtifactContext,
+  opts?: QueryLoopOptions,
 ): Promise<QueryLoopResult> {
+  const effectiveMaxIterations = opts?.maxIterationsOverride ?? MAX_ITERATIONS;
+
   // Load MEMORY.md zones:
   //   activeLoops  — always-fresh task state, injected as task state anchor (~100 tokens)
   //   knownEntries — goal-filtered subset for reference (~200 tokens max)
   const rawPointerIndex = loadPointerIndex();
   const activeLoops = loadActiveLoopsSection();
   const pointerIndex = filterPointerIndex(rawPointerIndex, goal);
-  const systemPrompt = buildSystemPrompt(goal, pointerIndex, activeLoops);
+  const builtPrompt = buildQueryLoopSystemPrompt({ goal, pointerIndex, activeLoops });
+  const systemPrompt = builtPrompt.text;
+  emitPromptBudget(transparency, builtPrompt, 'query-loop');
   const loopMaxTokens = resolveLoopMaxTokens(goal);
+
+  // Convenience closure so every call uses effectiveMaxIterations consistently
+  const goalBlock = (iteration: number, files?: string[]) =>
+    buildGoalBlock(goal, iteration, files, effectiveMaxIterations);
 
   // Fix 5/7: Detect continuation/modification request
   const isContinuationGoal = MODIFICATION_KEYWORDS.test(goal);
@@ -404,7 +414,7 @@ export async function runQueryLoop(
 
   // Fix 3/5: Build initial user message — in edit mode inject artifact context + skip-read instruction
   function buildInitialUserContent(): string {
-    const goalBlock = buildGoalBlock(goal, 1, []);
+    const initialGoalBlock = goalBlock(1, []);
     if (taskMode === 'edit' && lastArtifactContext) {
       return [
         '## LAST ARTIFACT CONTEXT',
@@ -417,10 +427,10 @@ export async function runQueryLoop(
         `Use generate_and_save_file with path="${lastArtifactContext.path}" and an improved description`,
         `that incorporates the requested change: "${goal}"`,
         '',
-        goalBlock,
+        initialGoalBlock,
       ].join('\n');
     }
-    return goalBlock;
+    return initialGoalBlock;
   }
 
   // Messages accumulate tool results across iterations
@@ -454,7 +464,11 @@ export async function runQueryLoop(
 
   transparency.emit({ type: 'query_loop_start', data: { goal } });
 
-  for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
+  for (let iteration = 1; iteration <= effectiveMaxIterations; iteration++) {
+    // Collapse old history to keep context lean
+    if (iteration > HISTORY_KEEP_PAIRS + 1) {
+      collapseOldHistory(messages, baseMessageCount);
+    }
     // Call the model — strip thinking BEFORE any parsing attempt.
     // Gemma 4 sometimes wraps tool calls inside <|channel>thought blocks;
     // parsing raw output would mistake those for completed tool executions.
@@ -510,7 +524,7 @@ export async function runQueryLoop(
               '',
               'Example: {"action":"generate_and_save_file","input":{"path":"index.html","description":"..."}}',
               '',
-              buildGoalBlock(goal, iteration + 1, filesWritten),
+              goalBlock(iteration + 1, filesWritten),
             ].join('\n'),
           });
           continue;
@@ -534,7 +548,7 @@ export async function runQueryLoop(
             'Resend exactly one complete JSON object only.',
             'Required format: {"action":"<skill_name>","input":{...}}',
             '',
-            buildGoalBlock(goal, iteration + 1, filesWritten),
+            goalBlock(iteration + 1, filesWritten),
           ].join('\n'),
         });
         continue;
@@ -556,7 +570,7 @@ export async function runQueryLoop(
               '  {"action":"<skill_name>","input":{<parameters>}}',
               'Do NOT include any text before or after the JSON.',
               '',
-              buildGoalBlock(goal, iteration + 1, filesWritten),
+              goalBlock(iteration + 1, filesWritten),
             ].join('\n'),
           });
           continue;
@@ -583,7 +597,7 @@ export async function runQueryLoop(
         content: [
           `TOOL LOCK [content_writer]: ${lockMsg}`,
           '',
-          buildGoalBlock(goal, iteration + 1, filesWritten),
+          goalBlock(iteration + 1, filesWritten),
         ].join('\n'),
       });
       transparency.emit({ type: 'query_loop_skill_result', data: { skill: toolCall.action, success: false, error: lockMsg } });
@@ -623,7 +637,7 @@ export async function runQueryLoop(
           'Use one or the other. If you have a spec_code, do not include description. ' +
           'If you are writing inline, do not include spec_code.';
         messages.push({ role: 'assistant', content: stripThinkingTags(reply).trim() });
-        messages.push({ role: 'user', content: `[TOOL ERROR] ${errorMsg}\n\n${buildGoalBlock(goal, iteration + 1, filesWritten)}` });
+        messages.push({ role: 'user', content: `[TOOL ERROR] ${errorMsg}\n\n${goalBlock(iteration + 1, filesWritten)}` });
         continue;
       }
 
@@ -636,13 +650,13 @@ export async function runQueryLoop(
             'You must first write the spec using memory_write, then pass the returned code as spec_code. ' +
             'Alternatively, use "description" with a detailed inline spec instead of spec_code.';
           messages.push({ role: 'assistant', content: stripThinkingTags(reply).trim() });
-          messages.push({ role: 'user', content: `[TOOL ERROR] ${errorMsg}\n\n${buildGoalBlock(goal, iteration + 1, filesWritten)}` });
+          messages.push({ role: 'user', content: `[TOOL ERROR] ${errorMsg}\n\n${goalBlock(iteration + 1, filesWritten)}` });
           continue;
         }
         if (entry.nb === 'PLAN' && entry.type === 'EX' && (entry.status === 'complete' || entry.status === 'failed')) {
           const errorMsg = getTerminalSpecCodeError(toolCall, entry.status)!;
           messages.push({ role: 'assistant', content: stripThinkingTags(reply).trim() });
-          messages.push({ role: 'user', content: `[TOOL ERROR] ${errorMsg}\n\n${buildGoalBlock(goal, iteration + 1, filesWritten)}` });
+          messages.push({ role: 'user', content: `[TOOL ERROR] ${errorMsg}\n\n${goalBlock(iteration + 1, filesWritten)}` });
           transparency.emit({ type: 'query_loop_skill_result', data: { skill: toolCall.action, success: false, error: errorMsg } });
           continue;
         }
@@ -659,7 +673,7 @@ export async function runQueryLoop(
       }
       if (consecutiveFailures >= FAILURE_RESET_THRESHOLD) {
         messages.splice(baseMessageCount);
-        messages.push({ role: 'user', content: buildResetNote(goal, iteration + 1, recentFailures, filesWritten) });
+        messages.push({ role: 'user', content: buildResetNote(goal, iteration + 1, recentFailures, filesWritten, effectiveMaxIterations) });
         consecutiveFailures = 0;
         recentFailures.length = 0;
         transparency.emit({ type: 'query_loop_skill_result', data: { skill: toolCall.action, success: false, error: inlineFileWriteError } });
@@ -679,7 +693,7 @@ export async function runQueryLoop(
           `Your previous execution failed: ${inlineFileWriteError}. Please try again.`,
           inlineForceChange,
           '',
-          buildGoalBlock(goal, iteration + 1, filesWritten),
+          goalBlock(iteration + 1, filesWritten),
         ].join('\n'),
       });
       transparency.emit({ type: 'query_loop_skill_result', data: { skill: toolCall.action, success: false, error: inlineFileWriteError } });
@@ -705,7 +719,7 @@ export async function runQueryLoop(
           `SKILL ERROR [${toolCall.action}]: ${repeatedGeneratedFileError}`,
           'STRATEGY CHANGE REQUIRED: either finish with a plain-text summary or use patch_file for modifications.',
           '',
-          buildGoalBlock(goal, iteration + 1, filesWritten),
+          goalBlock(iteration + 1, filesWritten),
         ].join('\n'),
       });
       transparency.emit({ type: 'query_loop_skill_result', data: { skill: toolCall.action, success: false, error: repeatedGeneratedFileError } });
@@ -797,7 +811,7 @@ export async function runQueryLoop(
           String(result.output ?? '(no output)'),
           postGenHint,
           '',
-          buildGoalBlock(goal, iteration + 1, filesWritten),
+          goalBlock(iteration + 1, filesWritten),
         ].join('\n'),
       });
     } else {
@@ -841,7 +855,7 @@ export async function runQueryLoop(
 
       if (consecutiveFailures >= FAILURE_RESET_THRESHOLD) {
         messages.splice(baseMessageCount);
-        messages.push({ role: 'user', content: buildResetNote(goal, iteration + 1, recentFailures, filesWritten) });
+        messages.push({ role: 'user', content: buildResetNote(goal, iteration + 1, recentFailures, filesWritten, effectiveMaxIterations) });
         consecutiveFailures = 0;
         recentFailures.length = 0;
         continue;
@@ -874,17 +888,17 @@ export async function runQueryLoop(
           altHint,
           forceChange,
           '',
-          buildGoalBlock(goal, iteration + 1, filesWritten),
+          goalBlock(iteration + 1, filesWritten),
         ].join('\n'),
       });
     }
   }
 
   // Exhausted max iterations
-  transparency.emit({ type: 'query_loop_end', data: { reason: 'max_iterations', iterations: MAX_ITERATIONS } });
+  transparency.emit({ type: 'query_loop_end', data: { reason: 'max_iterations', iterations: effectiveMaxIterations } });
   return {
-    reply: lastReply || `Stopped after ${MAX_ITERATIONS} iterations without completing the goal.`,
-    iterations: MAX_ITERATIONS,
+    reply: lastReply || `Stopped after ${effectiveMaxIterations} iterations without completing the goal.`,
+    iterations: effectiveMaxIterations,
     skillsUsed,
     stoppedBecause: 'max_iterations',
     artifactContext: sessionArtifact ?? undefined,

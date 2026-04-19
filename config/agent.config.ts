@@ -176,6 +176,19 @@ export const TOKEN_BUDGETS = {
   RELATIONSHIP_INFER:        600,
 } as const;
 
+/**
+ * Per-engine hard input-token limits for prompt guardrails (Context Diet sprint, Batch 4).
+ * If a built prompt exceeds its limit, a `prompt_budget_exceeded` transparency event fires.
+ * These are soft warnings — execution is NOT blocked — but regression tests can assert on them.
+ */
+export const PROMPT_INPUT_LIMITS = {
+  'query-loop':    2_500,   // was ~3,500 before sprint; target ≤2,500
+  'planner':      12_000,   // planner.md alone was ~8,000; allow context headroom
+  'decomposition': 3_000,
+  'intake':        1_500,
+  'router':        4_000,
+} as const;
+
 // --- Embedding (Step 5 search only) ---
 export const EMBEDDING_CONFIG = process.env.EMBEDDING_ENDPOINT
   ? {

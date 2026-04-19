@@ -10,7 +10,7 @@ import { decomposeTask } from './planner.js';
 import { fetchByCode, hybridSearch, queryEntries, updateEntry, upsertEntry } from './memory/mod.js';
 import { writeReflection } from './memory/episodic.js';
 import { addRelationship, getRelationshipsFrom } from './memory/relationships.js';
-import { getSkillDescriptionsForPermission, getSkillsByPermission, getAllSkills } from './skills/registry.js';
+import { getSkillCompactDescriptions, getSkillsByPermission, getAllSkills } from './skills/registry.js';
 import { getActivePermissionMode } from './permission.js';
 import { isMemoryDisabled } from './memory-flag.js';
 import { runSkill } from './skills/runner.js';
@@ -692,7 +692,7 @@ async function handleAgenticUnits(
   }
 
   const plan = await decomposeTask(goalMessage, {
-    skills: getSkillDescriptionsForPermission(permissionMode, memoryEnabledOpt),
+    skills: getSkillCompactDescriptions(permissionMode, memoryEnabledOpt),
     goals,
     memoryContext,
     decompositionSummary: buildDecompositionSummary(units),

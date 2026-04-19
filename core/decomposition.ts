@@ -4,6 +4,8 @@ import type { DecompositionResult, DecomposedUnit, LLMHandler, Message, RouteKin
 import type { ResolvedEntry } from './intake.js';
 import { promptLoader } from './prompt-loader.js';
 import { TOKEN_BUDGETS } from '../config/agent.config.js';
+import { emitPromptBudget } from './prompt-budget.js';
+import { estimateTokens } from './context.js';
 import { localDateString } from './utils/date.js';
 import { stripThinkingTags } from './llm.js';
 
@@ -294,6 +296,13 @@ export async function decomposeMessage(
     current_date: localDateString(),
     context_block: contextBlock,
   });
+
+  emitPromptBudget(transparency, {
+    text: systemPrompt,
+    tokenEstimate: estimateTokens(systemPrompt),
+    sources: [{ name: 'decomposition.md', tokenEstimate: estimateTokens(systemPrompt) }],
+    promptId: 'decomposition',
+  }, 'decomposition');
 
   const prompt: Message[] = [
     { role: 'system', content: systemPrompt },

@@ -26,7 +26,7 @@ export async function runAutonomousLoop(
     const { loadActivePlanEX, savePlanEX } = await import('./memory/plan-ex.js');
     const { decomposeTask } = await import('./planner.js');
     const { executePlan } = await import('./executor.js');
-    const { getSkillDescriptions } = await import('./skills/registry.js');
+    const { getSkillCompactDescriptions } = await import('./skills/registry.js');
 
     // Check for a resumable plan (read-only — executor owns state writes)
     const existingPlan = loadActivePlanEX();
@@ -88,7 +88,7 @@ export async function runAutonomousLoop(
       taskDescription = `Resume project "${project.name}" from milestone ${resumeFromMilestone}. ${project.summary}`;
     }
 
-    const skillDescs = getSkillDescriptions();
+    const skillDescs = getSkillCompactDescriptions('full-access');
     const plan = await decomposeTask(
       taskDescription,
       { skills: skillDescs, projectCode },

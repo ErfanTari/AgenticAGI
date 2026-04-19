@@ -40,7 +40,8 @@
       "list_dir",
       "glob",
       "confirm_plan",
-      "request_user_input"
+      "request_user_input",
+      "skill_schema"
     ],
     "planning": {
       "max_steps": 8,

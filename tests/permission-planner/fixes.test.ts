@@ -52,7 +52,8 @@ describe('FIX 1: Permission-aware planner', () => {
       path.join(process.cwd(), 'core/router.ts'),
       'utf-8'
     );
-    expect(routerSrc).toContain('getSkillDescriptionsForPermission');
+    // Context Diet: replaced with compact format — still permission-filtered
+    expect(routerSrc).toContain('getSkillCompactDescriptions');
     expect(routerSrc).toContain('getActivePermissionMode');
   });
 
@@ -92,8 +93,9 @@ describe('FIX 1: Permission-aware planner', () => {
       path.join(process.cwd(), 'core/query-loop.ts'),
       'utf-8'
     );
-    expect(qlSrc).toContain('getSkillDescriptionsForPermission');
-    expect(qlSrc).toContain('getActivePermissionMode');
+    // Context Diet: query-loop delegates to buildQueryLoopSystemPrompt (prompt-budget.ts)
+    // which internally calls getSkillOneLinerList with permission filtering
+    expect(qlSrc).toContain('buildQueryLoopSystemPrompt');
   });
 });
 

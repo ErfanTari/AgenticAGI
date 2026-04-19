@@ -6,6 +6,7 @@ import { queryEntries } from './memory/index.js';
 import { fetchByCode } from './memory/fetch.js';
 import { MINIMUM_PLANNER_MEMORY_CONFIDENCE } from './memory/unit-search.js';
 import { loadPlannerPrompt } from './prompt-loader.js';
+import { emitPromptBudget, buildPlannerSystemPrompt } from './prompt-budget.js';
 import { TOKEN_BUDGETS } from '../config/agent.config.js';
 import type { ZodError, ZodIssue } from 'zod';
 
@@ -1104,6 +1105,12 @@ export async function decomposeTask(
     runtime_context: runtimeContext,
     planning_context_sections: planningContextSections,
   });
+  emitPromptBudget(transparency, buildPlannerSystemPrompt({
+    runtimeContext,
+    planningContextSections,
+    permissionMode: (context.permissionMode ?? 'read-only') as import('./skills/types.js').PermissionLevel,
+    blockedSkillNames: context.blockedSkillNames,
+  }), 'planner');
 
   const planningPrompt: Message[] = [
     {

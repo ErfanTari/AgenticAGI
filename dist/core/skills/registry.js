@@ -23,6 +23,7 @@ import listDirSkill from './tools/list_dir.js';
 import globSkill from './tools/glob.js';
 import confirmPlanSkill from './tools/confirm_plan.js';
 import { requestUserInputSkill } from './tools/request_user_input.js';
+import skillSchemaSkill from './tools/skill_schema.js';
 // --- MCP Skill Registry (Map-based) ---
 const registry = new Map();
 let _frozen = false;
@@ -80,6 +81,32 @@ function buildSkillSchemaExample(skill) {
 export function getSkillDescriptions() {
     return formatSkillList(getAllSkills());
 }
+/** One-liner list: "name — first sentence of description" per line. ~300 tokens for full registry. */
+export function getSkillOneLinerList(mode, opts) {
+    return getSkillsByPermission(mode, opts)
+        .map(s => {
+        // Use only the first sentence to keep lines short
+        const firstSentence = s.description.split(/\.\s+/)[0].replace(/\.$/, '');
+        return `${s.name} — ${firstSentence}`;
+    })
+        .join('\n');
+}
+/** Compact format: name + description + required params only. No JSON examples. ~half the full format size. */
+export function getSkillCompactDescriptions(mode, opts) {
+    return getSkillsByPermission(mode, opts)
+        .map(skill => {
+        const req = skill.inputSchema.required.join(', ');
+        const opt = Object.keys(skill.inputSchema.properties)
+            .filter(k => !skill.inputSchema.required.includes(k))
+            .join(', ');
+        return [
+            `${skill.name}: ${skill.description}`,
+            req ? `  Required: ${req}` : null,
+            opt ? `  Optional: ${opt}` : null,
+        ].filter(Boolean).join('\n');
+    })
+        .join('\n\n');
+}
 const MEMORY_SKILL_NAMES = new Set(['memory_read', 'memory_write', 'relationship_write', 'memory_history']);
 export function getSkillsByPermission(mode, opts) {
     const memoryEnabled = opts?.memoryEnabled !== false;
@@ -134,6 +161,7 @@ registerSkill(listDirSkill);
 registerSkill(globSkill);
 registerSkill(confirmPlanSkill);
 registerSkill(requestUserInputSkill);
+registerSkill(skillSchemaSkill);
 // Freeze the registry after all built-in skills are registered
 freezeRegistry();
 // --- Legacy skill loading (used by context builder) ---

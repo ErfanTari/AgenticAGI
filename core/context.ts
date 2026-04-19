@@ -1,4 +1,5 @@
 import type { Message, ResolvedMemory, Intent, LLMHandler } from './types.js';
+import type { IntakeSignals } from './intake.js';
 import type { Skill } from './skills/types.js';
 import type { IndexEntry } from './memory/types.js';
 import { getNotebookCounts } from './memory/mod.js';
@@ -320,6 +321,7 @@ export async function buildContext(
   skillOutput?: string,
   llmHandler?: LLMHandler,
   contextMode?: ContextMode,
+  signals?: IntakeSignals | null,
 ): Promise<Message[]> {
   // Phase 18 — contextMode overrides token limits for coding tasks
   const effectiveMaxTokens = contextMode === 'agentic_coding' ? 8000 : MAX_TOKENS;
@@ -335,19 +337,33 @@ export async function buildContext(
   const systemParts = [SYSTEM_PROMPT];
 
   if (!isMemoryFullyDisabled()) {
-    // Inject owner persona from WHO.CT (cached, non-throwing)
-    const persona = fetchOwnerPersona();
-    if (persona) {
-      systemParts.push(persona);
+    // Persona gate: inject owner persona only when a personSignal is present.
+    // Without a signal, the persona is irrelevant to the current turn.
+    const hasPersonSignal = signals?.personSignal != null;
+    if (hasPersonSignal) {
+      const persona = fetchOwnerPersona();
+      if (persona) {
+        systemParts.push(persona);
+        transparency.emit({ type: 'memory_gate_opened', data: { gate: 'persona', signal: signals!.personSignal!, reason: 'personSignal present' } });
+      }
+    } else {
+      transparency.emit({ type: 'memory_gate_skipped', data: { gate: 'persona', reason: signals ? 'no personSignal' : 'signals not provided (legacy path)' } });
+      // Legacy path (no signals provided): inject persona to preserve backward compat
+      if (!signals) {
+        const persona = fetchOwnerPersona();
+        if (persona) systemParts.push(persona);
+      }
     }
 
-    // Only include notebook counts for summary/overview queries (BUG 4)
+    // Index summary gate: inject on summary/overview queries
     if (needsSummary(intent ?? 'general', userMessage)) {
       systemParts.push(getIndexSummary());
+      transparency.emit({ type: 'memory_gate_opened', data: { gate: 'index_summary', signal: intent ?? 'general', reason: 'needsSummary=true' } });
+    } else {
+      transparency.emit({ type: 'memory_gate_skipped', data: { gate: 'index_summary', reason: 'intent does not require summary' } });
     }
 
-    // BUG-H2 fix: rank memory entries by relevance BEFORE formatting and injecting into prompt.
-    // Previously rankByRelevance was called AFTER formatResolved, making it dead code.
+    // Resolved entries gate: rank by relevance before injecting
     if (resolved && resolved.entries.length > 1) {
       resolved = { ...resolved, entries: rankByRelevance(resolved.entries, userMessage) };
     }

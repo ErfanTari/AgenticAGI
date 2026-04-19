@@ -89,7 +89,11 @@ To complete the task, respond with a plain-text answer and NO JSON.
 NOTE: This engine uses the same description-first convention as the planner — pass a detailed description directly to generate_and_save_file; only use spec_code when the description exceeds 300 characters.
 
 ## Available skills
+The following skills are available (name — purpose):
 {{skill_list}}
+
+If you need the full parameter schema for a skill before calling it, use:
+  {"action":"skill_schema","input":{"name":"<skill_name>"}}
 
 ## Current goal
 {{goal}}

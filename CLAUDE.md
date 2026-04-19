@@ -162,9 +162,27 @@ Follow this order strictly. Do not skip steps.
 
 | Engine | Trigger | What it does |
 |--------|---------|-------------|
-| `runQueryLoop` | `taskType=coding`, LOW/MEDIUM pre-check, LOW/MEDIUM agentic coding | while-loop; model picks skills. Max 20 iterations. Circuit breaker. |
+| `runQueryLoop` | `taskType=coding`, LOW/MEDIUM pre-check, LOW/MEDIUM agentic coding | while-loop; model picks skills. Complexity-scaled iteration cap. Circuit breaker. |
 | `runSimplePlan` | LOW/MEDIUM agentic (non-coding) | Calls `decomposeTask`, runs steps sequentially. No PLAN.EX overhead. |
 | `decomposeTask` + `executePlan` | HIGH/MAX agentic | Full milestone pipeline. Writes PLAN.EX. Post-flight synthesis. |
+
+**`runQueryLoop` options (`QueryLoopOptions`):**
+```typescript
+{ allowedSkillsOverride?: string[];   // sub-agent scoped skill list
+  maxIterationsOverride?: number; }   // overrides COMPLEXITY_ITERATION_CAPS default
+```
+
+**Complexity iteration caps (`COMPLEXITY_ITERATION_CAPS` in `core/query-loop.ts`):**
+`LOW: 20 | MEDIUM: 40 | HIGH: 80 | MAX: 150`
+
+**Skill discovery — two-stage pattern (Context Diet sprint):**
+The query-loop system prompt injects a one-liner list only (~220 tokens, 84% reduction).
+When the model needs exact parameter names, it calls the `skill_schema` meta-skill by name.
+Full schema injected only on demand. Never inject the full registry every iteration.
+
+**Sub-agent primitive (`core/sub-agent.ts`):**
+`spawnSubAgent(task: SubAgentTask, llmHandler)` — spawns an isolated `runQueryLoop` instance
+with an explicit `allowedSkills` allowlist, no parent history, and a compact `contextHandoff` (≤2000 chars).
 
 ---
 
@@ -199,6 +217,18 @@ clearScratchpad(requestId)                      → removes file (called on plan
 
 **Toggle from UI:** Settings panel → Memory section → Enabled/Disabled button.
 Server handles `set_memory_mode` WebSocket message; broadcasts `memory_mode_status` to all clients.
+
+**Memory-read signal gating (`core/memory-when.ts`):**
+Every memory-read site declares WHY via a predicate. Each decision is logged as a transparency event.
+```typescript
+memoryWhen.personSignal(signals)   // gates WHO.CT fetches
+memoryWhen.projectSignal(signals)  // gates PLAN.PJ / WHAT.PJ fetches
+memoryWhen.querySignal(signals)    // gates hybrid search / episodic reads
+memoryWhen.check(gate, cond, sig, reason)  // ad-hoc gate with logging
+```
+`buildContext()` accepts an optional `signals?: IntakeSignals` 9th parameter.
+When provided, persona injection is gated on `signals.personSignal != null` and
+emits `memory_gate_opened` / `memory_gate_skipped` transparency events accordingly.
 
 ---
 
@@ -281,7 +311,7 @@ db.pragma('foreign_keys = OFF');
 - `tests/phase13/rich-artifact-compatibility.test.ts` — 4 tests (legacy compat)
 - Several more listed in CLAUDE.legacy.md
 
-**Current baseline:** 1555/1580 tests pass.
+**Current baseline:** 1585/1610 tests pass (30 new tests from Context Diet sprint).
 
 ---
 
@@ -306,9 +336,46 @@ Every agent action emits a `TransparencyEvent` stamped with a `requestId` (UUID 
 
 **Enable:** `TRANSPARENT=true npx tsx chat.ts`
 
-**Key event types:** `plan`, `step_start`, `step_result`, `route`, `llm_request`, `llm_raw`, `memory_write`, `memory_disabled_drop`, `heartbeat_skipped_memory_disabled`, `coding_route_selected`, `context_mode_applied`, `user_constraints_extracted`, `user_input_requested`, `plan_confirmation_pending`, `decomposition_repair`
+**Key event types:** `plan`, `step_start`, `step_result`, `route`, `llm_request`, `llm_raw`, `memory_write`, `memory_disabled_drop`, `heartbeat_skipped_memory_disabled`, `coding_route_selected`, `context_mode_applied`, `user_constraints_extracted`, `user_input_requested`, `plan_confirmation_pending`, `decomposition_repair`, `prompt_budget`, `prompt_budget_exceeded`, `memory_gate_opened`, `memory_gate_skipped`
 
 **UI:** Logs panel → `[Copy Trace]` for formatted text; `[Copy Details]` for full JSON envelopes (up to 2000 buffered in `window.__fullEnvelopes`).
+
+---
+
+## 14. Prompt Budget System
+
+Per-engine token accounting and hard guardrails (Context Diet sprint, Batch 4).
+
+**Assembly point:** `core/prompt-budget.ts` — all engines build prompts via typed context shapes.
+No engine concatenates prompt parts directly.
+
+**Key exports:**
+```typescript
+buildQueryLoopSystemPrompt(ctx: QueryLoopPromptContext): BuiltPrompt
+buildPlannerSystemPrompt(ctx: PlannerPromptContext): BuiltPrompt
+emitPromptBudget(t, built, engine, iteration?)   // emits prompt_budget + prompt_budget_exceeded
+```
+
+**`BuiltPrompt`** carries `{ text, tokenEstimate, sources[], promptId }`.
+`sources` gives a per-component breakdown (e.g. `[{name: 'query-loop.md', tokens: 900}, {name: 'skill_list', tokens: 220}]`).
+
+**Hard input limits (`PROMPT_INPUT_LIMITS` in `config/agent.config.ts`):**
+
+| Engine | Limit |
+|--------|-------|
+| `query-loop` | 2,500 tokens |
+| `planner` | 12,000 tokens |
+| `decomposition` | 3,000 tokens |
+| `intake` | 1,500 tokens |
+| `router` | 4,000 tokens |
+
+When a built prompt exceeds its engine limit, a `prompt_budget_exceeded` event fires with `{engine, totalTokens, limitTokens, overage}`.
+Execution is NOT blocked — the event is a regression sentinel for tests.
+
+**Context Diet sprint results (measured):**
+- Query-loop skill list: 1,413 → ~220 tokens (84% reduction, one-liner list)
+- Query-loop system prompt: ~2,713 → ~1,429 tokens (47% reduction)
+- History collapse: iterations older than last 3 pairs collapsed to one-line summary
 
 ---
 
@@ -340,3 +407,4 @@ Every agent action emits a `TransparencyEvent` stamped with a `requestId` (UUID 
 | `memory-toggle-collision-correlation-complete` | Memory toggle, collision handling, correlation IDs |
 | `planner-xml-constraint-routing-complete` | JSON planner via tool_use, constraint extraction, user input skill |
 | `memory-toggle-gemma4-logs-claudemd-complete` | Full memory toggle gating, Gemma 4 models, detailed log export |
+| `context-diet-complete` | Token-efficient execution: one-liner skill list, prompt budget system, signal-gated memory reads, sliding history window, sub-agent primitive, complexity-scaled iteration caps, hard budget guardrails |
