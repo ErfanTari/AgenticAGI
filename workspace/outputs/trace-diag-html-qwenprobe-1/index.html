@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Golden Crumb | Artisan Bakery</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* --- CSS Variables & Reset --- */
+        :root {
+            --color-primary: #D4A574; /* Warm Amber */
+            --color-secondary: #6B4423; /* Deep Brown */
+            --color-bg: #F9F5EB; /* Cream/Off-white */
+            --color-accent: #E8A06C; /* Soft Orange */
+            --color-text: #4a3b2a;
+            --color-white: #ffffff;
+            
+            --font-heading: 'Merriweather', serif;
+            --font-body: 'Lato', sans-serif;
+            
+            --shadow-card: 0 4px 6px rgba(107, 68, 35, 0.1);
+            --shadow-hover: 0 12px 24px rgba(107, 68, 35, 0.2);
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            line-height: 1.6;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: var(--font-heading);
+            color: var(--color-secondary);
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        img {
+            max-width: 100%;
+            display: block;
+        }
+
+        /* --- Utility Classes --- */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .section-padding {
+            padding: 80px 0;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background-color: var(--color-primary);
+            color: var(--color-white);
+            border-radius: 4px;
+            font-weight: 700;
+            transition: var(--transition);
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            background-color: var(--color-secondary);
+            transform: translateY(-2px);
+        }
+
+        .btn-outline {
+            background-color: transparent;
+            border: 2px solid var(--color-secondary);
+            color: var(--color-secondary);
+        }
+
+        .btn-outline:hover {
+            background-color: var(--color-secondary);
+            color: var(--color-white);
+        }
+
+        /* --- Header & Navigation --- */
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background-color: var(--color-white);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            padding: 15px 0;
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: var(--font-heading);
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--color-secondary);
+        }
+
+        .logo span {
+            color: var(--color-primary);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 30px;
+        }
+
+        .nav-links a {
+            font-weight: 400;
+            color: var(--color-secondary);
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--color-primary);
+        }
+
+        .cart-icon {
+            position: relative;
+            font-size: 1.2rem;
+            cursor: pointer;
+        }
+
+        .cart-count {
+            position: absolute;
+            top: -8px;
+            right: -10px;
+            background-color: var(--color-accent);
+            color: white;
+            font-size: 0.7rem;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- Hero Section --- */
+        .hero {
+            height: 80vh;
+            background-image: linear-gradient(rgba(107, 68, 35, 0.4), rgba(107, 68, 35, 0.4)), url('https://images.unsplash.com/photo-1509440159596-0249088772ff?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80');
+            background-size: cover;
+            background-position: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: var(--color-white);
+        }
+
+        .hero-content h1 {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .hero-content p {
+            font-size: 1.5rem;
+            margin-bottom: 30px;
+            font-weight: 300;
+        }
+
+        /* --- Featured Products Grid --- */
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            margin-top: 50px;
+        }
+
+        .product-card {
+            background-color: var(--color-white);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: var(--shadow-card);
+            transition: var(--transition);
+        }
+
+        .product-card:hover {
+            transform: translateY(-10px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .product-image {
+            height: 250px;
+            width: 100%;
+            object-fit: cover;
+        }
+
+        .product-info {
+            padding: 25px;
+        }
+
+        .product-category {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            color: var(--color-primary);
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        .product-title {
+            font-size: 1.4rem;
+            margin-bottom: 10px;
+        }
+
+        .product-desc {
+            font-size: 0.95rem;
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .product-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+        }
+
+        .price {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--color-secondary);
+        }
+
+        /* --- About Section --- */
+        .about-section {
+            background-color: var(--color-white);
+        }
+
+        .about-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            align-items: center;
+        }
+
+        .about-image img {
+            border-radius: 8px;
+            box-shadow: var(--shadow-card);
+        }
+
+        .about-text h2 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+        }
+
+        .about-text p {
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+        }
+
+        /* --- Full Menu Catalog --- */
+        .menu-section {
+            background-color: var(--color-bg);
+        }
+
+        .category-header {
+            margin-bottom: 40px;
+            border-bottom: 2px solid var(--color-primary);
+            padding-bottom: 10px;
+            display: inline-block;
+        }
+
+        .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 30px;
+        }
+
+        .menu-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background-color: var(--color-white);
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+
+        .menu-item-info h4 {
+            font-size: 1.1rem;
+            margin-bottom: 5px;
+        }
+
+        .menu-item-info p {
+            font-size: 0.9rem;
+            color: #777;
+        }
+
+        .menu-item-price {
+            font-weight: 700;
+            color: var(--color-secondary);
+        }
+
+        /* --- Testimonials --- */
+        .testimonials {
+            background-color: var(--color-secondary);
+            color: var(--color-white);
+        }
+
+        .testimonials h2 {
+            color: var(--color-primary);
+        }
+
+        .testimonial-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            margin-top: 50px;
+        }
+
+        .testimonial-card {
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 8px;
+            backdrop-filter: blur(5px);
+        }
+
+        .testimonial-text {
+            font-style: italic;
+            margin-bottom: 20px;
+        }
+
+        .testimonial-author {
+            font-weight: 700;
+            color: var(--color-primary);
+        }
+
+        /* --- Contact Section --- */
+        .contact-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 50px;
+        }
+
+        .contact-info-box {
+            background-color: var(--color-white);
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: var(--shadow-card);
+        }
+
+        .info-item {
+            margin-bottom: 30px;
+        }
+
+        .info-item h4 {
+            margin-bottom: 10px;
+            color: var(--color-primary);
+        }
+
+        .map-placeholder {
+            width: 100%;
+            height: 300px;
+            background-color: #ddd;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            margin-top: 20px;
+        }
+
+        .contact-form {
+            background-color: var(--color-white);
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: var(--shadow-card);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        .form-group input, 
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: var(--font-body);
+        }
+
+        .form-group input:focus, 
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--color-primary);
+        }
+
+        /* --- Footer --- */
+        footer {
+            background-color: var(--color-secondary);
+            color: var(--color-white);
+            padding-top: 60px;
+        }
+
+        .footer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 40px;
+            padding-bottom: 60px;
+        }
+
+        .footer-col h3 {
+            color: var(--color-primary);
+            margin-bottom: 20px;
+        }
+
+        .social-links {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .social-link {
+            width: 40px;
+            height: 40px;
+            background-color: rgba(255,255,255,0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+        }
+
+        .social-link:hover {
+            background-color: var(--color-primary);
+        }
+
+        .newsletter-form input {
+            padding: 10px;
+            border-radius: 4px;
+            border: none;
+            margin-bottom: 10px;
+            width: 70%;
+        }
+
+        .newsletter-form button {
+            padding: 10px;
+            border-radius: 4px;
+            border: none;
+            background-color: var(--color-primary);
+            color: white;
+            cursor: pointer;
+            width: 25%;
+        }
+
+        .copyright {
+            background-color: rgba(0,0,0,0.2);
+            text-align: center;
+            padding: 20px 0;
+            font-size: 0.9rem;
+        }
+
+        /* --- Mobile Responsive --- */
+        @media (max-width: 768px) {
+            .hero-content h1 { font-size: 2.5rem; }
+            
+            .about-grid, 
+            .contact-grid { grid-template-columns: 1fr; }
+            
+            .nav-links { display: none; } /* Simplified for single file */
+            
+            .hero-content p { font-size: 1.2rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header>
+        <div class="container">
+            <nav>
+                <a href="#" class="logo">The Golden<span>Crumb</span></a>
+                <div class="nav-links">
+                    <a href="#featured">Featured</a>
+                    <a href="#about">About Us</a>
+                    <a href="#menu">Menu</a>
+                    <a href="#testimonials">Reviews</a>
+                    <a href="#contact">Contact</a>
+                </div>
+                <div class="cart-icon" onclick="alert('Cart feature coming soon!')">
+                    🛒 <span class="cart-count" id="cartCount">0</span>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container hero-content">
+            <h1>Fresh from the Oven Since 1985</h1>
+            <p>Handcrafted artisan breads and pastries made with passion, tradition, and the finest ingredients.</p>
+            <a href="#menu" class="btn">View Our Menu</a>
+        </div>
+    </section>
+
+    <!-- Featured Products -->
+    <section id="featured" class="section-padding">
+        <div class="container">
+            <h2 class="text-center" style="margin-bottom: 10px;">Customer Favorites</h2>
+            <p class="text-center" style="margin-bottom: 50px; color: #666;">Our most loved creations this week</p>
+            
+            <div class="products-grid">
+                <!-- Product 1 -->
+                <div class="product-card">
+                    <img src="https://images.unsplash.com/photo-1586444248902-2f64eddc13df?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" alt="Sourdough Loaf" class="product-image">
+                    <div class="product-info">
+                        <span class="product-category">Breads</span>
+                        <h3 class="product-title">Classic Sourdough</h3>
+                        <p class="product-desc">Our signature starter, fermented for 48 hours for that perfect tangy flavor and crispy crust.</p>
+                        <div class="product-footer">
+                            <span class="price">$8.50</span>
+                            <button class="btn btn-outline" style="padding: 8px 15px; font-size: 0.9rem;" onclick="addToCart()">Add to Cart</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Product 2 -->
+                <div class="product-card">
+                    <img src="https://images.unsplash.com/photo-1555507036-ab1f4038808a?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" alt="Croissants" class="product-image">
+                    <div class="product-info">
+                        <span class="product-category">Pastries</span>
+                        <h3 class="product-title">Butter Croissants</h3>
+                        <p class="product-desc">Flaky, golden layers of buttery perfection. Baked fresh every morning at 5 AM.</p>
+                        <div class="product-footer">
+                            <span class="price">$4.25</span>
+                            <button class="btn btn-outline" style="padding: 8px 15px; font-size: 0.9rem;" onclick="addToCart()">Add to Cart</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Product 3 -->
+                <div class="product-card">
+                    <img src="https://images.unsplash.com/photo-1623428187969-5da2dcea5ebf?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" alt="Rye Bread" class="product-image">
+                    <div class="product-info">
+                        <span class="product-category">Breads</span>
+                        <h3 class="product-title">Dark Rye & Seeds</h3>
+                        <p class="product-desc">Dense, hearty bread packed with sunflower, pumpkin, and flax seeds.</p>
+                        <div class="product-footer">
+                            <span class="price">$7.00</span>
+                            <button class="btn btn-outline" style="padding: 8px 15px; font-size: 0.9rem;" onclick="addToCart()">Add to Cart</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Us -->
+    <section id="about" class="section-padding about-section">
+        <div class="container">
+            <div class="about-grid">
+                <div class="about-image">
+                    <img src="https://images.unsplash.com/photo-1556910103-1c0274c7d3a8?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" alt="Baker kneading dough">
+                </div>
+                <div class="about-text">
+                    <h2>A Tradition of Taste</h2>
+                    <p>Founded in 1985 by Elena Rossi, The Golden Crumb began as a small family kitchen with a big dream: to bring authentic European baking techniques to our local community.</p>
+                    <p>We believe in slow fermentation, stone-ground flours, and ingredients sourced from local farmers. Every loaf we bake is a testament to patience and craftsmanship.</p>
+                    <a href="#contact" class="btn btn-outline">Visit Our Bakery</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Full Menu Catalog -->
+    <section id="menu" class="section-padding menu-section">
+        <div class="container">
+            <h2 class="text-center" style="margin-bottom: 60px;">Our Menu</h2>
+            
+            <!-- Breads -->
+            <div style="margin-bottom: 60px;">
+                <h3 class="category-header">Artisan Breads</h3>
+                <div class="menu-grid">
+                    <div class="menu-item">
+                        <div class="menu-item-info">
+                            <h4>Whole Wheat Harvest</h4>
+                            <p>Multigrain blend with honey glaze.</p>
+                        </div>
+                        <span class="menu-item-price">$6.50</span>
+                    </div>
+                    <div class="menu-item">
+                        <div class="menu-item-info">
+                            <h4>Focaccia Rosemary</h4>
+                            <p>Olive oil infused with fresh herbs.</p>
+                        </div>
+                        <span class="menu-item-price">$5.75</span>
+                    </div>
+                    <div class="menu-item">
+                        <div class="menu-item-info">
+                            <h4>Challah Braided</h4>
+                            <p>Traditional egg bread, perfect for weekends.</p>
+                        </div>
+                        <span class="menu-item-price">$7.25</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pastries -->
+            <div style="margin-bottom: 60px;">
+                <h3 class="category-header">Sweet Pastries</h3>
+                <div class="menu-grid">
+                    <div class="menu-item">
+                        <div class="menu-item-info">
+                            <h4>Cinnamon Roll</h4>
+                            <p>Large, gooey roll with cream cheese frosting.</p>
+                        </div>
+                        <span class="menu-item-price">$4.50</span>
+                    </div>
+                    <div class="menu-item">
+                        <div class="menu-item-info">
+                            <h4>Almond Croissant</h4>
+                            <p>Filled with almond cream and topped with slivers.</p>
+                        </div>
+                        <span class="menu-item-price">$5.00</span>
+                    </div>
+                    <div class="menu-item">
+                        <div class="menu-item-info">
+                            <h4>Blueberry Muffin</h4>
+                            <p>Bursting with fresh organic blueberries.</p>
+                        </div>
+                        <span class="menu-item-price">$3.75</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coffee -->
+            <div style="margin-bottom: 60px;">
+                <h3 class="category-header">Coffee & Drinks</h3>
+                <div class="menu-grid">
+                    <div class="menu-item">
+                        <div class="menu-item-info">
+                            <h4>House Roast</h4>
+                            <p>Medium roast, notes of chocolate and nut.</p>
+                        </div>
+                        <span class="menu-item-price">$3.00</span>
+                    </div>
+                    <div class="menu-item">
+                        <div class="menu-item-info">
+                            <h4>Cappuccino</h4>
+                            <p>Espresso with steamed milk foam.</p>
+                        </div>
+                        <span class="menu-item-price">$4.25</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials -->
+    <section id="testimonials" class="section-padding testimonials">
+        <div class="container">
+            <h2 class="text-center" style="margin-bottom: 10px;">What Our Customers Say</h2>
+            <p class="text-center" style="margin-bottom: 50px; opacity: 0.8;">Real stories from our loyal community</p>
+            
+            <div class="testimonial-grid">
+                <div class="testimonial-card">
+                    <p class="testimonial-text">"The sourdough is absolutely incredible. I've tried bakeries all over the city, but nothing compares to Elena's recipe."</p>
+                    <span class="testimonial-author">- Sarah Jenkins</span>
+                </div>
+                <div class="testimonial-card">
+                    <p class="testimonial-text">"Best croissants in town, hands down. The atmosphere is so cozy and welcoming too."</p>
+                    <span class="testimonial-author">- Mike Ross</span>
+                </div>
+                <div class="testimonial-card">
+                    <p class="testimonial-text">"I love coming here on Sundays. The bread is fresh, the coffee is hot, and the staff makes you feel like family."</p>
+                    <span class="testimonial-author">- Emily Chen</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact & Location -->
+    <section id="contact" class="section-padding">
+        <div class="container">
+            <h2 class="text-center" style="margin-bottom: 60px;">Visit Us</h2>
+            
+            <div class="contact-grid">
+                <!-- Contact Info -->
+                <div class="contact-info-box">
+                    <h3 style="margin-bottom: 20px;">Location & Hours</h3>
+                    
+                    <div class="info-item">
+                        <h4>Address</h4>
+                        <p>123 Baker Street<br>Sweetville, CA 90210</p>
+                    </div>
+
+                    <div class="info-item">
+                        <h4>Opening Hours</h4>
+                        <p>Mon - Fri: 6:00 AM - 7:00 PM<br>Sat - Sun: 7:00 AM - 6:00 PM</p>
+                    </div>
+
+                    <div class="info-item">
+                        <h4>Contact</h4>
+                        <p>(555) 123-4567<br>hello@goldencrumb.com</p>
+                    </div>
+
+                    <div class="map-placeholder">
+                        [Interactive Map Placeholder]
+                    </div>
+                </div>
+
+                <!-- Contact Form -->
+                <div class="contact-form">
+                    <h3 style="margin-bottom: 20px;">Send us a Message</h3>
+                    <form id="contactForm" onsubmit="handleContactSubmit(event)">
+                        <div class="form-group">
+                            <label for="name">Name</label>
+                            <input type="text" id="name" required placeholder="Your Name">
+                        </div>
+                        <div class="form-group">
+                            <label for="email">Email</label>
+                            <input type="email" id="email" required placeholder="Your Email">
+                        </div>
+                        <div class="form-group">
+                            <label for="message">Message</label>
+                            <textarea id="message" rows="4" required placeholder="How can we help you?"></textarea>
+                        </div>
+                        <button type="submit" class="btn">Send Message</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-col">
+                    <h3>The Golden Crumb</h3>
+                    <p style="font-size: 0.9rem; opacity: 0.8;">Baking happiness into every loaf since 1985.</p>
+                    <div class="social-links">
+                        <a href="#" class="social-link">FB</a>
+                        <a href="#" class="social-link">IG</a>
+                        <a href="#" class="social-link">TW</a>
+                    </div>
+                </div>
+
+                <div class="footer-col">
+                    <h3>Quick Links</h3>
+                    <ul style="list-style: none; line-height: 2;">
+                        <li><a href="#featured">Featured Products</a></li>
+                        <li><a href="#menu">Full Menu</a></li>
+                        <li><a href="#about">Our Story</a></li>
+                        <li><a href="#contact">Contact Us</a></li>
+                    </ul>
+                </div>
+
+                <div class="footer-col">
+                    <h3>Newsletter</h3>
+                    <p style="font-size: 0.9rem; margin-bottom: 15px;">Subscribe for fresh updates and exclusive offers.</p>
+                    <form class="newsletter-form" onsubmit="event.preventDefault(); alert('Subscribed!')">
+                        <input type="email" placeholder="Your email">
+                        <button type="submit">Go</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="copyright">
+            &copy; 2023 The Golden Crumb Bakery. All rights reserved.
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        // Simple Cart Counter Logic
+        let cartCount = 0;
+        
+        function addToCart() {
+            cartCount++;
+            const counterElement = document.getElementById('cartCount');
+            counterElement.textContent = cartCount;
+            
+            // Simple animation feedback
+            counterElement.style.transform = "scale(1.5)";
+            setTimeout(() => {
+                counterElement.style.transform = "scale(1)";
+            }, 200);
+
+            // Optional: Toast notification could go here
+            console.log("Item added to cart. Total items:", cartCount);
+        }
+
+        // Contact Form Validation & Submission Simulation
+        function handleContactSubmit(event) {
+            event.preventDefault();
+            
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            
+            if(name && email) {
+                alert(`Thank you, ${name}! We have received your message.`);
+                document.getElementById('contactForm').reset();
+            } else {
+                alert("Please fill in all required fields.");
+            }
+        }
+
+        // Smooth Scroll for Anchor Links (Polyfill-like behavior for older browsers if needed, though CSS scroll-behavior handles most)
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+    </script>
+</body>
+</html>

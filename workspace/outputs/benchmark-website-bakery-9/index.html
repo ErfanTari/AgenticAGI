@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Daily Crumb - Handcrafted Delights, Baked with Love</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-brown: #6F4E37; /* Dark Coffee Brown */
+            --secondary-cream: #F5F5DC; /* Beige/Cream */
+            --accent-gold: #B8860B; /* Goldenrod */
+            --text-dark: #333;
+            --text-light: #FFF;
+            --soft-green: #A2B29F; /* Muted Sage Green */
+            --muted-red: #C77D7D; /* Dusty Rose/Muted Red */
+            --light-brown: #D2B48C; /* Tan */
+            --font-heading: 'Playfair Display', serif;
+            --font-body: 'Roboto', sans-serif;
+        }
+
+        /* General Body Styles */
+        body {
+            font-family: var(--font-body);
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            line-height: 1.6;
+            color: var(--text-dark);
+            background-color: var(--secondary-cream);
+            scroll-behavior: smooth;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: var(--font-heading);
+            color: var(--primary-brown);
+            margin-bottom: 0.5em;
+        }
+
+        a {
+            text-decoration: none;
+            color: var(--primary-brown);
+        }
+
+        a:hover {
+            color: var(--accent-gold);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header & Navigation */
+        header {
+            background-color: var(--primary-brown);
+            color: var(--text-light);
+            padding: 15px 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        header .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+        }
+
+        .logo {
+            font-family: var(--font-heading);
+            font-size: 2em;
+            font-weight: 700;
+            color: var(--accent-gold);
+        }
+
+        nav ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+        }
+
+        nav ul li {
+            margin-left: 30px;
+        }
+
+        nav ul li a {
+            color: var(--text-light);
+            font-weight: 400;
+            transition: color 0.3s ease;
+            position: relative;
+        }
+
+        nav ul li a::after {
+            content: '';
+            position: absolute;
+            width: 0;
+            height: 2px;
+            display: block;
+            margin-top: 5px;
+            right: 0;
+            background: var(--accent-gold);
+            transition: width 0.3s ease;
+            -webkit-transition: width 0.3s ease;
+        }
+
+        nav ul li a:hover::after {
+            width: 100%;
+            left: 0;
+            background: var(--accent-gold);
+        }
+        nav ul li a:hover {
+            color: var(--accent-gold);
+        }
+
+        /* Hero Section */
+        .hero {
+            background: url('https://picsum.photos/id/1080/1600/900') no-repeat center center/cover;
+            color: var(--text-light);
+            text-align: center;
+            padding: 150px 20px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4); /* Dark overlay */
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 800px;
+        }
+
+        .hero h1 {
+            font-size: 4em;
+            margin-bottom: 15px;
+            color: var(--accent-gold);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.7);
+        }
+
+        .hero p {
+            font-size: 1.5em;
+            margin-bottom: 30px;
+            color: var(--text-light);
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.7);
+        }
+
+        .btn {
+            display: inline-block;
+            background-color: var(--accent-gold);
+            color: var(--text-light);
+            padding: 15px 30px;
+            border-radius: 5px;
+            font-size: 1.1em;
+            font-weight: 700;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            background-color: #DAA520; /* Darker gold */
+            transform: translateY(-2px);
+        }
+
+        /* Section Styling */
+        section {
+            padding: 80px 0;
+            text-align: center;
+        }
+
+        section:nth-of-type(even) {
+            background-color: var(--light-brown);
+        }
+
+        section h2 {
+            font-size: 3em;
+            margin-bottom: 40px;
+            position: relative;
+            display: inline-block;
+        }
+
+        section h2::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: -10px;
+            width: 80px;
+            height: 3px;
+            background-color: var(--accent-gold);
+        }
+
+        /* About Us */
+        .about-us .container {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 40px;
+            text-align: left;
+        }
+
+        .about-us-content, .about-us-image {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .about-us-image img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        /* Menu Section */
+        .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-top: 50px;
+        }
+
+        .menu-item {
+            background-color: var(--secondary-cream);
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+            text-align: left;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            cursor: pointer;
+        }
+
+        .menu-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .menu-item img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .menu-item-info {
+            padding: 20px;
+        }
+
+        .menu-item h3 {
+            margin-top: 0;
+            color: var(--primary-brown);
+            font-size: 1.8em;
+        }
+
+        .menu-item p {
+            font-size: 0.95em;
+            color: var(--text-dark);
+            margin-bottom: 15px;
+        }
+
+        .menu-item .price {
+            font-weight: 700;
+            color: var(--accent-gold);
+            font-size: 1.3em;
+        }
+
+        /* Testimonials */
+        .testimonials {
+            background-color: var(--soft-green);
+            color: var(--text-dark);
+        }
+
+        .testimonial-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 50px;
+        }
+
+        .testimonial-card {
+            background-color: var(--secondary-cream);
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            font-style: italic;
+        }
+
+        .testimonial-card p {
+            margin-bottom: 15px;
+            color: var(--text-dark);
+        }
+
+        .testimonial-card .author {
+            font-weight: 700;
+            color: var(--primary-brown);
+            font-style: normal;
+        }
+
+        /* Contact Us */
+        .contact-info {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 40px;
+            margin-top: 50px;
+            text-align: left;
+        }
+
+        .contact-details, .contact-form-wrapper, .contact-map {
+            flex: 1;
+            min-width: 280px;
+            background-color: var(--secondary-cream);
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        .contact-details h3, .contact-form-wrapper h3, .contact-map h3 {
+            color: var(--primary-brown);
+            margin-top: 0;
+            font-size: 1.8em;
+        }
+
+        .contact-details p {
+            margin-bottom: 10px;
+        }
+
+        .contact-details strong {
+            color: var(--accent-gold);
+        }
+
+        .contact-form label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 700;
+            color: var(--primary-brown);
+        }
+
+        .contact-form input[type="text"],
+        .contact-form input[type="email"],
+        .contact-form textarea {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-family: var(--font-body);
+            font-size: 1em;
+        }
+
+        .contact-form textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .contact-form button {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--primary-brown);
+            color: var(--text-light);
+            border: none;
+            border-radius: 5px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .contact-form button:hover {
+            background-color: var(--accent-gold);
+        }
+
+        .contact-map {
+            background-color: var(--secondary-cream);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .contact-map iframe {
+            width: 100%;
+            height: 300px;
+            border: 0;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        /* Footer */
+        footer {
+            background-color: var(--primary-brown);
+            color: var(--text-light);
+            padding: 40px 0;
+            text-align: center;
+            font-size: 0.9em;
+        }
+
+        .social-links a {
+            color: var(--text-light);
+            font-size: 1.5em;
+            margin: 0 10px;
+            transition: color 0.3s ease;
+        }
+
+        .social-links a:hover {
+            color: var(--accent-gold);
+        }
+
+        footer p {
+            margin-top: 20px;
+            margin-bottom: 0;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 3em;
+            }
+
+            .hero p {
+                font-size: 1.2em;
+            }
+
+            nav ul {
+                flex-direction: column;
+                align-items: center;
+                margin-top: 15px;
+            }
+
+            nav ul li {
+                margin: 10px 0;
+            }
+
+            header .container {
+                flex-direction: column;
+            }
+
+            .about-us .container {
+                flex-direction: column;
+            }
+
+            .about-us-content, .about-us-image {
+                min-width: unset;
+                width: 100%;
+            }
+
+            .menu-grid, .testimonial-grid, .contact-info {
+                grid-template-columns: 1fr;
+            }
+
+            .contact-details, .contact-form-wrapper, .contact-map {
+                min-width: unset;
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero h1 {
+                font-size: 2.5em;
+            }
+
+            .hero p {
+                font-size: 1em;
+            }
+
+            .btn {
+                padding: 12px 25px;
+                font-size: 1em;
+            }
+
+            section {
+                padding: 60px 0;
+            }
+
+            section h2 {
+                font-size: 2.5em;
+            }
+
+            .logo {
+                font-size: 1.8em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">The Daily Crumb</div>
+            <nav>
+                <ul>
+                    <li><a href="#hero">Home</a></li>
+                    <li><a href="#about">Our Story</a></li>
+                    <li><a href="#menu">Menu</a></li>
+                    <li><a href="#testimonials">Testimonials</a></li>
+                    <li><a href="#contact">Contact</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section id="hero" class="hero">
+            <div class="hero-content">
+                <h1>The Daily Crumb</h1>
+                <p>Handcrafted Delights, Baked with Love</p>
+                <a href="#menu" class="btn">View Our Menu</a>
+            </div>
+        </section>
+
+        <section id="about" class="about-us">
+            <div class="container">
+                <h2>Our Story</h2>
+                <div class="about-us-content">
+                    <p>Welcome to The Daily Crumb, where every loaf tells a story and every pastry is a labor of love. Founded by a passionate baker with a dream to bring authentic, artisanal bread to our neighborhood, we believe in the magic of simple, high-quality ingredients.</p>
+                    <p>From the slow fermentation of our sourdough to the delicate layers of our croissants, we honor traditional baking methods. Our commitment extends beyond just taste – we source local, organic flours whenever possible, ensuring freshness and supporting our community. Come, taste the difference that dedication and passion make!</p>
+                </div>
+                <div class="about-us-image">
+                    <img src="https://picsum.photos/id/1074/600/400" alt="Cozy bakery interior with fresh bread">
+                </div>
+            </div>
+        </section>
+
+        <section id="menu" class="menu">
+            <div class="container">
+                <h2>Our Menu</h2>
+                <div class="menu-grid">
+                    <div class="menu-item">
+                        <img src="https://picsum.photos/id/219/400/250" alt="Sourdough Loaf">
+                        <div class="menu-item-info">
+                            <h3>Classic Sourdough Loaf</h3>
+                            <p>Our signature crusty loaf, naturally leavened with a tangy, complex flavor.</p>
+                            <span class="price">$8.50</span>
+                        </div>
+                    </div>
+                    <div class="menu-item">
+                        <img src="https://picsum.photos/id/220/400/250" alt="Flaky Croissants">
+                        <div class="menu-item-info">
+                            <h3>Flaky Croissants</h3>
+                            <p>Golden, buttery, and perfectly flaky – a taste of Parisian mornings.</p>
+                            <span class="price">$4.25</span>
+                        </div>
+                    </div>
+                    <div class="menu-item">
+                        <img src="https://picsum.photos/id/221/400/250" alt="Artisan Chocolate Cake">
+                        <div class="menu-item-info">
+                            <h3>Artisan Chocolate Cake</h3>
+                            <p>Rich, decadent chocolate cake with a velvety ganache, perfect for any celebration.</p>
+                            <span class="price">$35.00</span>
+                        </div>
+                    </div>
+                    <div class="menu-item">
+                        <img src="https://picsum.photos/id/222/400/250" alt="Gourmet Cookies">
+                        <div class="menu-item-info">
+                            <h3>Gourmet Cookie Selection</h3>
+                            <p>A rotating selection of our finest cookies, from classic chocolate chip to seasonal delights.</p>
+                            <span class="price">$3.00 each</span>
+                        </div>
+                    </div>
+                    <div class="menu-item">
+                        <img src="https://picsum.photos/id/223/400/250" alt="Freshly Brewed Coffee">
+                        <div class="menu-item-info">
+                            <h3>Freshly Brewed Coffee</h3>
+                            <p>Locally roasted beans, expertly brewed to complement your pastry.</p>
+                            <span class="price">$3.50</span>
+                        </div>
+                    </div>
+                    <div class="menu-item">
+                        <img src="https://picsum.photos/id/224/400/250" alt="Blueberry Muffins">
+                        <div class="menu-item-info">
+                            <h3>Blueberry Muffins</h3>
+                            <p>Soft, moist muffins bursting with fresh blueberries and a hint of lemon zest.</p>
+                            <span class="price">$3.75</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="testimonials" class="testimonials">
+            <div class="container">
+                <h2>What Our Customers Say</h2>
+                <div class="testimonial-grid">
+                    <div class="testimonial-card">
+                        <p>"The sourdough from The Daily Crumb is simply the best I've ever had! It's become a weekly staple in our home."</p>
+                        <p class="author">- Sarah L.</p>
+                    </div>
+                    <div class="testimonial-card">
+                        <p>"Their croissants transport me straight to Paris. Flaky, buttery perfection every single time."</p>
+                        <p class="author">- Mark T.</p>
+                    </div>
+                    <div class="testimonial-card">
+                        <p>"I ordered a custom cake for my birthday, and it was not only stunning but absolutely delicious. Highly recommend!"</p>
+                        <p class="author">- Emily R.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="contact" class="contact-us">
+            <div class="container">
+                <h2>Contact Us</h2>
+                <div class="contact-info">
+                    <div class="contact-details">
+                        <h3>Visit & Connect</h3>
+                        <p><strong>Address:</strong> 123 Artisan Lane, Bakerstown, BC 12345</p>
+                        <p><strong>Phone:</strong> (555) 123-4567</p>
+                        <p><strong>Email:</strong> <a href="mailto:hello@thedailycrumb.com">hello@thedailycrumb.com</a></p>
+                        <p><strong>Opening Hours:</strong></p>
+                        <ul>
+                            <li>Tuesday - Saturday: 7:00 AM - 4:00 PM</li>
+                            <li>Sunday: 8:00 AM - 2:00 PM</li>
+                            <li>Monday: Closed</li>
+                        </ul>
+                    </div>
+                    <div class="contact-form-wrapper">
+                        <h3>Send Us a Message</h3>
+                        <form class="contact-form">
+                            <label for="name">Name:</label>
+                            <input type="text" id="name" name="name" required>
+
+                            <label for="email">Email:</label>
+                            <input type="email" id="email" name="email" required>
+
+                            <label for="message">Message:</label>
+                            <textarea id="message" name="message" required></textarea>
+
+                            <button type="submit">Send Message</button>
+                        </form>
+                    </div>
+                    <div class="contact-map">
+                        <h3>Find Us</h3>
+                        <p>We're located in the heart of Bakerstown, come say hello!</p>
+                        <!-- Placeholder for embedded map -->
+                        <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3153.019503460836!2d144.9630579153171!3d-37.8172080797517!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x6ad642b4742f1f01%3A0x5045675218ce7e0!2sFederation%20Square!5e0!3m2!1sen!2sau!4v1678912345678!5m2!1sen!2sau" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="social-links">
+                <a href="#" aria-label="Facebook"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBjbGFzcz0ibHVjaWRlIGx1Y2lkZS1mYWNlYm9vayI+PHBhdGggZD0iTDE4IDJoLTNBNS4wMDYgNS4wMDYgMCAwIDAtMTAgN3Y1SDd2NGgzdihoNXYtNGgzdjRoM3YtNGE1LjAwNiA1LjAwNiAwIDAgMCAtNS01WiIvPjwvc3ZnPg==" alt="Facebook" width="24" height="24"></a>
+                <a href="#" aria-label="Instagram"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBjbGFzcz0ibHVjaWRlIGx1Y2lkZS1pbnN0YWdyYW0iPjxyZWN0IHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgeD0iMiIgeT0iMiIgcng9IjUiIHJ5PSI1Ii8+PHBhdGggZD0iTTsxNiA4aC4wMCIvPjxyY2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIzIi8+PC9zdmc+" alt="Instagram" width="24" height="24"></a>
+                <a href="#" aria-label="Twitter"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBjbGFzcz0ibHVjaWRlIGx1Y2lkZS10d2l0dGVyIj48cGF0aCBkPSJNMjIgNGwtNy4yNDUgNy4yNDVMNyA0SDJMMTAuMjYgMTVMNyAyMGgxLjk0bDYuMzYtNi4zNkwxNyAyMGg1bC04LjI2LTExTDIyIDR6TTkuMzQgMTguNzVsLTIuOTQtMi45NEwyMCA1LjI1bDIuOTQgMi45NEw5LjM0IDE4Ljc1eiIvPjwvc3ZnPg==" alt="Twitter" width="24" height="24"></a>
+            </div>
+            <p>&copy; 2023 The Daily Crumb. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Smooth scrolling for navigation links
+            document.querySelectorAll('nav ul li a, .hero .btn').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+
+                    const targetId = this.getAttribute('href');
+                    const targetElement = document.querySelector(targetId);
+
+                    if (targetElement) {
+                        // Calculate offset for sticky header
+                        const headerOffset = document.querySelector('header').offsetHeight;
+                        const elementPosition = targetElement.getBoundingClientRect().top + window.pageYOffset;
+                        const offsetPosition = elementPosition - headerOffset;
+
+                        window.scrollTo({
+                            top: offsetPosition,
+                            behavior: 'smooth'
+                        });
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

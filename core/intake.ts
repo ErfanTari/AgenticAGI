@@ -4,7 +4,7 @@
  * Classifies incoming messages and resolves relevant memory context
  * before any decomposition or planning occurs.
  */
-import type { LLMHandler, Message } from './types.js';
+import type { LLMHandler, Message, UserConstraint, UserConstraintType } from './types.js';
 import type { IndexEntry } from './memory/types.js';
 import type Database from 'better-sqlite3';
 import { sessionCache } from './memory/session-cache.js';
@@ -40,11 +40,50 @@ export interface IntakeResult {
   signals: IntakeSignals;
   resolvedContext: ResolvedEntry[];
   projectCode: string | null;
+  constraints: UserConstraint[];
 }
 
 // Loaded at call time from prompts/intake.md via promptLoader
 function getIntakeSystemPrompt(): string {
   return promptLoader.load('intake');
+}
+
+// ─── Constraint extraction ────────────────────────────────────────────────────
+
+type ConstraintPattern = { type: UserConstraintType; pattern: RegExp };
+
+const CONSTRAINT_PATTERNS: ConstraintPattern[] = [
+  // deadline
+  { type: 'deadline', pattern: /\b(?:by|before|due|deadline|finish(?:ed)?\s+by|no\s+later\s+than|asap|urgently|as\s+soon\s+as\s+possible)\b.{0,40}/i },
+  { type: 'deadline', pattern: /\b(?:within\s+\d+\s+(?:hour|day|week|month)s?|today|tonight|tomorrow|this\s+(?:week|month|morning|evening))\b/i },
+  // budget
+  { type: 'budget', pattern: /\b(?:under|at\s+most|budget(?:\s+of)?|cheap(?:ly)?|free(?:\s+only)?|no[\s-]cost|within\s+\$?\d+)\b.{0,30}/i },
+  // format
+  { type: 'format', pattern: /\b(?:as\s+(?:json|markdown|csv|xml|html|plain\s+text|yaml|toml)|in\s+(?:json|markdown|csv|xml|html|yaml)|output\s+(?:json|markdown|csv|html))\b/i },
+  { type: 'format', pattern: /\b(?:single[- ]file|self[- ]contained|no\s+external\s+files?|inline\s+(?:css|js|styles))\b/i },
+  // scope
+  { type: 'scope', pattern: /\b(?:only|just|don['']?t\s+(?:use|include|add|install)|without\s+\w+|no\s+(?:database|dependencies|external|internet|npm|library)|minimal|keep\s+it\s+simple|no\s+fancy)\b.{0,40}/i },
+  // quality
+  { type: 'quality', pattern: /\b(?:production[- ]ready|enterprise[- ]grade|with\s+tests?|well[- ]documented|type[- ]safe|fully\s+typed|error\s+handling|robust|secure)\b/i },
+];
+
+export function extractConstraints(message: string): UserConstraint[] {
+  const constraints: UserConstraint[] = [];
+  const seen = new Set<string>();
+
+  for (const { type, pattern } of CONSTRAINT_PATTERNS) {
+    const match = message.match(pattern);
+    if (match) {
+      const raw = match[0].trim();
+      const key = `${type}:${raw.toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        constraints.push({ type, value: raw, raw });
+      }
+    }
+  }
+
+  return constraints;
 }
 
 function parseIntakeResponse(response: string): {
@@ -280,10 +319,19 @@ export async function runIntake(
     },
   });
 
+  const constraints = extractConstraints(message);
+  if (constraints.length > 0) {
+    transparency.emit({
+      type: 'user_constraints_extracted',
+      data: { constraints },
+    });
+  }
+
   return {
     summary: signals.summary,
     signals,
     resolvedContext,
     projectCode,
+    constraints,
   };
 }

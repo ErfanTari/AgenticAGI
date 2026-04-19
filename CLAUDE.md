@@ -3,6 +3,75 @@
 This file defines the architecture, memory system, and build philosophy for this agent platform.
 Read this fully before writing any code. Every decision here exists for a reason.
 
+## Planner JSON Wiring + Constraint-Aware Routing + User Input Sprint (2026-04-19)
+
+Five batches. 1542/1567 tests pass. Build clean. Tag: `planner-xml-constraint-routing-complete`.
+
+### Batch 0 — Inventory (no code changes)
+Audited `parsePlanXml` usage and confirmed dead code. Chose Path A: pure JSON throughout using Anthropic SDK tool_use blocks.
+
+### Batch 1 — Pure JSON Planner via Anthropic Tool Use
+- `core/types.ts` — `LLMHandlerOptions` extracted as named type; adds optional `tools` and `toolChoice` fields; `LLMHandler` updated to use it
+- `core/llm.ts` — `callAnthropicProfile` sends `tools` + `tool_choice: {type:'tool', name}` to force structured tool_use block; extracts `tool_use` content block as JSON string; OpenAI-compat path maps `tools[0].input_schema` → `responseSchema`; `sanitizeFinalOutput` patterns collapsed
+- `core/planner.ts` — `decomposeTask` uses `tools/toolChoice` instead of `responseSchema`; fast-path skips `sanitizePlannerJson` when response starts with `{`; emits `plan_parser_fallback_used` and `plan_json_parse_failed` events; `PlannerContext` gains `constraints?` field; constraints injected as `USER CONSTRAINTS` section in planning prompt
+- `core/transparency.ts` — added `plan_json_parse_failed`, `plan_parser_fallback_used`, `user_constraints_extracted`, `coding_route_escalated`, `user_input_requested`, `user_input_received`, `user_input_cleared` event types
+- `core/schemas.ts` — `taskPlanJsonSchema` already uses `z.toJSONSchema()` (no change needed)
+- Tests: `tests/planner-json/tool-use.test.ts` (12 tests, all pass)
+
+### Batch 2 — Constraint Extraction from Intake
+- `core/types.ts` — `UserConstraint` interface + `UserConstraintType` union (`deadline | budget | format | scope | quality | other`)
+- `core/intake.ts` — `extractConstraints(message)` with regex patterns for all 6 constraint types; `IntakeResult` gains `constraints: UserConstraint[]`; `runIntake` calls `extractConstraints`, emits `user_constraints_extracted` when any found
+- Tests: `tests/constraint-routing/intake-constraints.test.ts` (15 tests, all pass)
+
+### Batch 3 — Constraint-Aware Routing Escalation
+- `core/router.ts` — `handleAgenticUnits` gains `constraints?` param; coding route with deadline/scope constraints emits `coding_route_escalated` and sets `plan.complexity = 'HIGH'` (falls to planner); coding route without escalating constraints appends constraint block to goal; `routeDecomposedUnits` passes constraints through
+- `core/agent.ts` — passes `intakeResult?.constraints ?? []` to `routeDecomposedUnits`
+- Tests: `tests/constraint-routing/route-escalation.test.ts` (11 tests, all pass)
+
+### Batch 4 — request_user_input Skill + Pending Input Intercept
+- `core/memory/index.ts` — `pending_user_inputs` singleton table (id=1 CHECK); `savePendingUserInput`, `loadPendingUserInput`, `clearPendingUserInput`; `PendingUserInput` interface
+- `core/memory/mod.ts` — exports the three helpers + `PendingUserInput`
+- `core/skills/tools/request_user_input.ts` — new skill; permissionLevel `read-only`; stores question in DB, emits `user_input_requested`
+- `core/skills/registry.ts` — `requestUserInputSkill` registered
+- `core/agent.ts` — user input intercept at step [0b]: if `loadPendingUserInput()` has a row, clears it, emits `user_input_received` + `user_input_cleared`, returns answer reply
+- `core/autonomous.ts` — hardcoded `IntakeResult` mock updated to include `constraints: []`
+- Tests: `tests/constraint-routing/request-user-input.test.ts` (18 tests, all pass)
+
+---
+
+## Memory Toggle + Collision Handling + Correlation ID Sprint (2026-04-19)
+
+Four batches landed cleanly. 1488/1511 tests pass (23 failures, down from 34 pre-existing baseline). Build clean.
+Tag: `memory-toggle-collision-correlation-complete`.
+
+### Batch 1 — Memory-Disabled Propagation
+- `core/memory-mode.ts` — new single source of truth (`MemoryMode`, `getMemoryMode`, `setMemoryMode`, `_resetMemoryMode`)
+- `core/memory-flag.ts` — now delegates entirely to `memory-mode.ts`; existing callers unchanged
+- `core/skills/registry.ts` — `MEMORY_SKILL_NAMES` set; `getSkillsByPermission` / `getSkillDescriptionsForPermission` accept optional `{ memoryEnabled? }` opts
+- `core/router.ts` — passes `memoryEnabled: !isMemoryDisabled()` to both skill permission calls
+- `core/query-loop.ts` — `buildSystemPrompt` gates MEMORY.md sections and skill list on `getMemoryMode()`
+- `core/agent.ts` — emits `memory_mode` transparency event at top of every `processMessage` call
+- `core/transparency.ts` — added `memory_mode` and `filename_auto_renamed` event types
+- Tests: `tests/memory-toggle/disabled-propagation.test.ts` (17 tests, all pass)
+
+### Batch 2 — Filename Collision Handling
+- `core/utils/path-collision.ts` — `resolveCollision(targetPath, opts?)` auto-renames `stem-2.ext`, `stem-3.ext` etc.
+- `core/skills/tools/file_writer.ts` — write mode auto-renames on collision (append mode always targets original path)
+- `core/skills/tools/generate_and_save_file.ts` — collision resolved before generation; `overwrite` param added to inputSchema
+- Tests: `tests/collision-handling/collision.test.ts` (10 tests, all pass)
+
+### Batch 3 — Planner ↔ QueryLoop Prompt Alignment (prompts only)
+- `prompts/planner.md` — `description`-first pattern promoted to PRIMARY; `spec_code` demoted to "USE ONLY WHEN > 300 chars" subsection; alignment note added
+- `prompts/query-loop.md` — cross-reference sentence added after "How to act" section
+
+### Batch 4 — Correlation IDs on Transparency Events
+- `core/transparency.ts` — `AsyncLocalStorage`-based `withRequestId(fn, id?)` + `getCurrentRequestId()`; `emit` stamps `requestId` on every envelope
+- `TransparencyEventEnvelope` type exported (extends `TransparencyEvent` with optional `requestId`)
+- `core/agent.ts` — `processMessage` wraps impl in `withRequestId`; each call gets a unique UUID
+- Tests: `tests/correlation-id/request-id.test.ts` (8 tests, all pass)
+
+---
+
 ## Current Phase 23 Status
 
 The live memory architecture is currently:

@@ -1,0 +1,6 @@
+[2026-04-17T20:42:46.134Z] [log] [llm] Provider: diag-local-primary (gemini-2.5-flash) — 6943ms
+[2026-04-17T20:42:46.140Z] [log] [generate_and_save_file] spec source=inline path=outputs/trace-diag-html-modelprobe-1/index.html spec_length=2064 has_context=false
+[2026-04-17T20:43:53.819Z] [warn] [llm] diag-local-primary failed after 67679ms: Error: diag-local-primary: empty response content — trying fallback
+[2026-04-17T20:43:56.790Z] [log] [llm] Provider: diag-local-primary (gemini-2.5-flash) — 2965ms
+[2026-04-17T20:43:56.791Z] [log] [generate_and_save_file] spec source=inline path=outputs/trace-diag-html-modelprobe-1/index.html spec_length=1598 has_context=false
+[2026-04-17T20:44:38.833Z] [log] [llm] Provider: diag-local-primary (gemini-2.5-flash) — 42041ms

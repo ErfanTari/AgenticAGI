@@ -1,0 +1,3 @@
+[2026-04-16T13:32:21.293Z] [log] [llm] Provider: diag-local-primary (qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx) — 22684ms
+[2026-04-16T13:32:21.299Z] [log] [generate_and_save_file] spec source=inline path=outputs/trace-diag-html-qwenprobe-2/index.html spec_length=1961 has_context=false
+[2026-04-16T13:34:46.656Z] [log] [llm] Provider: diag-local-primary (qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx) — 145357ms

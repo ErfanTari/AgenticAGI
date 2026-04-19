@@ -63,7 +63,7 @@ export async function runAutonomousLoop(
         if (projectRow) {
           workingMemory = await createWorkingMemory(
             `Autonomous execution: ${projectRow.name}`,
-            { summary: projectRow.name, signals: { summary: projectRow.name, personSignal: null, projectSignal: null, timeSignal: null, agenticSignal: true, procedureSignal: false, querySignal: false }, resolvedContext: [], projectCode },
+            { summary: projectRow.name, signals: { summary: projectRow.name, personSignal: null, projectSignal: null, timeSignal: null, agenticSignal: true, procedureSignal: false, querySignal: false }, resolvedContext: [], projectCode, constraints: [] },
             db,
           );
         }

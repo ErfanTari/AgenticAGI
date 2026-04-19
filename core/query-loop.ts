@@ -26,6 +26,7 @@ import { transparency } from './transparency.js';
 import { loadPointerIndex, loadActiveLoopsSection } from './memory/pointer-index.js';
 import { getSkillDescriptionsForPermission } from './skills/registry.js';
 import { getActivePermissionMode } from './permission.js';
+import { getMemoryMode } from './memory-mode.js';
 import { promptLoader } from './prompt-loader.js';
 import { TOKEN_BUDGETS } from '../config/agent.config.js';
 
@@ -309,15 +310,16 @@ function buildResetNote(goal: string, iteration: number, recentFailures: string[
 // ─── System Prompt ────────────────────────────────────────────────────────────
 
 function buildSystemPrompt(goal: string, pointerIndex: string, activeLoops: string): string {
-  const skillList = getSkillDescriptionsForPermission(getActivePermissionMode());
+  const memoryEnabled = getMemoryMode() === 'enabled';
+  const skillList = getSkillDescriptionsForPermission(getActivePermissionMode(), { memoryEnabled });
 
-  // Active loops section: always shown, tells the model where it is in a multi-milestone plan.
-  const activeLoopsSection = activeLoops.trim()
+  // Active loops section: only shown when memory is enabled.
+  const activeLoopsSection = memoryEnabled && activeLoops.trim()
     ? `\n\n## Your current task state\n${activeLoops.trim()}\n\nUse this to know where you are. Do NOT re-read all memory entries to orient yourself — this section is your anchor.`
     : '';
 
-  // Known entries: goal-filtered subset, shown below task state.
-  const indexSection = pointerIndex.trim()
+  // Known entries: only shown when memory is enabled.
+  const indexSection = memoryEnabled && pointerIndex.trim()
     ? `\n\n## Known Entries (MEMORY.md)\n${pointerIndex.trim()}`
     : '';
 

@@ -1,0 +1,5 @@
+[2026-04-16T13:05:11.304Z] [log] [llm] Provider: diag-local-primary (glm-4.7-flash-mlx) — 22716ms
+[2026-04-16T13:06:00.436Z] [log] [llm] Provider: diag-local-primary (glm-4.7-flash-mlx) — 49126ms
+[2026-04-16T13:06:00.441Z] [warn] [decomposition] first attempt returned no valid units, retrying with few-shot examples
+[2026-04-16T13:06:47.313Z] [log] [llm] Provider: diag-local-primary (glm-4.7-flash-mlx) — 46871ms
+[2026-04-16T13:10:28.482Z] [warn] [llm] diag-local-primary failed after 221151ms: Error: diag-local-primary: 400 Bad Request — trying fallback

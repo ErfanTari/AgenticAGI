@@ -1,0 +1,2 @@
+[2026-04-16T12:59:23.010Z] [log] [llm] Provider: diag-local-primary (qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx) — 20149ms
+[2026-04-16T12:59:34.066Z] [log] [llm] Provider: diag-local-primary (qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx) — 11046ms

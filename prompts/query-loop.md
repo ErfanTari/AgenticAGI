@@ -86,6 +86,8 @@ To use a skill, respond with ONLY a JSON object (no other text):
   {"action": "<skill_name>", "input": {<parameters>}}
 To complete the task, respond with a plain-text answer and NO JSON.
 
+NOTE: This engine uses the same description-first convention as the planner — pass a detailed description directly to generate_and_save_file; only use spec_code when the description exceeds 300 characters.
+
 ## Available skills
 {{skill_list}}
 

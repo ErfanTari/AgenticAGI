@@ -25,6 +25,7 @@ import grepWorkspaceSkill from './tools/grep_workspace.js';
 import listDirSkill from './tools/list_dir.js';
 import globSkill from './tools/glob.js';
 import confirmPlanSkill from './tools/confirm_plan.js';
+import { requestUserInputSkill } from './tools/request_user_input.js';
 
 // --- MCP Skill Registry (Map-based) ---
 
@@ -99,18 +100,22 @@ export function getSkillDescriptions(): string {
   return formatSkillList(getAllSkills());
 }
 
-export function getSkillsByPermission(mode: PermissionLevel): MCPSkill[] {
+const MEMORY_SKILL_NAMES = new Set(['memory_read', 'memory_write', 'relationship_write', 'memory_history']);
+
+export function getSkillsByPermission(mode: PermissionLevel, opts?: { memoryEnabled?: boolean }): MCPSkill[] {
+  const memoryEnabled = opts?.memoryEnabled !== false;
   const allowed: MCPSkill[] = [];
   for (const skill of registry.values()) {
     if (LEVEL_RANK[skill.permissionLevel] <= LEVEL_RANK[mode]) {
+      if (!memoryEnabled && MEMORY_SKILL_NAMES.has(skill.name)) continue;
       allowed.push(skill);
     }
   }
   return allowed;
 }
 
-export function getSkillDescriptionsForPermission(mode: PermissionLevel): string {
-  return formatSkillList(getSkillsByPermission(mode));
+export function getSkillDescriptionsForPermission(mode: PermissionLevel, opts?: { memoryEnabled?: boolean }): string {
+  return formatSkillList(getSkillsByPermission(mode, opts));
 }
 
 function formatSkillList(skills: MCPSkill[]): string {
@@ -152,6 +157,7 @@ registerSkill(grepWorkspaceSkill);
 registerSkill(listDirSkill);
 registerSkill(globSkill);
 registerSkill(confirmPlanSkill);
+registerSkill(requestUserInputSkill);
 
 // Freeze the registry after all built-in skills are registered
 freezeRegistry();

@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="The Daily Crumb - Artisan Bakery. Freshly baked breads, pastries, and cakes crafted with love and quality ingredients.">
+    <title>The Daily Crumb - Artisan Bakery</title>
+
+    <!-- Google Fonts CDN -->
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Open+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --color-primary-light: #f8f5ed; /* Cream background */
+            --color-primary-dark: #4a3a2a; /* Dark brown text */
+            --color-secondary-light: #fffaf0; /* Lighter cream */
+            --color-accent-green: #8a9a5b; /* Muted green for buttons/accents */
+            --color-accent-green-hover: #7a8a4b;
+            --color-accent-blue: #778899; /* Muted blue for subtle accents */
+            --color-text-light: #6b5b4a; /* Medium brown text */
+            --color-border: #dcdcdc; /* Light grey for borders */
+            --color-white: #ffffff;
+            --color-black: #000000;
+        }
+
+        /* Base Styles */
+        body {
+            font-family: 'Open Sans', sans-serif;
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+            color: var(--color-primary-dark);
+            background-color: var(--color-primary-light);
+            scroll-behavior: smooth;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Playfair Display', serif;
+            color: var(--color-primary-dark);
+            margin-bottom: 0.5em;
+        }
+
+        h1 { font-size: 3em; }
+        h2 { font-size: 2.5em; }
+        h3 { font-size: 2em; }
+
+        a {
+            color: var(--color-accent-green);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        p {
+            margin-bottom: 1em;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .btn {
+            display: inline-block;
+            background-color: var(--color-accent-green);
+            color: var(--color-white);
+            padding: 12px 25px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: background-color 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 1em;
+        }
+
+        .btn:hover {
+            background-color: var(--color-accent-green-hover);
+            text-decoration: none;
+        }
+
+        /* Header */
+        header {
+            background-color: var(--color-secondary-light);
+            padding: 20px 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        header .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .logo {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.5em;
+            font-weight: 700;
+            color: var(--color-primary-dark);
+            text-decoration: none;
+            flex-shrink: 0;
+        }
+
+        nav ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        nav ul li {
+            margin-left: 30px;
+        }
+
+        nav ul li a {
+            color: var(--color-text-light);
+            font-weight: 600;
+            font-size: 1.1em;
+            transition: color 0.3s ease;
+            text-decoration: none;
+        }
+
+        nav ul li a:hover {
+            color: var(--color-accent-green);
+            text-decoration: none;
+        }
+
+        /* Hero Section */
+        #hero {
+            background: url('https://images.unsplash.com/photo-1583339031264-7546419741f0?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D') no-repeat center center/cover;
+            color: var(--color-white);
+            text-align: center;
+            padding: 150px 20px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 600px;
+        }
+
+        #hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.4); /* Dark overlay */
+        }
+
+        #hero .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 800px;
+        }
+
+        #hero h1 {
+            font-size: 4.5em;
+            margin-bottom: 20px;
+            color: var(--color-white);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #hero p {
+            font-size: 1.5em;
+            margin-bottom: 40px;
+            color: var(--color-white);
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+        }
+
+        /* Section Styling */
+        section {
+            padding: 80px 0;
+            text-align: center;
+        }
+
+        section:nth-of-type(even) {
+            background-color: var(--color-secondary-light);
+        }
+
+        section h2 {
+            margin-bottom: 60px;
+            position: relative;
+            display: inline-block;
+        }
+
+        section h2::after {
+            content: '';
+            display: block;
+            width: 60px;
+            height: 3px;
+            background-color: var(--color-accent-green);
+            margin: 15px auto 0;
+        }
+
+        /* About Section */
+        #about .about-content {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 40px;
+            text-align: left;
+        }
+
+        #about .about-text {
+            flex: 2;
+            min-width: 300px;
+        }
+
+        #about .about-image {
+            flex: 1;
+            min-width: 250px;
+            max-width: 400px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        #about .about-image img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        /* Menu Section */
+        #menu .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .menu-item {
+            background-color: var(--color-white);
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            overflow: hidden;
+            text-align: left;
+            transition: transform 0.3s ease;
+        }
+
+        .menu-item:hover {
+            transform: translateY(-5px);
+        }
+
+        .menu-item img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .menu-item-content {
+            padding: 20px;
+        }
+
+        .menu-item h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            color: var(--color-primary-dark);
+            font-size: 1.5em;
+        }
+
+        .menu-item p {
+            font-size: 0.95em;
+            color: var(--color-text-light);
+            margin-bottom: 15px;
+        }
+
+        .menu-item .price {
+            font-weight: 700;
+            color: var(--color-accent-green);
+            font-size: 1.2em;
+        }
+
+        /* Testimonials Section */
+        #testimonials {
+            background-color: var(--color-primary-light);
+            padding: 80px 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .testimonial-carousel {
+            position: relative;
+            max-width: 800px;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+
+        .testimonial-wrapper {
+            display: flex;
+            transition: transform 0.5s ease-in-out;
+        }
+
+        .testimonial-slide {
+            flex: 0 0 100%;
+            padding: 20px;
+            box-sizing: border-box;
+            background-color: var(--color-white);
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            margin: 0 10px; /* Add some margin for visual separation */
+            text-align: center;
+        }
+
+        .testimonial-slide p {
+            font-style: italic;
+            font-size: 1.1em;
+            color: var(--color-text-light);
+            margin-bottom: 20px;
+        }
+
+        .testimonial-author {
+            font-weight: 600;
+            color: var(--color-primary-dark);
+            font-size: 1.1em;
+        }
+
+        .carousel-nav-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: rgba(0,0,0,0.5);
+            color: var(--color-white);
+            border: none;
+            padding: 10px 15px;
+            cursor: pointer;
+            font-size: 1.5em;
+            border-radius: 50%;
+            z-index: 10;
+            transition: background-color 0.3s ease;
+        }
+
+        .carousel-nav-btn:hover {
+            background-color: rgba(0,0,0,0.7);
+        }
+
+        .carousel-nav-btn.prev {
+            left: 10px;
+        }
+
+        .carousel-nav-btn.next {
+            right: 10px;
+        }
+
+        /* Contact Section */
+        #contact {
+            background-color: var(--color-secondary-light);
+        }
+
+        #contact .contact-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 40px;
+            justify-content: center;
+            text-align: left;
+        }
+
+        #contact .contact-info,
+        #contact .contact-form-container {
+            flex: 1;
+            min-width: 300px;
+            background-color: var(--color-white);
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        }
+
+        #contact .contact-info h3,
+        #contact .contact-form-container h3 {
+            margin-top: 0;
+            color: var(--color-primary-dark);
+        }
+
+        #contact .contact-info p {
+            margin-bottom: 10px;
+            color: var(--color-text-light);
+        }
+
+        #contact .contact-info p strong {
+            color: var(--color-primary-dark);
+        }
+
+        .contact-form label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--color-primary-dark);
+        }
+
+        .contact-form input[type="text"],
+        .contact-form input[type="email"],
+        .contact-form textarea {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid var(--color-border);
+            border-radius: 5px;
+            font-family: 'Open Sans', sans-serif;
+            font-size: 1em;
+            color: var(--color-primary-dark);
+        }
+
+        .contact-form textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .contact-form input:focus,
+        .contact-form textarea:focus {
+            outline: none;
+            border-color: var(--color-accent-green);
+            box-shadow: 0 0 5px rgba(138, 154, 91, 0.3);
+        }
+
+        .form-message {
+            margin-top: -10px;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+            color: red;
+            display: none;
+        }
+
+        /* Footer */
+        footer {
+            background-color: var(--color-primary-dark);
+            color: var(--color-secondary-light);
+            padding: 40px 0;
+            text-align: center;
+            font-size: 0.9em;
+        }
+
+        footer .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        footer .social-links {
+            margin-top: 10px;
+        }
+
+        footer .social-links a {
+            color: var(--color-secondary-light);
+            font-size: 1.5em;
+            margin: 0 10px;
+            transition: color 0.3s ease;
+        }
+
+        footer .social-links a:hover {
+            color: var(--color-accent-green);
+            text-decoration: none;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 992px) {
+            #hero h1 {
+                font-size: 3.5em;
+            }
+            #hero p {
+                font-size: 1.2em;
+            }
+            .logo {
+                font-size: 2em;
+            }
+            nav ul li {
+                margin-left: 20px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            header .container {
+                flex-direction: column;
+                text-align: center;
+            }
+            nav ul {
+                margin-top: 20px;
+                justify-content: center;
+            }
+            nav ul li {
+                margin: 0 10px;
+                margin-bottom: 10px;
+            }
+            #hero {
+                padding: 100px 20px;
+                min-height: 450px;
+            }
+            #hero h1 {
+                font-size: 2.8em;
+            }
+            #hero p {
+                font-size: 1em;
+            }
+            section {
+                padding: 60px 0;
+            }
+            section h2 {
+                font-size: 2em;
+            }
+            #about .about-content {
+                flex-direction: column;
+            }
+            #about .about-image {
+                max-width: 100%;
+            }
+            .menu-grid {
+                grid-template-columns: 1fr;
+            }
+            #contact .contact-grid {
+                flex-direction: column;
+            }
+            footer .container {
+                flex-direction: column;
+            }
+            footer .social-links {
+                margin-top: 20px;
+            }
+            .carousel-nav-btn {
+                padding: 8px 12px;
+                font-size: 1.2em;
+            }
+            .carousel-nav-btn.prev {
+                left: 5px;
+            }
+            .carousel-nav-btn.next {
+                right: 5px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .logo {
+                font-size: 1.8em;
+            }
+            nav ul li {
+                margin: 0 5px;
+                margin-bottom: 10px;
+            }
+            #hero h1 {
+                font-size: 2.2em;
+            }
+            #hero p {
+                font-size: 0.9em;
+            }
+            .btn {
+                padding: 10px 20px;
+                font-size: 0.9em;
+            }
+            section h2 {
+                font-size: 1.8em;
+            }
+            .menu-item h3 {
+                font-size: 1.3em;
+            }
+            .testimonial-slide p {
+                font-size: 1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <a href="#" class="logo">The Daily Crumb</a>
+            <nav>
+                <ul>
+                    <li><a href="#hero">Home</a></li>
+                    <li><a href="#menu">Menu</a></li>
+                    <li><a href="#about">About</a></li>
+                    <li><a href="#contact">Contact</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section id="hero">
+            <div class="hero-content">
+                <h1>Artisan Bakes, Crafted with Love.</h1>
+                <p>Experience the warmth and tradition of freshly baked goods, made with the finest local ingredients.</p>
+                <a href="#menu" class="btn">View Our Menu</a>
+            </div>
+        </section>
+
+        <section id="about">
+            <div class="container">
+                <h2>Our Story</h2>
+                <div class="about-content">
+                    <div class="about-text">
+                        <p>Welcome to The Daily Crumb, your neighborhood artisan bakery. Founded with a passion for traditional baking and a commitment to quality, we believe that the best bread and pastries start with the best ingredients.</p>
+                        <p>Every morning, our skilled bakers rise before dawn to handcraft each item, from our crusty sourdough loaves to our delicate croissants. We source organic flours, local dairy, and seasonal fruits to ensure every bite is a taste of pure delight.</p>
+                        <p>Our philosophy is simple: good food brings people together. We invite you to step inside, breathe in the aroma of fresh baking, and become a part of The Daily Crumb family.</p>
+                    </div>
+                    <div class="about-image">
+                        <img src="https://images.unsplash.com/photo-1558961363-fa12ae0c8755?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Bakery interior with fresh bread">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="menu">
+            <div class="container">
+                <h2>Our Delicious Offerings</h2>
+                <div class="menu-grid">
+                    <div class="menu-item">
+                        <img src="https://images.unsplash.com/photo-1595178306028-2195f32a7647?q=80&w=1935&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Artisan Sourdough Bread">
+                        <div class="menu-item-content">
+                            <h3>Artisan Sourdough</h3>
+                            <p>Our signature loaf, naturally leavened with a crispy crust and a soft, airy interior. Perfect for any meal.</p>
+                            <span class="price">$6.50</span>
+                        </div>
+                    </div>
+                    <div class="menu-item">
+                        <img src="https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?q=80&w=1980&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Flaky Croissant">
+                        <div class="menu-item-content">
+                            <h3>Classic Butter Croissant</h3>
+                            <p>Golden, flaky, and buttery layers. A perfect start to your day with a cup of coffee.</p>
+                            <span class="price">$3.75</span>
+                        </div>
+                    </div>
+                    <div class="menu-item">
+                        <img src="https://images.unsplash.com/photo-1562777717-dc6984c30c3f?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Decadent Chocolate Fudge Cake">
+                        <div class="menu-item-content">
+                            <h3>Chocolate Fudge Cake</h3>
+                            <p>Rich, moist chocolate cake with a decadent fudge frosting. A true indulgence for any occasion.</p>
+                            <span class="price">$45.00 (whole)</span>
+                        </div>
+                    </div>
+                    <div class="menu-item">
+                        <img src="https://images.unsplash.com/photo-1628591830678-0051187d9030?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Rustic Ciabatta Bread">
+                        <div class="menu-item-content">
+                            <h3>Rustic Ciabatta</h3>
+                            <p>Light and airy with a crisp crust, ideal for sandwiches or dipping in olive oil.</p>
+                            <span class="price">$5.00</span>
+                        </div>
+                    </div>
+                    <div class="menu-item">
+                        <img src="https://images.unsplash.com/photo-1551026938-0402e3b21650?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Fruit Danish Pastry">
+                        <div class="menu-item-content">
+                            <h3>Seasonal Fruit Danish</h3>
+                            <p>Flaky pastry filled with sweet cream cheese and fresh seasonal fruit. A delightful treat.</p>
+                            <span class="price">$4.25</span>
+                        </div>
+                    </div>
+                    <div class="menu-item">
+                        <img src="https://images.unsplash.com/photo-1578985521853-5d51851e370a?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Carrot Cake Slice">
+                        <div class="menu-item-content">
+                            <h3>Spiced Carrot Cake</h3>
+                            <p>Moist carrot cake with walnuts and a tangy cream cheese frosting. A timeless classic.</p>
+                            <span class="price">$5.50 (slice)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="testimonials">
+            <div class="container">
+                <h2>What Our Customers Say</h2>
+                <div class="testimonial-carousel">
+                    <div class="testimonial-wrapper">
+                        <div class="testimonial-slide">
+                            <p>"The Daily Crumb is a true gem! Their sourdough is the best I've ever tasted, and their pastries are simply divine. A must-visit for any bread lover."</p>
+                            <p class="testimonial-author">- Sarah L.</p>
+                        </div>
+                        <div class="testimonial-slide">
+                            <p>"I can't get enough of their chocolate fudge cake. It's rich, moist, and perfectly balanced. Every visit feels like a special occasion."</p>
+                            <p class="testimonial-author">- Mark T.</p>
+                        </div>
+                        <div class="testimonial-slide">
+                            <p>"From the friendly staff to the incredible aroma, everything about The Daily Crumb is wonderful. Their coffee and croissant combo is my weekend ritual!"</p>
+                            <p class="testimonial-author">- Emily R.</p>
+                        </div>
+                        <div class="testimonial-slide">
+                            <p>"Finally, a bakery that truly cares about quality ingredients and traditional methods. Their rye bread is authentic and delicious."</p>
+                            <p class="testimonial-author">- David P.</p>
+                        </div>
+                    </div>
+                    <button class="carousel-nav-btn prev" aria-label="Previous testimonial">&#10094;</button>
+                    <button class="carousel-nav-btn next" aria-label="Next testimonial">&#10095;</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="contact">
+            <div class="container">
+                <h2>Get In Touch</h2>
+                <div class="contact-grid">
+                    <div class="contact-info">
+                        <h3>Visit Us</h3>
+                        <p><strong>Address:</strong> 123 Baker Street, Artisanville, AB 12345</p>
+                        <p><strong>Phone:</strong> <a href="tel:+15551234567">(555) 123-4567</a></p>
+                        <p><strong>Email:</strong> <a href="mailto:info@thedailycrumb.com">info@thedailycrumb.com</a></p>
+                        <p><strong>Hours:</strong><br>
+                            Mon - Fri: 7:00 AM - 5:00 PM<br>
+                            Sat: 8:00 AM - 4:00 PM<br>
+                            Sun: Closed
+                        </p>
+                    </div>
+                    <div class="contact-form-container">
+                        <h3>Send Us a Message</h3>
+                        <form id="contactForm" class="contact-form">
+                            <label for="name">Name:</label>
+                            <input type="text" id="name" name="name" required>
+
+                            <label for="email">Email:</label>
+                            <input type="email" id="email" name="email" required>
+
+                            <label for="message">Message:</label>
+                            <textarea id="message" name="message" required></textarea>
+
+                            <p id="formMessage" class="form-message"></p>
+
+                            <button type="submit" class="btn">Send Message</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2023 The Daily Crumb. All rights reserved.</p>
+            <div class="social-links">
+                <a href="https://facebook.com" target="_blank" aria-label="Facebook"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSIjZmZmYWYwIiBkPSJNMTIgMi4xNjNjLTYuNjI3IDAgLTEyIDUuMzcyIC0xMiAxMnM1LjM3MyAxMiAxMiAxMiAxMiAtNS4zNzIgMTIgLTEyIC01LjM3MyAtMTIgLTEyIC0xMnptMyAxMS41MzdjLjQ3MSAwIC44NjEuMzQ0Ljg2MS43Nzh2Mi44ODhjMCAuNDM0LS4zOS43NzgtLjg2MS43NzhsLTIuODg4IDBjLS40NzEgMC0uODYxLS4zNDQtLjg2MS0uNzc4di0yLjg4OGMwLS40MzQuMzktLjc3OC44NjEtLjc3OGwyLjg4OCAwem0tLjQzNC00LjQ0N2MwLS40MzQtLjM5LS43NzgtLjg2MS0uNzc4bC0yLjg4OCAwYy0uNDcxIDAtLjg2MS4zNDQtLjg2MS43Nzh2Mi44ODhjMCAuNDM0LjM5Ljc3OC44NjEuNzc4bDIuODg4IDBjLjQ3MSAwIC44NjEtLjM0NC44NjEtLjc3OHYtMi44ODh6bS0uNDM0LTQuNDQ3YzAtLjQzNC0uMzktLjc3OC0uODYxLS43NzhsLTIuODg4IDBjLS40NzEgMC0uODYxLjM0NC0uODYxLjc3OHYyLjg4OGMwIC40MzQuMzkgLjc3OC44NjEuNzc4bDIuODg4IDBjLjQ3MSAwIC44NjEtLjM0NC44NjEtLjc3OHYtMi44ODh6Ii8+PC9zdmc+" alt="Facebook icon" width="24" height="24"></a>
+                <a href="https://instagram.com" target="_blank" aria-label="Instagram"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSIjZmZmYWYwIiBkPSJNMTIgMi4xNjNjLTYuNjI3IDAgLTEyIDUuMzcyIC0xMiAxMnM1LjM3MyAxMiAxMiAxMiAxMiAtNS4zNzIgMTIgLTEyIC01LjM3MyAtMTIgLTEyIC0xMnptMyAxMS41MzdjLjQ3MSAwIC44NjEuMzQ0Ljg2MS43Nzh2Mi44ODhjMCAuNDM0LS4zOS43NzgtLjg2MS43NzhsLTIuODg4IDBjLS40NzEgMC0uODYxLS4zNDQtLjg2MS0uNzc4di0yLjg4OGMwLS40MzQuMzktLjc3OC44NjEtLjc3OGwyLjg4OCAwem0tLjQzNC00LjQ0N2MwLS40MzQtLjM5LS43NzgtLjg2MS0uNzc4bC0yLjg4OCAwYy0uNDcxIDAtLjg2MS4zNDQtLjg2MS43Nzh2Mi44ODhjMCAuNDM0LjM5Ljc3OC44NjEuNzc4bDIuODg4IDBjLjQ3MSAwIC44NjEtLjM0NC44NjEtLjc3OHYtMi44ODh6bS0uNDM0LTQuNDQ3YzAtLjQzNC0uMzktLjc3OC0uODYxLS43NzhsLTIuODg4IDBjLS40NzEgMC0uODYxLjM0NC0uODYxLjQ3OHYyLjg4OGMwIC40MzQuMzkgLjc3OC44NjEuNzc4bDIuODg4IDBjLjQ3MSAwIC44NjEtLjM0NC44NjEtLjc3OHYtMi44ODh6Ii8+PC9zdmc+" alt="Instagram icon" width="24" height="24"></a>
+                <a href="https://twitter.com" target="_blank" aria-label="Twitter"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSIjZmZmYWYwIiBkPSJNMTIgMi4xNjNjLTYuNjI3IDAgLTEyIDUuMzcyIC0xMiAxMnM1LjM3MyAxMiAxMiAxMiAxMiAtNS4zNzIgMTIgLTEyIC01LjM3MyAtMTIgLTEyIC0xMnptMyAxMS41MzdjLjQ3MSAwIC44NjEuMzQ0Ljg2MS43Nzh2Mi44ODhjMCAuNDM0LS4zOS43NzgtLjg2MS43NzhsLTIuODg4IDBjLS40NzEgMC0uODYxLS4zNDQtLjg2MS0uNzc4di0yLjg4OGMwLS40MzQuMzktLjc3OC44NjEtLjc3OGwyLjg4OCAwem0tLjQzNC00LjQ0N2MwLS40MzQtLjM5LS43NzgtLjg2MS0uNzc4bC0yLjg4OCAwYy0uNDcxIDAtLjg2MS4zNDQtLjg2MS43Nzh2Mi44ODhjMCAuNDM0LjM5Ljc3OC44NjEuNzc4bDIuODg4IDBjLjQ3MSAwIC44NjEtLjM0NC44NjEtLjc3OHYtMi44ODh6bS0uNDM0LTQuNDQ3YzAtLjQzNC0uMzktLjc3OC0uODYxLS43NzhsLTIuODg4IDBjLS40NzEgMC0uODYxLjM0NC0uODYxLjQ3OHYyLjg4OGMwIC40MzQuMzkgLjc3OC44NjEuNzc4bDIuODg4IDBjLjQ3MSAwIC44NjEtLjM0NC44NjEtLjc3OHYtMi44ODh6Ii8+PC9sZnZnPg==" alt="Twitter icon" width="24" height="24"></a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Smooth Scrolling for Navigation Links
+            document.querySelectorAll('nav a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href');
+                    const targetElement = document.querySelector(targetId);
+                    if (targetElement) {
+                        const headerOffset = document.querySelector('header').offsetHeight;
+                        const elementPosition = targetElement.getBoundingClientRect().top + window.pageYOffset;
+                        const offsetPosition = elementPosition - headerOffset;
+
+                        window.scrollTo({
+                            top: offsetPosition,
+                            behavior: "smooth"
+                        });
+                    }
+                });
+            });
+
+            // Testimonial Carousel
+            const testimonialWrapper = document.querySelector('.testimonial-wrapper');
+            const testimonialSlides = document.querySelectorAll('.testimonial-slide');
+            const prevBtn = document.querySelector('.carousel-nav-btn.prev');
+            const nextBtn = document.querySelector('.carousel-nav-btn.next');
+            let currentIndex = 0;
+            const totalSlides = testimonialSlides.length;
+
+            function updateCarousel() {
+                const slideWidth = testimonialSlides[0].offsetWidth + 20; // Slide width + margin
+                testimonialWrapper.style.transform = `translateX(${-currentIndex * slideWidth}px)`;
+            }
+
+            function showNextSlide() {
+                currentIndex = (currentIndex + 1) % totalSlides;
+                updateCarousel();
+            }
+
+            function showPrevSlide() {
+                currentIndex = (currentIndex - 1 + totalSlides) % totalSlides;
+                updateCarousel();
+            }
+
+            nextBtn.addEventListener('click', showNextSlide);
+            prevBtn.addEventListener('click', showPrevSlide);
+
+            // Auto-advance carousel
+            let carouselInterval = setInterval(showNextSlide, 5000); // Change slide every 5 seconds
+
+            // Pause carousel on hover
+            testimonialWrapper.parentNode.addEventListener('mouseenter', () => {
+                clearInterval(carouselInterval);
+            });
+            testimonialWrapper.parentNode.addEventListener('mouseleave', () => {
+                carouselInterval = setInterval(showNextSlide, 5000);
+            });
+
+            // Update carousel on window resize
+            window.addEventListener('resize', updateCarousel);
+            updateCarousel(); // Initial update
+
+            // Contact Form Validation
+            const contactForm = document.getElementById('contactForm');
+            const formMessage = document.getElementById('formMessage');
+
+            contactForm.addEventListener('submit', function(e) {
+                e.preventDefault(); // Prevent actual form submission
+
+                const name = document.getElementById('name').value.trim();
+                const email = document.getElementById('email').value.trim();
+                const message = document.getElementById('message').value.trim();
+
+                formMessage.style.display = 'none';
+                formMessage.style.color = 'red';
+
+                if (name === '' || email === '' || message === '') {
+                    formMessage.textContent = 'All fields are required.';
+                    formMessage.style.display = 'block';
+                    return;
+                }
+
+                // Basic email validation regex
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(email)) {
+                    formMessage.textContent = 'Please enter a valid email address.';
+                    formMessage.style.display = 'block';
+                    return;
+                }
+
+                // If all validation passes
+                formMessage.style.color = 'var(--color-accent-green)';
+                formMessage.textContent = 'Thank you for your message! We will get back to you soon.';
+                formMessage.style.display = 'block';
+
+                // In a real application, you would send this data to a server
+                console.log('Form Submitted:', { name, email, message });
+
+                // Clear the form
+                contactForm.reset();
+            });
+        });
+    </script>
+</body>
+</html>

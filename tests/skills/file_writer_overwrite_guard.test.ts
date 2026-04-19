@@ -53,9 +53,10 @@ describe('file_writer overwrite guard', () => {
     expect(content).toBe('Hello, world!');
   });
 
-  it('T2: writing to existing file fails without overwrite:true', async () => {
+  it('T2: writing to existing file auto-renames without overwrite:true', async () => {
     const testFile = 'existing-file.txt';
     TEST_FILES.push(testFile);
+    TEST_FILES.push('existing-file-2.txt');
     const initialContent = 'Original content';
 
     // Create the file first
@@ -65,20 +66,23 @@ describe('file_writer overwrite guard', () => {
     });
     expect(createResult.success).toBe(true);
 
-    // Try to write to it without overwrite flag
+    // Writing without overwrite flag auto-renames to avoid collision
     const writeResult = await fileWriter.execute({
       path: `test-file-writer/${testFile}`,
       content: 'New content'
     });
-    expect(writeResult.success).toBe(false);
-    expect(writeResult.error).toContain('File already exists');
-    expect(writeResult.error).toContain('patch_file');
-    expect(writeResult.error).toContain('overwrite');
+    expect(writeResult.success).toBe(true);
+    expect(writeResult.output).toContain('existing-file-2.txt');
 
     // Verify original content is unchanged
     const filePath = path.join(WORKSPACE_ROOT, testFile);
     const content = fs.readFileSync(filePath, 'utf-8');
     expect(content).toBe(initialContent);
+
+    // Verify renamed file has new content
+    const renamedPath = path.join(WORKSPACE_ROOT, 'existing-file-2.txt');
+    expect(fs.existsSync(renamedPath)).toBe(true);
+    expect(fs.readFileSync(renamedPath, 'utf-8')).toBe('New content');
   });
 
   it('T3: writing to existing file succeeds with overwrite:true', async () => {

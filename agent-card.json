@@ -39,7 +39,8 @@
       "grep_workspace",
       "list_dir",
       "glob",
-      "confirm_plan"
+      "confirm_plan",
+      "request_user_input"
     ],
     "planning": {
       "max_steps": 8,

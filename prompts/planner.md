@@ -143,35 +143,23 @@ SKILL ROUTING — FILE vs SYNTHESIS:
 Use generate_and_save_file when: the output is a FILE to be saved to disk (html, js, md, txt, json, etc.)
 Use content_writer ONLY when: generating text that stays in memory / gets piped to another step / returned to user WITHOUT saving to a file (reports, comparisons, summaries)
 
-- generate_and_save_file (html file): { "path": "index.html", "spec_code": "PLAN.EX-000042" }
-- generate_and_save_file (code file): { "path": "src/game.js", "description": "A short spec under 200 chars" }
-- generate_and_save_file (modify file): { "path": "src/game.js", "description": "Add keyboard controls", "context": "{{existing_source}}" }
+PRIMARY PATTERN — description-first (use this by default):
+- generate_and_save_file (html file): { "path": "index.html", "description": "A self-contained HTML game with inline CSS/JS using Three.js from CDN, featuring particle physics, mouse interaction, and a score counter" }
+- generate_and_save_file (code file): { "path": "src/game.js", "description": "Game loop with requestAnimationFrame, WASD controls, and collision detection" }
+- generate_and_save_file (modify file): { "path": "src/game.js", "description": "Add keyboard controls for left/right movement", "context": "{{existing_source}}" }
 - content_writer (synthesis report): { "prompt": "Write a weekly status report using: {{projects}}", "format": "markdown" }
 - content_writer (comparison): { "prompt": "Compare {{search_results}} vs {{memory_result}}", "format": "markdown" }
 
-CRITICAL: spec_code vs memory_read OUTPUT MISMATCH
+USE ONLY WHEN description exceeds 300 characters — spec_code workflow:
+Write a detailed spec to memory first, then pass the returned code:
+  Step 1: memory_write { "nb": "PLAN", "type": "EX", "name": "game-spec", "body": "Full spec here..." }  storeResultAs: "impl_spec_code"
+  Step 2: generate_and_save_file { "path": "game.html", "spec_code": "{{impl_spec_code}}" }
 
-spec_code ONLY accepts a memory code string like "PLAN.EX-000042" (14–20 chars, format NOTEBOOK.TYPE-NNNNNN).
-memory_read returns a JSON metadata object — this is NEVER a valid spec_code.
+CRITICAL: spec_code ONLY accepts a memory code string like "PLAN.EX-000042" (format NOTEBOOK.TYPE-NNNNNN).
+memory_read returns a JSON object — NEVER pass memory_read output as spec_code.
 
-WRONG PATTERN (causes STATE_ERROR — memory_read output is not a code):
-  Step 1: memory_read { "code": "PLAN.PL-000001" }  storeResultAs: "plan_data"
-  Step 2: generate_and_save_file { "spec_code": "{{plan_data}}" }
-  ← FAILS: plan_data resolves to {"count":1,"entries":[...]}, not a code string
-
-RIGHT PATTERN 1 — you already know the code, use it directly:
-  Step 1: generate_and_save_file { "path": "game.html", "spec_code": "PLAN.PL-000001" }
-  ← Pass the code literal. Do NOT fetch it with memory_read first.
-
-RIGHT PATTERN 2 — you want to build on existing memory content:
-  Step 1: memory_read { "code": "PLAN.PL-000001" }  storeResultAs: "existing_plan"
-  Step 2: memory_write { "nb": "PLAN", "type": "EX", "name": "Implementation Spec",
-            "body": "Based on {{existing_plan}}, implement..." }  storeResultAs: "impl_spec_code"
-  Step 3: generate_and_save_file { "path": "game.html", "spec_code": "{{impl_spec_code}}" }
-  ← impl_spec_code is now a real code returned by memory_write, not a JSON object.
-
-RULE: If you already know the memory code from context, use it as a string literal — do NOT read it then pass the result.
 RULE: spec_code only accepts codes. Use description or context for everything else.
+NOTE: The queryLoop engine uses the same description-first convention — plans and queryLoop steps are interchangeable.
 
 IMPORTANT: content_writer MUST always include "format" field. Use "code" for JavaScript, CSS, TypeScript, Python, or any programming language. Use "html" for web pages. Use "markdown" for reports/docs. Use "plain" for prose text only.
 

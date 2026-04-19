@@ -12,6 +12,7 @@ import { writeReflection } from './memory/episodic.js';
 import { addRelationship, getRelationshipsFrom } from './memory/relationships.js';
 import { getSkillDescriptionsForPermission, getSkillsByPermission, getAllSkills } from './skills/registry.js';
 import { getActivePermissionMode } from './permission.js';
+import { isMemoryDisabled } from './memory-flag.js';
 import { runSkill } from './skills/runner.js';
 import { memoryAgent } from './memory/memory-agent.js';
 import { type ArtifactContext, runQueryLoop } from './query-loop.js';
@@ -652,6 +653,7 @@ async function handleAgenticUnits(
   priorContext: ResolvedMemory | null = null,
   workingMemory?: WorkingMemory,
   _history?: Message[],
+  constraints?: import('./types.js').UserConstraint[],
 ): Promise<AgenticRouteResult> {
   const goalMessage = units.map(unit => unit.content).join('\n');
   const minOrder = Math.min(...units.map(unit => unit.order));
@@ -666,7 +668,8 @@ async function handleAgenticUnits(
   ].filter(Boolean).join('\n\n');
   // Phase 15 Conflict 5: pass projectCode so decomposeTask can use project brain cache
   const permissionMode = getActivePermissionMode();
-  const allowedSkills = getSkillsByPermission(permissionMode);
+  const memoryEnabledOpt = { memoryEnabled: !isMemoryDisabled() };
+  const allowedSkills = getSkillsByPermission(permissionMode, memoryEnabledOpt);
   const allSkillsList = getAllSkills();
   const blockedSkillNames = allSkillsList
     .filter(s => !allowedSkills.some(a => a.name === s.name))
@@ -688,7 +691,7 @@ async function handleAgenticUnits(
   }
 
   const plan = await decomposeTask(goalMessage, {
-    skills: getSkillDescriptionsForPermission(permissionMode),
+    skills: getSkillDescriptionsForPermission(permissionMode, memoryEnabledOpt),
     goals,
     memoryContext,
     decompositionSummary: buildDecompositionSummary(units),
@@ -698,6 +701,7 @@ async function handleAgenticUnits(
     workspaceFiles: workspaceFiles || undefined,
     recentArtifact: _lastSessionArtifact,
     continuationContext: continuationContext || undefined,  // FIX 2: Inject continuation context
+    constraints: constraints ?? [],
   }, llmHandler);
 
   if (plan.needsConfirmation) {
@@ -713,24 +717,41 @@ async function handleAgenticUnits(
   }
 
   // Phase 18 — Coding route: any unit with taskType==='coding' goes to QueryLoop
+  // Constraint escalation: deadline or scope constraints → escalate to planner (HIGH)
   const codingUnits = units.filter(u => u.taskType === 'coding');
   if (codingUnits.length > 0) {
-    transparency.emit({
-      type: 'coding_route_selected',
-      data: {
-        unitIds: codingUnits.map(u => u.id),
-        complexity: plan.complexity ?? 'unknown',
-        reason: 'taskType=coding',
-      },
-    });
-    const loopResult = await runQueryLoop(goalMessage, llmHandler, workingMemory, _history);
-    if (loopResult.artifactContext) {
-      _lastSessionArtifact = loopResult.artifactContext;
+    const escalatingConstraints = (constraints ?? []).filter(c => c.type === 'deadline' || c.type === 'scope');
+    if (escalatingConstraints.length > 0) {
+      transparency.emit({
+        type: 'coding_route_escalated',
+        data: {
+          reason: `constraints require planner: ${escalatingConstraints.map(c => c.type).join(', ')}`,
+          constraints: escalatingConstraints,
+        },
+      });
+      // Fall through to the complexity-based routing below (treated as HIGH)
+      plan.complexity = 'HIGH';
+    } else {
+      transparency.emit({
+        type: 'coding_route_selected',
+        data: {
+          unitIds: codingUnits.map(u => u.id),
+          complexity: plan.complexity ?? 'unknown',
+          reason: 'taskType=coding',
+        },
+      });
+      const constraintBlock = (constraints ?? []).length > 0
+        ? `\n\nCONSTRAINTS:\n${constraints!.map(c => `- [${c.type.toUpperCase()}] ${c.value}`).join('\n')}`
+        : '';
+      const loopResult = await runQueryLoop(goalMessage + constraintBlock, llmHandler, workingMemory, _history);
+      if (loopResult.artifactContext) {
+        _lastSessionArtifact = loopResult.artifactContext;
+      }
+      return {
+        parts: [{ order: minOrder, route: 'agentic', reply: loopResult.reply }],
+        plan,
+      };
     }
-    return {
-      parts: [{ order: minOrder, route: 'agentic', reply: loopResult.reply }],
-      plan,
-    };
   }
 
   // FIX 5B: Defensive fallback for unrecognized complexity values
@@ -802,6 +823,7 @@ export async function routeDecomposedUnits(
   history: Message[],
   llmHandler: LLMHandler,
   workingMemory?: WorkingMemory,
+  constraints?: import('./types.js').UserConstraint[],
 ): Promise<RouteExecutionResult> {
   const conversationalUnits = units.filter(unit => unit.route === 'conversational');
   const queryUnits = units.filter(unit => unit.route === 'query');
@@ -833,6 +855,7 @@ export async function routeDecomposedUnits(
       queryResult?.resolved ?? null,
       workingMemory,
       history,
+      constraints,
     )
     : Promise.resolve(null);
 

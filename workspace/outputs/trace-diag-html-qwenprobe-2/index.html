@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Golden Crumb | Artisan Bakery</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        /* --- CSS Variables & Reset --- */
+        :root {
+            --color-cream: #FDF8E7;
+            --color-brown: #8B4513;
+            --color-amber: #DAA520;
+            --color-terracotta: #CD853F;
+            --color-sage: #9CAF88;
+            --color-dark-text: #3E2723;
+            
+            --font-heading: 'Playfair Display', serif;
+            --font-body: 'Lato', sans-serif;
+            
+            --shadow-card: 0 4px 6px rgba(139, 69, 19, 0.1);
+            --shadow-hover: 0 12px 24px rgba(139, 69, 19, 0.2);
+            --border-radius: 8px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background-color: var(--color-cream);
+            color: var(--color-dark-text);
+            line-height: 1.6;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: var(--font-heading);
+            color: var(--color-brown);
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+            transition: color 0.3s ease;
+        }
+
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        /* --- Utility Classes --- */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .section-padding {
+            padding: 80px 0;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            border-radius: var(--border-radius);
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+        }
+
+        .btn-primary {
+            background-color: var(--color-amber);
+            color: var(--color-brown);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--color-terracotta);
+            color: white;
+        }
+
+        .btn-secondary {
+            background-color: transparent;
+            border: 2px solid var(--color-brown);
+            color: var(--color-brown);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--color-brown);
+            color: white;
+        }
+
+        /* --- Header & Navigation --- */
+        header {
+            position: sticky;
+            top: 0;
+            background-color: var(--color-cream);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            z-index: 1000;
+            padding: 15px 0;
+        }
+
+        .nav-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: var(--font-heading);
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--color-brown);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo i {
+            color: var(--color-amber);
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 30px;
+        }
+
+        .nav-links a {
+            font-weight: 700;
+            color: var(--color-brown);
+            position: relative;
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            width: 0;
+            height: 2px;
+            bottom: -5px;
+            left: 0;
+            background-color: var(--color-amber);
+            transition: width 0.3s;
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        .cart-icon {
+            position: relative;
+            cursor: pointer;
+            font-size: 1.2rem;
+            color: var(--color-brown);
+        }
+
+        .cart-count {
+            position: absolute;
+            top: -8px;
+            right: -10px;
+            background-color: var(--color-terracotta);
+            color: white;
+            font-size: 0.7rem;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .hamburger {
+            display: none;
+            font-size: 1.5rem;
+            color: var(--color-brown);
+            cursor: pointer;
+        }
+
+        /* --- Hero Section --- */
+        .hero {
+            height: 80vh;
+            min-height: 500px;
+            background: linear-gradient(rgba(62, 39, 35, 0.4), rgba(62, 39, 35, 0.4)), 
+                        linear-gradient(135deg, var(--color-amber), var(--color-brown));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: white;
+        }
+
+        .hero-content h1 {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .hero-content p {
+            font-size: 1.5rem;
+            margin-bottom: 40px;
+            font-weight: 300;
+        }
+
+        /* --- Products Grid --- */
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .product-card {
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-card);
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .product-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .product-image-placeholder {
+            height: 200px;
+            background-color: #eee;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #aaa;
+            font-size: 2rem;
+        }
+
+        .product-info {
+            padding: 20px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .product-title {
+            font-size: 1.4rem;
+            margin-bottom: 10px;
+        }
+
+        .product-desc {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 15px;
+            flex-grow: 1;
+        }
+
+        .product-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: auto;
+        }
+
+        .price {
+            font-weight: 700;
+            color: var(--color-brown);
+            font-size: 1.2rem;
+        }
+
+        /* --- About Section --- */
+        .about-section {
+            background-color: white;
+        }
+
+        .about-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 50px;
+            align-items: center;
+        }
+
+        .about-image-placeholder {
+            height: 400px;
+            background-color: var(--color-sage);
+            border-radius: var(--border-radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+
+        .values-list {
+            list-style: none;
+            margin-top: 20px;
+        }
+
+        .values-list li {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .values-list i {
+            color: var(--color-amber);
+        }
+
+        /* --- Gallery Section --- */
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 40px;
+        }
+
+        .gallery-item {
+            height: 250px;
+            background-color: #ddd;
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .gallery-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.5s ease;
+        }
+
+        .gallery-item:hover img {
+            transform: scale(1.05);
+        }
+
+        /* --- Testimonials --- */
+        .testimonials {
+            background-color: var(--color-cream);
+        }
+
+        .testimonial-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .testimonial-card {
+            background: white;
+            padding: 30px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-card);
+            position: relative;
+        }
+
+        .testimonial-card::before {
+            content: '\201C';
+            font-family: var(--font-heading);
+            font-size: 4rem;
+            color: var(--color-amber);
+            position: absolute;
+            top: 10px;
+            left: 20px;
+            opacity: 0.3;
+        }
+
+        .testimonial-text {
+            font-style: italic;
+            margin-bottom: 20px;
+        }
+
+        .testimonial-author {
+            font-weight: 700;
+            color: var(--color-brown);
+        }
+
+        /* --- Footer & Contact --- */
+        footer {
+            background-color: var(--color-brown);
+            color: var(--color-cream);
+            padding-top: 60px;
+        }
+
+        .footer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 40px;
+        }
+
+        .footer-col h3 {
+            color: var(--color-amber);
+            margin-bottom: 20px;
+        }
+
+        .footer-links {
+            list-style: none;
+        }
+
+        .footer-links li {
+            margin-bottom: 10px;
+        }
+
+        .social-icons {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .social-icons a {
+            width: 40px;
+            height: 40px;
+            background-color: rgba(255,255,255,0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .social-icons a:hover {
+            background-color: var(--color-amber);
+            color: var(--color-brown);
+        }
+
+        .contact-form input, 
+        .contact-form textarea {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: none;
+            border-radius: var(--border-radius);
+            font-family: var(--font-body);
+        }
+
+        .newsletter input {
+            padding: 10px;
+            border-radius: var(--border-radius);
+            border: none;
+            margin-right: 10px;
+        }
+
+        .copyright {
+            background-color: rgba(0,0,0,0.2);
+            padding: 20px;
+            text-align: center;
+            margin-top: 50px;
+        }
+
+        /* --- Animations --- */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+        }
+
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* --- Responsive Design --- */
+        @media (max-width: 768px) {
+            .nav-links {
+                position: absolute;
+                top: 70px;
+                right: -100%;
+                background-color: var(--color-cream);
+                flex-direction: column;
+                width: 100%;
+                padding: 20px;
+                box-shadow: 0 5px 10px rgba(0,0,0,0.1);
+                transition: right 0.3s ease;
+            }
+
+            .nav-links.active {
+                right: 0;
+            }
+
+            .hamburger {
+                display: block;
+            }
+
+            .hero-content h1 {
+                font-size: 2.5rem;
+            }
+
+            .about-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header>
+        <div class="container nav-container">
+            <a href="#" class="logo">
+                <i class="fa-solid fa-bread-slice"></i> The Golden Crumb
+            </a>
+            
+            <ul class="nav-links">
+                <li><a href="#home">Home</a></li>
+                <li><a href="#products">Menu</a></li>
+                <li><a href="#about">About Us</a></li>
+                <li><a href="#gallery">Gallery</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+
+            <div style="display: flex; align-items: center; gap: 20px;">
+                <div class="cart-icon" aria-label="Shopping Cart">
+                    <i class="fa-solid fa-basket-shopping"></i>
+                    <span class="cart-count" id="cartCount">0</span>
+                </div>
+                <div class="hamburger" id="hamburgerBtn">
+                    <i class="fa-solid fa-bars"></i>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section id="home" class="hero">
+        <div class="container hero-content fade-in">
+            <h1>Handcrafted Bread & Pastries</h1>
+            <p>Made Fresh Daily with Love and Tradition</p>
+            <a href="#products" class="btn btn-primary">View Our Menu</a>
+        </div>
+    </section>
+
+    <!-- Featured Products -->
+    <section id="products" class="section-padding">
+        <div class="container">
+            <h2 class="text-center fade-in">Fresh from the Oven</h2>
+            <p class="text-center" style="margin-top: 10px; color: #666;">Our daily specials</p>
+            
+            <div class="products-grid">
+                <!-- Product 1 -->
+                <article class="product-card fade-in">
+                    <div class="product-image-placeholder" style="background-color: #E6CBA8;">
+                        <i class="fa-solid fa-wheat-awn"></i>
+                    </div>
+                    <div class="product-info">
+                        <h3 class="product-title">Classic Sourdough</h3>
+                        <p class="product-desc">Our signature loaf fermented for 48 hours. Crispy crust and airy crumb.</p>
+                        <div class="product-footer">
+                            <span class="price">$8.50</span>
+                            <button class="btn btn-secondary add-to-cart">Add to Cart</button>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Product 2 -->
+                <article class="product-card fade-in">
+                    <div class="product-image-placeholder" style="background-color: #D4A574;">
+                        <i class="fa-solid fa-cookie"></i>
+                    </div>
+                    <div class="product-info">
+                        <h3 class="product-title">Cinnamon Swirl</h3>
+                        <p class="product-desc">Soft, buttery dough rolled with cinnamon sugar and topped with cream cheese frosting.</p>
+                        <div class="product-footer">
+                            <span class="price">$4.25</span>
+                            <button class="btn btn-secondary add-to-cart">Add to Cart</button>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Product 3 -->
+                <article class="product-card fade-in">
+                    <div class="product-image-placeholder" style="background-color: #C19A6B;">
+                        <i class="fa-solid fa-wheat"></i>
+                    </div>
+                    <div class="product-info">
+                        <h3 class="product-title">Artisan Baguette</h3>
+                        <p class="product-desc">Traditional French style, perfect for sandwiches or dipping in olive oil.</p>
+                        <div class="product-footer">
+                            <span class="price">$3.75</span>
+                            <button class="btn btn-secondary add-to-cart">Add to Cart</button>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Product 4 -->
+                <article class="product-card fade-in">
+                    <div class="product-image-placeholder" style="background-color: #B8956A;">
+                        <i class="fa-solid fa-bread-slice"></i>
+                    </div>
+                    <div class="product-info">
+                        <h3 class="product-title">Rustic Focaccia</h3>
+                        <p class="product-desc">Rosemary, sea salt, and olive oil baked into a soft, fluffy square loaf.</p>
+                        <div class="product-footer">
+                            <span class="price">$7.00</span>
+                            <button class="btn btn-secondary add-to-cart">Add to Cart</button>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Product 5 -->
+                <article class="product-card fade-in">
+                    <div class="product-image-placeholder" style="background-color: #A67C52;">
+                        <i class="fa-solid fa-cake-candles"></i>
+                    </div>
+                    <div class="product-info">
+                        <h3 class="product-title">Berry Tart</h3>
+                        <p class="product-desc">Fresh seasonal berries on a buttery pastry shell with vanilla custard.</p>
+                        <div class="product-footer">
+                            <span class="price">$5.50</span>
+                            <button class="btn btn-secondary add-to-cart">Add to Cart</button>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Product 6 -->
+                <article class="product-card fade-in">
+                    <div class="product-image-placeholder" style="background-color: #8B4513;">
+                        <i class="fa-solid fa-mug-hot"></i>
+                    </div>
+                    <div class="product-info">
+                        <h3 class="product-title">Coffee & Croissant</h3>
+                        <p class="product-desc">The perfect morning combo. Flaky butter croissant with our house roast.</p>
+                        <div class="product-footer">
+                            <span class="price">$6.00</span>
+                            <button class="btn btn-secondary add-to-cart">Add to Cart</button>
+                        </div>
+                    </div>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="about" class="section-padding about-section">
+        <div class="container about-layout">
+            <div class="about-image-placeholder fade-in">
+                <i class="fa-solid fa-person-chef" style="font-size: 5rem;"></i>
+            </div>
+            <div class="about-text fade-in">
+                <h2 style="margin-bottom: 20px;">Our Story</h2>
+                <p style="margin-bottom: 20px;">Founded in 1998, The Golden Crumb began with a simple mission: to bring the art of traditional baking back to our community. We believe that bread is more than just food—it's a connection to history and a celebration of craftsmanship.</p>
+                <ul class="values-list">
+                    <li><i class="fa-solid fa-leaf"></i> Locally sourced organic grains</li>
+                    <li><i class="fa-solid fa-fire-burner"></i> Wood-fired ovens</li>
+                    <li><i class="fa-solid fa-clock"></i> No preservatives, just time and patience</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Gallery Section -->
+    <section id="gallery" class="section-padding">
+        <div class="container">
+            <h2 class="text-center fade-in">Behind the Scenes</h2>
+            <div class="gallery-grid">
+                <div class="gallery-item fade-in"><img src="" alt="Baker kneading dough" style="background-color: #E0D5C1;"></div>
+                <div class="gallery-item fade-in"><img src="" alt="Fresh loaves cooling" style="background-color: #D4C5A9;"></div>
+                <div class="gallery-item fade-in"><img src="" alt="Pastry display case" style="background-color: #CBB993;"></div>
+                <div class="gallery-item fade-in"><img src="" alt="Mixing ingredients" style="background-color: #BFAE87;"></div>
+                <div class="gallery-item fade-in"><img src="" alt="Oven interior" style="background-color: #B3A27C;"></div>
+                <div class="gallery-item fade-in"><img src="" alt="Happy customers" style="background-color: #A89671;"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials -->
+    <section class="section-padding testimonials">
+        <div class="container">
+            <h2 class="text-center fade-in">What Our Customers Say</h2>
+            <div class="testimonial-grid">
+                <div class="testimonial-card fade-in">
+                    <p class="testimonial-text">"The sourdough is absolutely incredible. I've never tasted anything like it in the city. The crust is perfect!"</p>
+                    <p class="testimonial-author">- Sarah Jenkins</p>
+                </div>
+                <div class="testimonial-card fade-in">
+                    <p class="testimonial-text">"A hidden gem. The cinnamon rolls are huge and the coffee is always fresh. My favorite spot for breakfast."</p>
+                    <p class="testimonial-author">- Mike Ross</p>
+                </div>
+                <div class="testimonial-card fade-in">
+                    <p class="testimonial-text">"I love the atmosphere here. It feels like stepping back in time while enjoying modern, delicious pastries."</p>
+                    <p class="testimonial-author">- Emily Clark</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer & Contact -->
+    <footer id="contact">
+        <div class="container section-padding">
+            <div class="footer-grid">
+                <!-- Contact Info -->
+                <div class="footer-col fade-in">
+                    <h3>Visit Us</h3>
+                    <p><strong>The Golden Crumb</strong></p>
+                    <p>123 Baker Street<br>Foodie Valley, FL 33000</p>
+                    <br>
+                    <p><strong>Hours:</strong></p>
+                    <p>Mon-Fri: 7am - 6pm<br>Sat-Sun: 8am - 4pm</p>
+                    <br>
+                    <div class="social-icons">
+                        <a href="#"><i class="fa-brands fa-facebook-f"></i></a>
+                        <a href="#"><i class="fa-brands fa-instagram"></i></a>
+                        <a href="#"><i class="fa-brands fa-twitter"></i></a>
+                    </div>
+                </div>
+
+                <!-- Contact Form -->
+                <div class="footer-col fade-in">
+                    <h3>Send a Message</h3>
+                    <form class="contact-form" onsubmit="event.preventDefault(); alert('Message sent!');">
+                        <input type="text" placeholder="Your Name" required>
+                        <input type="email" placeholder="Your Email" required>
+                        <textarea rows="4" placeholder="Your Message"></textarea>
+                        <button type="submit" class="btn btn-primary">Send</button>
+                    </form>
+                </div>
+
+                <!-- Newsletter -->
+                <div class="footer-col fade-in">
+                    <h3>Newsletter</h3>
+                    <p style="margin-bottom: 15px;">Subscribe for weekly specials and baking tips.</p>
+                    <form class="newsletter" onsubmit="event.preventDefault(); alert('Subscribed!');">
+                        <input type="email" placeholder="Email Address" required>
+                        <button class="btn btn-secondary" style="padding: 10px;">Go</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="copyright">
+            <p>&copy; 2023 The Golden Crumb. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // --- Mobile Menu Toggle ---
+            const hamburger = document.getElementById('hamburgerBtn');
+            const navLinks = document.querySelector('.nav-links');
+
+            hamburger.addEventListener('click', () => {
+                navLinks.classList.toggle('active');
+            });
+
+            // Close menu when clicking a link
+            document.querySelectorAll('.nav-links a').forEach(link => {
+                link.addEventListener('click', () => {
+                    navLinks.classList.remove('active');
+                });
+            });
+
+            // --- Cart Counter Logic ---
+            const cartCountElement = document.getElementById('cartCount');
+            let count = 0;
+
+            document.querySelectorAll('.add-to-cart').forEach(button => {
+                button.addEventListener('click', function() {
+                    count++;
+                    cartCountElement.textContent = count;
+                    
+                    // Simple visual feedback
+                    const originalText = this.innerText;
+                    this.innerText = "Added!";
+                    this.style.backgroundColor = "#8B4513";
+                    this.style.color = "white";
+                    
+                    setTimeout(() => {
+                        this.innerText = originalText;
+                        this.style.backgroundColor = "";
+                        this.style.color = "";
+                    }, 1000);
+                });
+            });
+
+            // --- Scroll Animation (Intersection Observer) ---
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: "0px 0px -50px 0px"
+            };
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                        observer.unobserve(entry.target); // Only animate once
+                    }
+                });
+            }, observerOptions);
+
+            const fadeElements = document.querySelectorAll('.fade-in');
+            fadeElements.forEach(el => observer.observe(el));
+        });
+    </script>
+</body>
+</html>

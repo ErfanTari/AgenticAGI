@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Call Architecture — zaraban</title>
+<style>
+  :root {
+    --bg: #0d0d0f;
+    --bg-card: #141416;
+    --bg-input: #1a1a1e;
+    --border: #2a2a30;
+    --text: #e2e2e8;
+    --text-muted: #8a8a9a;
+    --text-faint: #555560;
+    --accent: #7c6ff7;
+    --accent-2: #4fa8d5;
+    --accent-3: #4dbb8a;
+    --accent-4: #e8875a;
+    --accent-5: #d46fa0;
+    --warn: #e8875a;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 32px;
+    min-height: 100vh;
+  }
+
+  h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 32px;
+  }
+
+  .runs-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-bottom: 40px;
+  }
+
+  @media (max-width: 1100px) {
+    .runs-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 700px) {
+    .runs-grid { grid-template-columns: 1fr; }
+  }
+
+  .run-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .run-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ─── Node ──────────────────────────────────────────────────────────── */
+  .node {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 0;
+  }
+
+  .node + .node {
+    margin-top: 0;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+  }
+  .node:first-child + .node {
+    border-radius: 0;
+  }
+  .node:first-child {
+    border-radius: 6px 6px 0 0;
+  }
+
+  /* connector arrow between nodes */
+  .arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 20px;
+    color: var(--text-faint);
+    font-size: 14px;
+    position: relative;
+  }
+
+  .arrow::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--border);
+    transform: translateX(-50%);
+  }
+
+  .arrow span {
+    background: var(--bg);
+    padding: 0 4px;
+    position: relative;
+    z-index: 1;
+    font-size: 10px;
+  }
+
+  /* branch arrows */
+  .branch-wrap {
+    display: flex;
+    gap: 12px;
+    margin-top: 0;
+  }
+
+  .branch-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .branch-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    text-align: center;
+    padding: 3px 0;
+    border: 1px dashed var(--border);
+    border-radius: 4px 4px 0 0;
+    background: var(--bg);
+    margin-top: 8px;
+  }
+
+  /* node type colors */
+  .node-entry    { border-left: 3px solid var(--accent-3); }
+  .node-llm      { border-left: 3px solid var(--accent); }
+  .node-llm-iter { border-left: 3px solid var(--accent-2); }
+  .node-route    { border-left: 3px solid var(--accent-4); }
+  .node-skill    { border-left: 3px solid var(--accent-3); }
+  .node-output   { border-left: 3px solid var(--accent-5); }
+  .node-skip     { border-left: 3px solid var(--text-faint); opacity: 0.5; }
+
+  .node-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+
+  .badge {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .badge-llm      { background: #2a2060; color: var(--accent); }
+  .badge-fast     { background: #1a2a1a; color: var(--accent-3); }
+  .badge-route    { background: #2a1a10; color: var(--accent-4); }
+  .badge-output   { background: #2a1a20; color: var(--accent-5); }
+  .badge-skip     { background: #1e1e20; color: var(--text-faint); }
+
+  .node-desc {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+
+  /* ─── LLM Call Box ──────────────────────────────────────────────────── */
+  .llm-call {
+    background: var(--bg-input);
+    border: 1px solid #2a2060;
+    border-radius: 4px;
+    padding: 7px 9px;
+    margin-top: 4px;
+  }
+
+  .llm-call-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--accent);
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .llm-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+
+  .llm-meta-item {
+    font-size: 9px;
+    color: var(--text-faint);
+    background: #1a1a22;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .llm-call pre {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.45;
+    max-height: 120px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .llm-call pre .sys { color: #6060b0; }
+  .llm-call pre .usr { color: #608060; }
+  .llm-call pre .key { color: var(--accent-2); }
+  .llm-call pre .val { color: var(--accent-3); }
+
+  /* ─── Legend ─────────────────────────────────────────────────────────── */
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 32px;
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-card);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  /* ─── Section header ─────────────────────────────────────────────────── */
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin: 32px 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .callout {
+    font-size: 10px;
+    color: var(--text-faint);
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-top: 8px;
+    line-height: 1.6;
+  }
+
+  .callout strong { color: var(--text-muted); }
+
+  .token-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px;
+    margin-top: 16px;
+  }
+  .token-table th {
+    text-align: left;
+    padding: 5px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-faint);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 9px;
+  }
+  .token-table td {
+    padding: 5px 10px;
+    border-bottom: 1px solid #1e1e22;
+    color: var(--text-muted);
+    vertical-align: top;
+  }
+  .token-table tr:last-child td { border-bottom: none; }
+  .token-table .name { color: var(--text); font-family: var(--font-mono); font-size: 9px; }
+  .token-table .num  { font-family: var(--font-mono); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1>LLM Call Architecture</h1>
+<p class="subtitle">Every LLM call site in zaraban — three simulated runs with actual inputs shown per call</p>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#7c6ff7"></div> LLM call</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#4dbb8a"></div> Fast path / no LLM</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#e8875a"></div> Routing decision</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#d46fa0"></div> Final output</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#444"></div> Skipped in this run</div>
+</div>
+
+<div class="runs-grid">
+
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+  <!-- RUN A: "what is the capital of France?" — greeting/conversational   -->
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+  <div class="run-col">
+    <div class="run-label">Run A — Conversational / Memory Query<br><span style="color:#7c6ff7;font-size:9px">"Who is Sara Ahmadi?"</span></div>
+
+    <!-- 1. processMessage entry -->
+    <div class="node node-entry">
+      <div class="node-title"><span class="badge badge-fast">ENTRY</span> processMessage()</div>
+      <div class="node-desc">agent.ts — receives raw user message + history</div>
+    </div>
+
+    <div class="arrow"><span>↓</span></div>
+
+    <!-- 2. Pre-decomp action skill fast-path check -->
+    <div class="node node-skip">
+      <div class="node-title"><span class="badge badge-skip">SKIP</span> PRE_DECOMP_ACTION_SKILLS</div>
+      <div class="node-desc">file_writer / run_bash pattern — not matched</div>
+    </div>
+
+    <div class="arrow"><span>↓</span></div>
+
+    <!-- 3. Quick complexity pre-check -->
+    <div class="node node-skip">
+      <div class="node-title"><span class="badge badge-skip">SKIP</span> Quick complexity pre-check</div>
+      <div class="node-desc">Only for clearly-agentic messages — skipped</div>
+    </div>
+
+    <div class="arrow"><span>↓</span></div>
+
+    <!-- 4. Intake LLM call -->
+    <div class="node node-llm">
+      <div class="node-title"><span class="badge badge-llm">LLM 1</span> runIntake()</div>
+      <div class="node-desc">intake.ts — classify signals, resolve memory codes</div>
+      <div class="llm-call">
+        <div class="llm-call-label">→ callLLM
+          <div class="llm-meta">
+            <span class="llm-meta-item">temp=0</span>
+            <span class="llm-meta-item">maxTokens=400</span>
+            <span class="llm-meta-item">schema=intakeJsonSchema</span>
+            <span class="llm-meta-item">disableThinking</span>
+          </div>
+        </div>
+        <pre><span class="sys">SYSTEM: You are an intake classifier. Extract person/project/time signals
+and resolve memory codes. Return JSON:
+{summary, person:{name,confidence}, project:{name,confidence},
+ timeRef, resolvedCodes:[], agenticSignal}</span>
+
+<span class="usr">USER: "Who is Sara Ahmadi?"</span></pre>
+      </div>
+      <div class="callout">Returns: <strong>personSignal="Sara Ahmadi" (0.95)</strong>, resolvedCodes=["WHO.CT-000001"]</div>
+    </div>
+
+    <div class="arrow"><span>↓</span></div>
+
+    <!-- 5. Decomposition LLM call -->
+    <div class="node node-llm">
+      <div class="node-title"><span class="badge badge-llm">LLM 2</span> decomposeMessage()</div>
+      <div class="node-desc">decomposition.ts — split into semantic units</div>
+      <div class="llm-call">
+        <div class="llm-call-label">→ callLLM
+          <div class="llm-meta">
+            <span class="llm-meta-item">maxTokens=700</span>
+            <span class="llm-meta-item">schema=DECOMPOSITION_RESPONSE_SCHEMA</span>
+            <span class="llm-meta-item">disableThinking</span>
+          </div>
+        </div>
+        <pre><span class="sys">SYSTEM: You decompose one user message into semantic intent units.
+Return ONLY JSON: {"units":[{"route":"conversational|agentic|query",
+"content":"...","order":0}]}</span>
+
+<span class="usr">USER: "Who is Sara Ahmadi?"</span></pre>
+      </div>
+      <div class="callout">Returns: <strong>1 unit</strong>, route=<strong>"query"</strong></div>
+    </div>
+
+    <div class="arrow"><span>↓</span></div>
+
+    <!-- 6. Compatibility shim -->
+    <div class="node node-route">
+      <div class="node-title"><span class="badge badge-route">ROUTE</span> Compatibility shim</div>
+      <div class="node-desc">Single-unit: buildSingleUnitCompatibilityClassification() → memory_query intent → fast path</div>
+    </div>
+
+    <div class="arrow"><span>↓</span></div>
+
+    <!-- 7. Memory search (no LLM) -->
+    <div class="node node-skill">
+      <div class="node-title"><span class="badge badge-fast">NO LLM</span> searchMemoryForUnits()</div>
+      <div class="node-desc">unit-search.ts — BM25 + vector, personSignal-scoped</div>
+      <div class="callout">SQL: SELECT * WHERE nb='WHO' and name LIKE '%Sara%'<br>Returns WHO.CT-000001 with confidence 0.95</div>
+    </div>
+
+    <div class="arrow"><span>↓</span></div>
+
+    <!-- 8. handleQueryUnits LLM call -->
+    <div class="node node-llm">
+      <div class="node-title"><span class="badge badge-llm">LLM 3</span> handleQueryUnits()</div>
+      <div class="node-desc">router.ts — synthesize answer from resolved memory</div>
+      <div class="llm-call">
+        <div class="llm-call-label">→ callLLM
+          <div class="llm-meta">
+            <span class="llm-meta-item">disableThinking</span>
+          </div>
+        </div>
+        <pre><span class="sys">SYSTEM: You are a helpful assistant with access to the user's memory.
+Answer questions using the resolved context. Be concise.
+
+MEMORY INDEX:
+WHO.CT-000001: Sara Ahmadi — lead designer, Zaraban Analytics</span>
+
+<span class="usr">USER: "Who is Sara Ahmadi?"</span>
+
+<span class="sys">RESOLVED CONTEXT:
+WHO.CT-000001
+Name: Sara Ahmadi
+Role: Lead Designer
+Company: Zaraban Analytics
+Notes: [...]</span></pre>
+      </div>
+    </div>
+
+    <div class="arrow"><span>↓</span></div>
+
+    <div class="node node-output">
+      <div class="node-title"><span class="badge badge-output">OUTPUT</span> agent_reply</div>
+      <div class="node-desc">Total LLM calls: <strong>3</strong> (intake + decomp + answer)</div>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+  <!-- RUN B: "build me a snake game in python" — LOW/MEDIUM agentic       -->
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+  <div class="run-col">
+    <div class="run-label">Run B — Agentic LOW/MEDIUM (QueryLoop)<br><span style="color:#4fa8d5;font-size:9px">"build me a snake game in python"</span></div>
+
+    <div class="node node-entry">
+      <div class="node-title"><span class="badge badge-fast">ENTRY</span> processMessage()</div>
+      <div class="node-desc">agent.ts — receives message + history</div>
+    </div>
+
+    <div class="arrow"><span>↓</span></div>
+
+    <!-- Quick complexity pre-check fires here (coding = agentic) -->
+    <div class="node node-llm">
+      <div class="node-title"><span class="badge badge-llm">LLM 1</span> Quick complexity pre-check</div>
+      <div class="node-desc">agent.ts step [2] — fires BEFORE intake for clearly-agentic messages. Saves ~15s.</div>
+      <div class="llm-call">
+        <div class="llm-call-label">→ assessComplexity() → callLLM
+          <div class="llm-meta">
+            <span class="llm-meta-item">maxTokens=200</span>
+            <span class="llm-meta-item">disableThinking</span>
+          </div>
+        </div>
+        <pre><span class="sys">SYSTEM: You are a task complexity analyzer.
+Return ONLY JSON: {"isComplex": true/false, "reason": "brief", "estimatedSteps": N}</span>
+
+<span class="usr">USER: "build me a snake game in python"</span></pre>
+      </div>
+      <div class="callout">Returns: <strong>isComplex=false</strong>, estimatedSteps=3 → level=<strong>LOW</strong><br>→ routes directly to QueryLoop, skips intake+decomp</div>
+    </div>
+
+    <div class="arrow"><span>↓ LOW → QueryLoop</span></div>
+
+    <!-- QueryLoop iteration 1 -->
+    <div class="node node-llm-iter">
+      <div class="node-title"><span class="badge badge-llm">LLM 2</span> QueryLoop iter 1</div>
+      <div class="node-desc">query-loop.ts — model picks next skill to call</div>
+      <div class="llm-call">
+        <div class="llm-call-label">→ callLLM (iteration)
+          <div class="llm-meta">
+            <span class="llm-meta-item">maxTokens=3000</span>
+            <span class="llm-meta-item">disableThinking</span>
+          </div>
+        </div>
+        <pre><span class="sys">SYSTEM: [query-loop prompt]
+GOAL: build me a snake game in python
+COMPLETION CONDITION: Task complete when all files written and confirmed.
+ITERATION: 1
+
+SKILLS AVAILABLE:
+- file_writer(path, content)
+- run_bash(command)
+- memory_read(query)
+[...]
+
+CRITICAL WORKSPACE RULE: NEVER write file content in text reply.
+Always use file_writer skill to save files.
+
+## Your current task state
+[active loops section — empty on first run]</span>
+
+<span class="usr">USER: "build me a snake game in python"</span>
+
+<span class="sys">[history: last 2 turns]</span></pre>
+      </div>
+      <div class="callout">Returns: <strong>{"action":"file_writer","input":{"path":"snake.py","content":"..."}}</strong></div>
+    </div>
+
+    <div class="arrow"><span>↓ skill executed</span></div>
+
+    <!-- QueryLoop iteration 2 -->
+    <div class="node node-llm-iter">
+      <div class="node-title"><span class="badge badge-llm">LLM 3</span> QueryLoop iter 2</div>
+      <div class="node-desc">query-loop.ts — model sees skill result, decides next action</div>
+      <div class="llm-call">
+        <div class="llm-call-label">→ callLLM (iteration)
+          <div class="llm-meta">
+            <span class="llm-meta-item">maxTokens=3000</span>
+            <span class="llm-meta-item">disableThinking</span>
+          </div>
+        </div>
+        <pre><span class="sys">SYSTEM: [query-loop prompt as above]</span>
+
+<span class="usr">USER: "build me a snake game in python"</span>
+
+<span class="sys">TOOL_RESULT file_writer:
+✓ Wrote snake.py (2847 bytes)
+
+GOAL: build me a snake game in python
+ITERATION: 2</span></pre>
+      </div>
+      <div class="callout">Returns: plain text (no JSON action) → <strong>stoppedBecause='no_action'</strong> → loop ends</div>
+    </div>
+
+    <div class="arrow"><span>↓ loop end</span></div>
+
+    <div class="node node-output">
+      <div class="node-title"><span class="badge badge-output">OUTPUT</span> agent_reply</div>
+      <div class="node-desc">Total LLM calls: <strong>3</strong> (complexity + 2 loop iters). No intake, no decomp.</div>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+  <!-- RUN C: "scaffold a full-stack app with auth" — HIGH/MAX planner     -->
+  <!-- ════════════════════════════════════════════════════════════════════ -->
+  <div class="run-col">
+    <div class="run-label">Run C — Agentic HIGH/MAX (Full Planner+Executor)<br><span style="color:#e8875a;font-size:9px">"scaffold a full-stack SPA with REST API and auth"</span></div>
+
+    <div class="node node-entry">
+      <div class="node-title"><span class="badge badge-fast">ENTRY</span> processMessage()</div>
+      <div class="node-desc">agent.ts — receives message + history</div>
+    </div>
+
+    <div class="arrow"><span>↓</span></div>
+
+    <!-- Quick complexity pre-check → FORCE_HIGH (appDev pattern) -->
+    <div class="node node-llm">
+      <div class="node-title"><span class="badge badge-llm">LLM 1</span> Quick complexity pre-check</div>
+      <div class="node-desc">FORCE_HIGH domain matched: <strong>appDev</strong> (SPA + REST API) → HIGH without LLM call</div>
+      <div class="llm-call">
+        <div class="llm-call-label">→ assessComplexity() — heuristic only, no LLM
+          <div class="llm-meta">
+            <span class="llm-meta-item">FORCE_HIGH=appDev</span>
+            <span class="llm-meta-item">no llm call</span>
+          </div>
+        </div>
+        <pre><span class="sys">Pattern match: /web app|SPA|REST API|full.stack/i → FORCE_HIGH
+Signals: [multi-file, auth, backend, frontend]
+Count: 4 → HIGH regardless of LLM</span></pre>
+      </div>
+      <div class="callout">level=<strong>HIGH</strong> via FORCE_HIGH → falls through to full intake+decomp pipeline</div>
+    </div>
+
+    <div class="arrow"><span>↓ HIGH → full pipeline</span></div>
+
+    <!-- Intake -->
+    <div class="node node-llm">
+      <div class="node-title"><span class="badge badge-llm">LLM 2</span> runIntake()</div>
+      <div class="node-desc">intake.ts — classify signals</div>
+      <div class="llm-call">
+        <div class="llm-call-label">→ callLLM
+          <div class="llm-meta">
+            <span class="llm-meta-item">temp=0</span>
+            <span class="llm-meta-item">maxTokens=400</span>
+            <span class="llm-meta-item">schema=intakeJsonSchema</span>
+          </div>
+        </div>
+        <pre><span class="sys">SYSTEM: You are an intake classifier. Return JSON:
+{summary, person:{...}, project:{...}, timeRef, resolvedCodes:[], agenticSignal}</span>
+
+<span class="usr">USER: "scaffold a full-stack SPA with REST API and auth"</span></pre>
+      </div>
+      <div class="callout">Returns: agenticSignal=true, no person/project signal, resolvedCodes=[]</div>
+    </div>
+
+    <div class="arrow"><span>↓</span></div>
+
+    <!-- Decomposition -->
+    <div class="node node-llm">
+      <div class="node-title"><span class="badge badge-llm">LLM 3</span> decomposeMessage()</div>
+      <div class="node-desc">decomposition.ts — split into semantic units</div>
+      <div class="llm-call">
+        <div class="llm-call-label">→ callLLM
+          <div class="llm-meta">
+            <span class="llm-meta-item">maxTokens=700</span>
+            <span class="llm-meta-item">schema=DECOMPOSITION_RESPONSE_SCHEMA</span>
+          </div>
+        </div>
+        <pre><span class="sys">SYSTEM: You decompose one user message into semantic intent units.
+Return ONLY JSON: {"units":[{"route":"...","content":"...","order":N}]}</span>
+
+<span class="usr">USER: "scaffold a full-stack SPA with REST API and auth"</span>
+
+<span class="sys">RESOLVED CONTEXT: (none)</span></pre>
+      </div>
+      <div class="callout">Returns: <strong>1 unit</strong>, route=<strong>"agentic"</strong></div>
+    </div>
+
+    <div class="arrow"><span>↓ agentic unit → handleAgenticUnits()</span></div>
+
+    <!-- assessComplexity full -->
+    <div class="node node-llm">
+      <div class="node-title"><span class="badge badge-llm">LLM 4</span> assessComplexity() — full</div>
+      <div class="node-desc">planner.ts — re-assess with full unit context (already HIGH from pre-check)</div>
+      <div class="llm-call">
+        <div class="llm-call-label">→ callLLM (optional — fires when count=1 and length≥100)
+          <div class="llm-meta">
+            <span class="llm-meta-item">maxTokens=200</span>
+            <span class="llm-meta-item">disableThinking</span>
+          </div>
+        </div>
+        <pre><span class="sys">SYSTEM: You are a task complexity analyzer.
+Return ONLY JSON: {"isComplex": true/false, "reason": "...", "estimatedSteps": N}</span>
+
+<span class="usr">USER: "scaffold a full-stack SPA with REST API and auth"</span></pre>
+      </div>
+      <div class="callout">Returns: isComplex=true, estimatedSteps=8 → <strong>HIGH confirmed</strong></div>
+    </div>
+
+    <div class="arrow"><span>↓ HIGH → decomposeTask + executePlan</span></div>
+
+    <!-- Planner -->
+    <div class="node node-llm">
+      <div class="node-title"><span class="badge badge-llm">LLM 5</span> decomposeTask() — planner</div>
+      <div class="node-desc">planner.ts — produce milestone plan (up to 3 attempts)</div>
+      <div class="llm-call">
+        <div class="llm-call-label">→ callLLM
+          <div class="llm-meta">
+            <span class="llm-meta-item">maxTokens=4000</span>
+            <span class="llm-meta-item">schema=taskPlanJsonSchema</span>
+            <span class="llm-meta-item">disableThinking</span>
+          </div>
+        </div>
+        <pre><span class="sys">SYSTEM: [planner.md prompt]
+You are a software project planner. Produce a JSON execution plan.
+Return ONLY JSON matching the plan schema.
+SKILLS: [file_writer, run_bash, implement_and_test, patch_file, ...]
+RULES: SINGLE-FILE HTML RULE / COMPARISON TASK RULES / HIGH_RISK abort threshold</span>
+
+<span class="usr">USER: "scaffold a full-stack SPA with REST API and auth"
+(with resolved memory context and project brain if available)</span></pre>
+      </div>
+      <div class="callout">Returns: plan with 3 milestones, 8 steps, complexity=HIGH</div>
+    </div>
+
+    <div class="arrow"><span>↓ plan confirmed → executePlan()</span></div>
+
+    <!-- Executor: per-milestone revision check -->
+    <div class="node node-llm-iter">
+      <div class="node-title"><span class="badge badge-llm">LLM 6+</span> reviseRemainingMilestones() — per milestone</div>
+      <div class="node-desc">executor.ts — after each milestone, ask if remaining should be revised</div>
+      <div class="llm-call">
+        <div class="llm-call-label">→ callLLM (fires after each completed milestone)
+          <div class="llm-meta">
+            <span class="llm-meta-item">maxTokens=MILESTONE_REVISION</span>
+            <span class="llm-meta-item">schema=milestoneRevisionJsonSchema</span>
+          </div>
+        </div>
+        <pre><span class="sys">SYSTEM: [milestone-revision prompt]
+You are a plan revisor. Given completed milestones and remaining ones,
+return JSON: {revised, milestones?, abort?, reason?}</span>
+
+<span class="usr">USER: Completed milestones:
+M1: Project scaffold — ✓ (created package.json, src/ structure)
+
+Remaining milestones to validate:
+M2: REST API server (Express, auth middleware)
+M3: Frontend SPA (React, login form)
+
+Should remaining milestones be revised, reordered, or aborted?</span></pre>
+      </div>
+      <div class="callout">Returns: revised=false → continue as-is (or revised=true with updated plan)</div>
+    </div>
+
+    <div class="arrow"><span>↓ all milestones done</span></div>
+
+    <!-- Post-flight synthesis -->
+    <div class="node node-llm">
+      <div class="node-title"><span class="badge badge-llm">LLM N</span> postFlightSynthesis()</div>
+      <div class="node-desc">executor.ts — single synthesis call: verify + summarize + reflect</div>
+      <div class="llm-call">
+        <div class="llm-call-label">→ callLLM
+          <div class="llm-meta">
+            <span class="llm-meta-item">maxTokens=POST_FLIGHT</span>
+            <span class="llm-meta-item">schema=postFlightJsonSchema</span>
+            <span class="llm-meta-item">disableThinking</span>
+          </div>
+        </div>
+        <pre><span class="sys">SYSTEM: You are a post-execution analyst. Verify the goal was achieved.
+Return ONLY JSON:
+{verification:{verified,confidence,issues,suggestion},
+ summary:"2-3 sentence string",
+ reflection:{went_well,to_improve,learned}}</span>
+
+<span class="usr">USER: GROUND TRUTH STATE (verified from filesystem):
+- src/index.js: exists (1.2KB)
+- src/api/auth.js: exists (3.4KB)
+- public/index.html: exists (8.1KB)
+- package.json: exists
+
+GOAL: scaffold a full-stack SPA with REST API and auth
+
+COMPLETED STEPS (8 total):
+- write package.json ✓
+- write Express server ✓
+[...]
+
+FAILED STEPS: (none)</span></pre>
+      </div>
+      <div class="callout">Returns: verified=true, confidence=0.9, summary="Built full-stack SPA..."</div>
+    </div>
+
+    <div class="arrow"><span>↓</span></div>
+
+    <div class="node node-output">
+      <div class="node-title"><span class="badge badge-output">OUTPUT</span> agent_reply</div>
+      <div class="node-desc">Total LLM calls: <strong>~7–10</strong> (complexity + intake + decomp + assessComplexity + planner + N×revision + post-flight)</div>
+    </div>
+  </div>
+
+</div><!-- /runs-grid -->
+
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- Token budget table                                                       -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="section-title">Token budgets per call site</div>
+
+<table class="token-table">
+  <thead>
+    <tr>
+      <th>Call site</th>
+      <th>File</th>
+      <th>maxTokens</th>
+      <th>Schema enforced</th>
+      <th>disableThinking</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="name">runIntake()</td>
+      <td>intake.ts:108</td>
+      <td class="num">400</td>
+      <td>intakeJsonSchema</td>
+      <td>yes</td>
+      <td>temp=0, classification only</td>
+    </tr>
+    <tr>
+      <td class="name">decomposeMessage() — primary</td>
+      <td>decomposition.ts:241</td>
+      <td class="num">700</td>
+      <td>DECOMPOSITION_RESPONSE_SCHEMA</td>
+      <td>yes</td>
+      <td>With resolved context injected</td>
+    </tr>
+    <tr>
+      <td class="name">decomposeMessage() — compound retry</td>
+      <td>decomposition.ts:304</td>
+      <td class="num">700</td>
+      <td>DECOMPOSITION_RESPONSE_SCHEMA</td>
+      <td>yes</td>
+      <td>Only fires if compound re-trigger needed</td>
+    </tr>
+    <tr>
+      <td class="name">assessComplexity() — LLM fallback</td>
+      <td>planner.ts:102</td>
+      <td class="num">200</td>
+      <td>none (json regex)</td>
+      <td>yes</td>
+      <td>Only fires when signal count=1 or len≥100</td>
+    </tr>
+    <tr>
+      <td class="name">decomposeTask() — planner</td>
+      <td>planner.ts:1134</td>
+      <td class="num">4000</td>
+      <td>taskPlanJsonSchema</td>
+      <td>yes</td>
+      <td>Up to 3 repair attempts</td>
+    </tr>
+    <tr>
+      <td class="name">verifyPlanAssertions()</td>
+      <td>planner.ts:1382</td>
+      <td class="num">300</td>
+      <td>planAssertionJsonSchema</td>
+      <td>yes</td>
+      <td>Optional — only for HIGH_RISK plans</td>
+    </tr>
+    <tr>
+      <td class="name">reviseRemainingMilestones()</td>
+      <td>executor.ts:439</td>
+      <td class="num">MILESTONE_REVISION</td>
+      <td>milestoneRevisionJsonSchema</td>
+      <td>yes</td>
+      <td>Fires after each milestone</td>
+    </tr>
+    <tr>
+      <td class="name">verifyExecution()</td>
+      <td>executor.ts:1152</td>
+      <td class="num">500</td>
+      <td>verificationJsonSchema</td>
+      <td>yes</td>
+      <td>Advisory — never blocks</td>
+    </tr>
+    <tr>
+      <td class="name">postFlightSynthesis()</td>
+      <td>executor.ts:1212</td>
+      <td class="num">POST_FLIGHT</td>
+      <td>postFlightJsonSchema</td>
+      <td>yes</td>
+      <td>Single merged call: verify+summarize+reflect</td>
+    </tr>
+    <tr>
+      <td class="name">QueryLoop iteration</td>
+      <td>query-loop.ts:459</td>
+      <td class="num">3000</td>
+      <td>none (action key extraction)</td>
+      <td>yes</td>
+      <td>Max 20 iters. History trimmed to 2 turns.</td>
+    </tr>
+    <tr>
+      <td class="name">handleQueryUnits()</td>
+      <td>router.ts:443</td>
+      <td class="num">default</td>
+      <td>none</td>
+      <td>yes</td>
+      <td>Conversational/query answer synthesis</td>
+    </tr>
+    <tr>
+      <td class="name">direct conversational reply</td>
+      <td>agent.ts:870</td>
+      <td class="num">default</td>
+      <td>none</td>
+      <td>no</td>
+      <td>Full context window, greeting/general</td>
+    </tr>
+    <tr>
+      <td class="name">memory_write LLM structuring</td>
+      <td>agent.ts:1035</td>
+      <td class="num">default</td>
+      <td>writeEntryJsonSchema</td>
+      <td>no</td>
+      <td>Only for shim memory_write path</td>
+    </tr>
+  </tbody>
+</table>
+
+<div style="margin-top:32px;font-size:10px;color:var(--text-faint)">
+  zaraban LLM architecture — generated 2026-04-11
+</div>
+
+</body>
+</html>

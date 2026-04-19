@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Golden Crust | Artisan Bakery</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --cream: #FDFBF7;
+            --amber: #C07B3B;
+            --amber-dark: #965A2C;
+            --charcoal: #2D2926;
+            --gold: #E5C07B;
+            --white: #FFFFFF;
+            --transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Lato', sans-serif;
+            background-color: var(--cream);
+            color: var(--charcoal);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, .brand-font {
+            font-family: 'Playfair Display', serif;
+        }
+
+        ul {
+            list-style: none;
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+            transition: var(--transition);
+        }
+
+        section {
+            padding: 100px 10%;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 32px;
+            background-color: var(--amber);
+            color: var(--white);
+            border: none;
+            border-radius: 2px;
+            cursor: pointer;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.9rem;
+            transition: var(--transition);
+        }
+
+        .btn:hover {
+            background-color: var(--charcoal);
+            transform: translateY(-3px);
+        }
+
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.8s ease-out;
+        }
+
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            padding: 20px 10%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+            transition: var(--transition);
+        }
+
+        nav.scrolled {
+            background: rgba(253, 251, 247, 0.95);
+            padding: 15px 10%;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+        }
+
+        .logo {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--charcoal);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 30px;
+        }
+
+        .nav-links a {
+            font-weight: 400;
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .nav-links a:hover {
+            color: var(--amber);
+        }
+
+        /* Hero Section */
+        .hero {
+            height: 100vh;
+            background: linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), 
+                        url('https://images.unsplash.com/photo-1517433670267-08bbd4be890f?auto=format&fit=crop&q=80&w=1920') center/cover no-repeat;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            color: var(--white);
+        }
+
+        .hero h1 {
+            font-size: 4.5rem;
+            margin-bottom: 20px;
+        }
+
+        .hero p {
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+            font-style: italic;
+            font-family: 'Playfair Display', serif;
+        }
+
+        /* Breads Section */
+        .section-title {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .section-title h2 {
+            font-size: 2.8rem;
+            color: var(--charcoal);
+        }
+
+        .section-title .divider {
+            width: 60px;
+            height: 3px;
+            background: var(--amber);
+            margin: 20px auto;
+        }
+
+        .bread-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+
+        .bread-card {
+            background: var(--white);
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            transition: var(--transition);
+        }
+
+        .bread-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+
+        .bread-img {
+            width: 100%;
+            height: 250px;
+            object-fit: cover;
+        }
+
+        .bread-info {
+            padding: 25px;
+            text-align: center;
+        }
+
+        .bread-info h3 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+
+        .bread-info p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        /* About Section */
+        .about-container {
+            display: flex;
+            align-items: center;
+            gap: 60px;
+        }
+
+        .about-text {
+            flex: 1;
+        }
+
+        .about-image {
+            flex: 1;
+            position: relative;
+        }
+
+        .about-image img {
+            width: 100%;
+            border-radius: 4px;
+            box-shadow: 20px 20px 0 var(--gold);
+        }
+
+        /* Specials Section */
+        .specials-section {
+            background-color: var(--charcoal);
+            color: var(--cream);
+            text-align: center;
+        }
+
+        .specials-section h2 {
+            color: var(--cream);
+        }
+
+        .specials-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px;
+            border: 1px solid rgba(229, 192, 123, 0.3);
+            position: relative;
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .special-item h3 {
+            font-size: 2.5rem;
+            color: var(--gold);
+            margin-bottom: 15px;
+        }
+
+        .special-item p {
+            font-size: 1.1rem;
+            font-style: italic;
+        }
+
+        .specials-controls {
+            margin-top: 30px;
+        }
+
+        /* Contact Section */
+        .contact-wrapper {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 50px;
+        }
+
+        .contact-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-group input, .form-group textarea {
+            padding: 12px;
+            border: 1px solid #ddd;
+            background: var(--white);
+            font-family: inherit;
+            outline: none;
+        }
+
+        .form-group input:focus, .form-group textarea:focus {
+            border-color: var(--amber);
+        }
+
+        .contact-info h3 {
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+        }
+
+        .info-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .info-item i {
+            color: var(--amber);
+            font-size: 1.2rem;
+        }
+
+        /* Footer */
+        footer {
+            background: var(--charcoal);
+            color: var(--cream);
+            padding: 60px 10% 30px;
+        }
+
+        .footer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 40px;
+            margin-bottom: 40px;
+        }
+
+        .footer-logo {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .social-links {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .social-links a {
+            font-size: 1.2rem;
+            color: var(--gold);
+        }
+
+        .footer-bottom {
+            text-align: center;
+            padding-top: 30px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        /* Responsive */
+        @media (max-width: 992px) {
+            .about-container, .contact-wrapper {
+                flex-direction: column;
+                grid-template-columns: 1fr;
+            }
+            .hero h1 {
+                font-size: 3rem;
+            }
+            section {
+                padding: 80px 5%;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none; /* Simplified for this demo */
+            }
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <nav id="navbar">
+        <a href="#" class="logo brand-font">The Golden Crust</a>
+        <ul class="nav-links">
+            <li><a href="#home">Home</a></li>
+            <li><a href="#breads">Our Breads</a></li>
+            <li><a href="#about">Our Story</a></li>
+            <li><a href="#specials">Specials</a></li>
+            <li><a href="#contact">Contact</a></li>
+        </ul>
+    </nav>
+
+    <header class="hero" id="home">
+        <h1 class="reveal">Artisanally Crafted.</h1>
+        <p class="reveal">Hand-kneaded, slow-fermented, and baked with passion.</p>
+        <a href="#breads" class="btn reveal">Explore Our Bakery</a>
+    </header>
+
+    <section id="breads">
+        <div class="section-title reveal">
+            <h2>Our Signature Breads</h2>
+            <div class="divider"></div>
+            <p>Every loaf tells a story of tradition and patience.</p>
+        </div>
+        <div class="bread-grid">
+            <div class="bread-card reveal">
+                <img src="https://images.unsplash.com/photo-1585478259715-876acc5be8eb?auto=format&fit=crop&q=80&w=600" alt="Sourdough" class="bread-img">
+                <div class="bread-info">
+                    <h3>Wild Sourdough</h3>
+                    <p>Our 48-hour fermented signature loaf with a crisp crust and airy crumb.</p>
+                </div>
+            </div>
+            <div class="bread-card reveal">
+                <img src="https://images.unsplash.com/photo-1533134242443-d4fd215305ad?auto=format&fit=crop&q=80&w=600" alt="Rye Bread" class="bread-img">
+                <div class="bread-info">
+                    <h3>Dark Rye</h3>
+                    <p>Deep, earthy flavors with a hint of caraway and a dense, satisfying texture.</p>
+                </div>
+            </div>
+            <div class="bread-card reveal">
+                <img src="https://images.unsplash.com/photo-1597079910443-60c43fc4f729?auto=format&fit=crop&q=80&w=600" alt="Baguette" class="bread-img">
+                <div class="bread-info">
+                    <h3>French Baguette</h3>
+                    <p>Classic, golden, and crunchy. The perfect companion for any meal.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="about" style="background-color: #f4f1ea;">
+        <div class="about-container">
+            <div class="about-image reveal">
+                <img src="https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&q=80&w=800" alt="Baker at work">
+            </div>
+            <div class="about-text reveal">
+                <div class="section-title" style="text-align: left;">
+                    <h2>Our Story</h2>
+                    <div class="divider" style="margin: 20px 0;"></div>
+                </div>
+                <p>Founded in a small kitchen with nothing but flour, water, and salt, The Golden Crust was born from a desire to return to the roots of baking. We believe that great bread cannot be rushed.</p>
+                <br>
+                <p>We source our grains from local organic farmers and use traditional long-fermentation methods. This not only develops a complex flavor profile but also makes our bread easier to digest and more nutritious.</p>
+                <br>
+                <a href="#contact" class="btn">Visit Our Bakery</a>
+            </div>
+        </div>
+    </section>
+
+    <section id="specials" class="specials-section">
+        <div class="section-title reveal">
+            <h2>Daily Specials</h2>
+            <div class="divider"></div>
+            <p>Freshly baked surprises, available while supplies last.</p>
+        </div>
+        <div class="specials-container reveal">
+            <div id="special-display" class="special-item">
+                <h3 id="special-name">Honey Oat Loaf</h3>
+                <p id="special-desc">A sweet and hearty blend of rolled oats and local wildflower honey.</p>
+            </div>
+            <div class="specials-controls">
+                <button class="btn" onclick="nextSpecial()">Next Special <i class="fas fa-arrow-right"></i></button>
+            </div>
+        </div>
+    </section>
+
+    <section id="contact">
+        <div class="contact-wrapper">
+            <div class="contact-form reveal">
+                <div class="section-title" style="text-align: left;">
+                    <h2>Get in Touch</h2>
+                    <div class="divider" style="margin: 20px 0;"></div>
+                </div>
+                <form onsubmit="event.preventDefault(); alert('Thank you! We will get back to you soon.');">
+                    <div class="form-group">
+                        <label>Full Name</label>
+                        <input type="text" placeholder="John Doe" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email Address</label>
+                        <input type="email" placeholder="john@example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Message</label>
+                        <textarea rows="5" placeholder="How can we help you?" required></textarea>
+                    </div>
+                    <button type="submit" class="btn">Send Message</button>
+                </form>
+            </div>
+            <div class="contact-info reveal">
+                <h3>Find Us</h3>
+                <div class="info-item">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <p>123 Artisan Lane, Flour District, BK 56789</p>
+                </div>
+                <div class="info-item">
+                    <i class="fas fa-phone"></i>
+                    <p>(555) 123-4567</p>
+                </div>
+                <div class="info-item">
+                    <i class="fas fa-envelope"></i>
+                    <p>hello@thegoldencrust.com</p>
+                </div>
+                <br>
+                <h3>Opening Hours</h3>
+                <div class="info-item">
+                    <i class="fas fa-clock"></i>
+                    <p>Mon - Fri: 7:00 AM - 4:00 PM</p>
+                </div>
+                <div class="info-item">
+                    <i class="fas fa-clock"></i>
+                    <p>Sat - Sun: 8:00 AM - 2:00 PM</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="footer-grid">
+            <div>
+                <span class="logo brand-font footer-logo">The Golden Crust</span>
+                <p>Crafting moments of warmth through the art of traditional baking.</p>
+                <div class="social-links">
+                    <a href="#"><i class="fab fa-instagram"></i></a>
+                    <a href="#"><i class="fab fa-facebook"></i></a>
+                    <a href="#"><i class="fab fa-pinterest"></i></a>
+                </div>
+            </div>
+            <div>
+                <h4 class="brand-font" style="margin-bottom: 20px;">Quick Links</h4>
+                <ul style="display: flex; flex-direction: column; gap: 10px; font-size: 0.9rem;">
+                    <li><a href="#home">Home</a></li>
+                    <li><a href="#breads">Our Breads</a></li>
+                    <li><a href="#about">Our Story</a></li>
+                    <li><a href="#contact">Contact</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="brand-font" style="margin-bottom: 20px;">Newsletter</h4>
+                <p style="font-size: 0.9rem; margin-bottom: 15px;">Join our list for baking tips and special offers.</p>
+                <div class="form-group" style="flex-direction: row;">
+                    <input type="email" placeholder="Email" style="flex: 1; padding: 8px;">
+                    <button class="btn" style="padding: 8px 15px;">Join</button>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2023 The Golden Crust Artisan Bakery. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Sticky Navbar Effect
+        window.addEventListener('scroll', function() {
+            const nav = document.getElementById('navbar');
+            if (window.scrollY > 50) {
+                nav.classList.add('scrolled');
+            } else {
+                nav.classList.remove('scrolled');
+            }
+        });
+
+        // Reveal on Scroll Animation
+        const revealElements = document.querySelectorAll('.reveal');
+        const revealOnScroll = () => {
+            const triggerBottom = window.innerHeight * 0.85;
+            revealElements.forEach(el => {
+                const elTop = el.getBoundingClientRect().top;
+                if (elTop < triggerBottom) {
+                    el.classList.add('active');
+                }
+            });
+        };
+
+        window.addEventListener('scroll', revealOnScroll);
+        window.addEventListener('load', revealOnScroll); // Initial check
+
+        // Daily Specials Component
+        const specials = [
+            { name: "Honey Oat Loaf", desc: "A sweet and hearty blend of rolled oats and local wildflower honey." },
+            { name: "Rosemary Focaccia", desc: "Infused with fresh garden rosemary and extra virgin olive oil." },
+            { name: "Walnut Rye", desc: "Deep, nutty flavor with toasted walnuts and a hint of spice." },
+            { name: "Cinnamon Swirl", desc: "Soft, brioche-style loaf with a heavy cinnamon-sugar swirl." }
+        ];
+
+        let currentSpecialIndex = 0;
+
+        function nextSpecial() {
+            const nameEl = document.getElementById('special-name');
+            const descEl = document.getElementById('special-desc');
+            const container = document.getElementById('special-display');
+
+            // Add fade out effect
+            container.style.opacity = '0';
+            container.style.transform = 'scale(0.95)';
+            container.style.transition = 'all 0.3s ease';
+
+            setTimeout(() => {
+                currentSpecialIndex = (currentSpecialIndex + 1) % specials.length;
+                nameEl.textContent = specials[currentSpecialIndex].name;
+                descEl.textContent = specials[currentSpecialIndex].desc;
+                
+                // Fade back in
+                container.style.opacity = '1';
+                container.style.transform = 'scale(1)';
+            }, 300);
+        }
+    </script>
+</body>
+</html>

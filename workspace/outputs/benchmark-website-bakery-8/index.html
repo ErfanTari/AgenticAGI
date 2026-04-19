@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crumb & Hearth | Artisan Bakery</title>
+    <style>
+        :root {
+            --primary: #4a3728; /* Deep Coffee Brown */
+            --secondary: #c9a458; /* Warm Gold */
+            --accent: #d4a373; /* Terracotta */
+            --bg-light: #f5e6d3; /* Cream */
+            --text-dark: #2c1810; /* Dark Brown */
+            --white: #ffffff;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            line-height: 1.6;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: Georgia, serif;
+            color: var(--primary);
+        }
+
+        /* Utilities */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .section-padding {
+            padding: 80px 0;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background-color: var(--primary);
+            color: var(--white);
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            transition: background-color 0.3s ease, transform 0.2s;
+        }
+
+        .btn:hover {
+            background-color: var(--secondary);
+            transform: translateY(-2px);
+        }
+
+        /* Header / Hero */
+        header {
+            background-color: var(--primary);
+            color: var(--bg-light);
+            padding: 20px 0;
+        }
+
+        .hero {
+            min-height: 80vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            background-color: var(--text-dark); /* Placeholder for image */
+            position: relative;
+        }
+
+        .hero-content {
+            z-index: 2;
+            padding: 40px;
+            background-color: rgba(74, 55, 40, 0.9);
+            border-radius: 8px;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            color: var(--secondary);
+            margin-bottom: 10px;
+        }
+
+        .hero p {
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+            color: var(--bg-light);
+        }
+
+        /* Navigation */
+        nav {
+            background-color: var(--primary);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .nav-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 30px;
+        }
+
+        .nav-links a {
+            color: var(--bg-light);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--secondary);
+        }
+
+        .hamburger {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--bg-light);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        /* Featured Products */
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+        }
+
+        .product-card {
+            background-color: var(--white);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s;
+        }
+
+        .product-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 12px 20px rgba(0,0,0,0.15);
+        }
+
+        .product-image-placeholder {
+            height: 200px;
+            background-color: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--white);
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        .product-info {
+            padding: 20px;
+        }
+
+        .product-price {
+            color: var(--secondary);
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin-top: 10px;
+        }
+
+        /* About Section */
+        .about-section {
+            background-color: var(--white);
+        }
+
+        .about-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 50px;
+            align-items: center;
+        }
+
+        .about-image-placeholder {
+            height: 400px;
+            background-color: var(--secondary);
+            border-radius: 8px;
+        }
+
+        /* Daily Specials Carousel */
+        .carousel-container {
+            position: relative;
+            max-width: 800px;
+            margin: 0 auto;
+            overflow: hidden;
+            border-radius: 8px;
+        }
+
+        .carousel-slide {
+            display: none;
+            background-color: var(--primary);
+            color: var(--white);
+            padding: 60px;
+            text-align: center;
+        }
+
+        .carousel-slide.active {
+            display: block;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        .carousel-controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .carousel-btn {
+            background-color: var(--secondary);
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        /* Testimonials */
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+
+        .testimonial-card {
+            background-color: var(--white);
+            padding: 30px;
+            border-left: 5px solid var(--secondary);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .stars {
+            color: var(--secondary);
+            margin-bottom: 15px;
+        }
+
+        /* Footer */
+        footer {
+            background-color: var(--primary);
+            color: var(--bg-light);
+            padding: 60px 0 20px;
+        }
+
+        .footer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 40px;
+            margin-bottom: 40px;
+        }
+
+        .footer h3 {
+            color: var(--secondary);
+            margin-bottom: 20px;
+        }
+
+        .footer-links ul {
+            list-style: none;
+        }
+
+        .footer-links li {
+            margin-bottom: 10px;
+        }
+
+        .footer-links a {
+            color: var(--bg-light);
+            text-decoration: none;
+        }
+
+        .footer-links a:hover {
+            color: var(--secondary);
+        }
+
+        .copyright {
+            text-align: center;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 20px;
+            font-size: 0.9rem;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .fade-in-section {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+        }
+
+        .fade-in-section.is-visible {
+            opacity: 1;
+            transform: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2.5rem; }
+            
+            .hamburger { display: block; }
+            
+            .nav-links {
+                position: absolute;
+                top: 60px;
+                left: 0;
+                width: 100%;
+                background-color: var(--primary);
+                flex-direction: column;
+                padding: 20px;
+                display: none;
+            }
+
+            .nav-links.active { display: flex; }
+            
+            .about-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header / Hero -->
+    <header>
+        <div class="container">
+            <nav class="nav-container">
+                <div style="font-family: Georgia; font-size: 1.5rem; color: var(--secondary);">Crumb & Hearth</div>
+                <button class="hamburger" aria-label="Toggle navigation">☰</button>
+                <ul class="nav-links">
+                    <li><a href="#home">Home</a></li>
+                    <li><a href="#products">Menu</a></li>
+                    <li><a href="#about">About</a></li>
+                    <li><a href="#specials">Specials</a></li>
+                    <li><a href="#contact">Contact</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <!-- Hero Section -->
+        <section id="home" class="hero fade-in-section">
+            <div class="container hero-content">
+                <h1>Crumb & Hearth</h1>
+                <p>Artisan Breads & Pastries Made Fresh Daily</p>
+                <a href="#products" class="btn">Order Online</a>
+            </div>
+        </section>
+
+        <!-- Featured Products -->
+        <section id="products" class="section-padding fade-in-section">
+            <div class="container">
+                <h2 class="text-center" style="margin-bottom: 40px;">Fresh From the Oven</h2>
+                <div class="products-grid">
+                    <!-- Product 1 -->
+                    <div class="product-card">
+                        <div class="product-image-placeholder" style="background-color: #8d6e63;">Sourdough Loaf</div>
+                        <div class="product-info">
+                            <h3>Rustic Sourdough</h3>
+                            <p>Cultured for 48 hours with organic flour and sea salt. Crispy crust, open crumb.</p>
+                            <div class="product-price">$8.50</div>
+                        </div>
+                    </div>
+                    <!-- Product 2 -->
+                    <div class="product-card">
+                        <div class="product-image-placeholder" style="background-color: #d7ccc8;">Butter Croissant</div>
+                        <div class="product-info">
+                            <h3>Classic Croissant</h3>
+                            <p>Laminated with 100% European butter. Flaky, golden, and buttery perfection.</p>
+                            <div class="product-price">$4.25</div>
+                        </div>
+                    </div>
+                    <!-- Product 3 -->
+                    <div class="product-card">
+                        <div class="product-image-placeholder" style="background-color: #a1887f;">Cinnamon Roll</div>
+                        <div class="product-info">
+                            <h3>Cinnamon Swirl</h3>
+                            <p>Pillowy soft dough rolled with cinnamon sugar and topped with cream cheese frosting.</p>
+                            <div class="product-price">$5.00</div>
+                        </div>
+                    </div>
+                    <!-- Product 4 -->
+                    <div class="product-card">
+                        <div class="product-image-placeholder" style="background-color: #5d4037;">Seasonal Tart</div>
+                        <div class="product-info">
+                            <h3>Fruit Galette</h3>
+                            <p>Seasonal berries or stone fruit arranged on a rustic pastry dough with almond cream.</p>
+                            <div class="product-price">$6.75</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- About Section -->
+        <section id="about" class="section-padding about-section fade-in-section">
+            <div class="container">
+                <div class="about-grid">
+                    <div>
+                        <h2 style="margin-bottom: 20px;">Our Story</h2>
+                        <p style="margin-bottom: 15px;">Founded in 2018, Crumb & Hearth began with a simple mission: to bring the warmth of neighborhood baking back to our community. We believe that bread is more than just food—it's a gathering place, a comfort, and a craft.</p>
+                        <p style="margin-bottom: 15px;">Our bakers wake up before dawn every day to mix, knead, and bake using traditional methods. We source our flour from local mills and use only natural leavening agents.</p>
+                        <a href="#contact" class="btn">Visit Us</a>
+                    </div>
+                    <div class="about-image-placeholder"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Daily Specials Carousel -->
+        <section id="specials" class="section-padding fade-in-section">
+            <div class="container text-center">
+                <h2 style="margin-bottom: 40px;">Today's Specials</h2>
+                <div class="carousel-container">
+                    <!-- Slide 1 -->
+                    <div class="carousel-slide active" data-index="0">
+                        <h3>Almond Croissants</h3>
+                        <p>Filled with rich almond paste and topped with toasted sliced almonds.</p>
+                    </div>
+                    <!-- Slide 2 -->
+                    <div class="carousel-slide" data-index="1">
+                        <h3>Challah Bread</h3>
+                        <p>Hand-braided egg bread, perfect for sandwiches or toast.</p>
+                    </div>
+                    <!-- Slide 3 -->
+                    <div class="carousel-slide" data-index="2">
+                        <h3>Blueberry Muffins</h3>
+                        <p>Bursting with fresh blueberries and topped with a crumbly streusel.</p>
+                    </div>
+
+                    <div class="carousel-controls">
+                        <button class="carousel-btn" id="prevBtn">Previous</button>
+                        <button class="carousel-btn" id="nextBtn">Next</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Testimonials -->
+        <section class="section-padding fade-in-section">
+            <div class="container">
+                <h2 class="text-center" style="margin-bottom: 40px;">What Our Neighbors Say</h2>
+                <div class="testimonials-grid">
+                    <div class="testimonial-card">
+                        <div class="stars">★★★★★</div>
+                        <p>"The sourdough is the best I've had outside of Paris. The crust is incredible!"</p>
+                        <p style="margin-top: 15px; font-weight: bold;">— Sarah M.</p>
+                    </div>
+                    <div class="testimonial-card">
+                        <div class="stars">★★★★★</div>
+                        <p>"A true neighborhood gem. The staff is friendly and the coffee pairs perfectly with their pastries."</p>
+                        <p style="margin-top: 15px; font-weight: bold;">— James D.</p>
+                    </div>
+                    <div class="testimonial-card">
+                        <div class="stars">★★★★☆</div>
+                        <p>"I love the seasonal fruit galettes. They are beautiful and taste even better than they look."</p>
+                        <p style="margin-top: 15px; font-weight: bold;">— Emily R.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer id="contact">
+        <div class="container">
+            <div class="footer-grid">
+                <div>
+                    <h3>Crumb & Hearth</h3>
+                    <p>Artisan Breads & Pastries<br>Made Fresh Daily</p>
+                </div>
+                <div class="footer-links">
+                    <h3>Contact</h3>
+                    <ul>
+                        <li>123 Baker Street, Foodville</li>
+                        <li>(555) 123-4567</li>
+                        <li>hello@crumbandhearth.com</li>
+                    </ul>
+                </div>
+                <div class="footer-links">
+                    <h3>Hours</h3>
+                    <ul>
+                        <li>Mon - Fri: 6am - 7pm</li>
+                        <li>Saturday: 7am - 6pm</li>
+                        <li>Sunday: 8am - 4pm</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="copyright">
+                &copy; 2023 Crumb & Hearth Bakery. All rights reserved.
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Mobile Menu Toggle
+        const hamburger = document.querySelector('.hamburger');
+        const navLinks = document.querySelector('.nav-links');
+
+        hamburger.addEventListener('click', () => {
+            navLinks.classList.toggle('active');
+        });
+
+        // Carousel Logic
+        const slides = document.querySelectorAll('.carousel-slide');
+        let currentSlide = 0;
+
+        function showSlide(index) {
+            slides.forEach((slide, i) => {
+                slide.classList.remove('active');
+                if (i === index) {
+                    slide.classList.add('active');
+                }
+            });
+        }
+
+        document.getElementById('nextBtn').addEventListener('click', () => {
+            currentSlide = (currentSlide + 1) % slides.length;
+            showSlide(currentSlide);
+        });
+
+        document.getElementById('prevBtn').addEventListener('click', () => {
+            currentSlide = (currentSlide - 1 + slides.length) % slides.length;
+            showSlide(currentSlide);
+        });
+
+        // Auto-advance carousel every 5 seconds
+        setInterval(() => {
+            currentSlide = (currentSlide + 1) % slides.length;
+            showSlide(currentSlide);
+        }, 5000);
+
+        // Scroll Animation Observer
+        const observerOptions = {
+            threshold: 0.1
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('is-visible');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.fade-in-section').forEach(section => {
+            observer.observe(section);
+        });
+    </script>
+</body>
+</html>

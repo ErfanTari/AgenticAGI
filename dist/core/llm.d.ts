@@ -1,9 +1,18 @@
 import type { Message } from './types.js';
+export type ToolDefinition = {
+    name: string;
+    description?: string;
+    input_schema: Record<string, unknown>;
+};
 type LLMCallOptions = {
     responseSchema?: Record<string, unknown>;
     maxTokens?: number;
     temperature?: number;
     disableThinking?: boolean;
+    /** Force Anthropic tool_use content blocks for structured JSON output */
+    tools?: ToolDefinition[];
+    /** Name of the tool to force (used with tool_choice: {type:'tool', name}) */
+    toolChoice?: string;
 };
 export type OpenAICompatibleLLMProfile = {
     kind: 'openai-compatible';

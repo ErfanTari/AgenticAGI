@@ -616,6 +616,7 @@ export interface PlannerContext {
   workspaceFiles?: string;
   recentArtifact?: { path: string; format: string; description: string };
   continuationContext?: string;  // FIX 2: Prior PLAN.EX context for continuation
+  constraints?: import('./types.js').UserConstraint[];
 }
 
 export function filterPlannerMemoryContext(
@@ -1069,12 +1070,17 @@ export async function decomposeTask(
     ? `PRIOR EXECUTION STATE (resume from here):\n${context.continuationContext}`
     : '';
 
+  const constraintsSection = context.constraints && context.constraints.length > 0
+    ? `USER CONSTRAINTS (must be respected in the plan):\n${context.constraints.map(c => `- [${c.type.toUpperCase()}] ${c.value}`).join('\n')}`
+    : '';
+
   const planningContextSections = [
     continuationSection,
     context.decompositionSummary ? `DECOMPOSED GOALS:\n${context.decompositionSummary}` : '',
     memorySection,
     workspaceSection,
     recentArtifactSection,
+    constraintsSection,
     goalsText ? `TASK GOALS:\n${goalsText}` : '',
   ].filter(Boolean).join('\n\n');
 
@@ -1131,8 +1137,11 @@ export async function decomposeTask(
       }
     });
 
+    // Use tool_use content blocks for Anthropic (guaranteed valid JSON);
+    // OpenAI-compatible endpoints get responseSchema injected via schema prompt.
     const response = await llmHandler(messages, {
-      responseSchema: taskPlanJsonSchema,
+      tools: [{ name: 'decompose_task', description: 'Decompose a user request into a structured task plan', input_schema: taskPlanJsonSchema }],
+      toolChoice: 'decompose_task',
       maxTokens: TOKEN_BUDGETS.PLANNER,
       disableThinking: true,
     });
@@ -1149,24 +1158,30 @@ export async function decomposeTask(
       transparency.emit({ type: 'planner_reasoning', data: { thought } });
     }
 
-    // Sanitize response before parsing
-    const sanitized = sanitizePlannerJson(response);
-    if (!sanitized || !sanitized.startsWith('{')) {
-      if (process.env.DEBUG_PLANNER === 'true') {
-        console.log('[planner] No valid JSON after sanitization');
+    // Fast path: if response is already clean JSON (Anthropic tool_use path), skip sanitize
+    let jsonString: string;
+    const trimmedResponse = response.trim();
+    if (trimmedResponse.startsWith('{')) {
+      jsonString = trimmedResponse;
+    } else {
+      // Fallback: sanitize for OpenAI-compatible models that may emit prose + JSON
+      transparency.emit({ type: 'plan_parser_fallback_used', data: { attempt } });
+      const sanitized = sanitizePlannerJson(response);
+      if (!sanitized || !sanitized.startsWith('{')) {
+        if (process.env.DEBUG_PLANNER === 'true') {
+          console.log('[planner] No valid JSON after sanitization');
+        }
+        retryFeedback = 'Your response was not valid JSON. Return ONLY compact valid JSON with no extra text.';
+        continue;
       }
-      retryFeedback = 'Your response was not valid JSON. Return ONLY compact valid JSON with no extra text.';
-      continue;
-    }
-
-    if (process.env.DEBUG_PLANNER === 'true') {
-      console.log('[planner] Sanitized (chars 300-400):', sanitized.slice(300, 400));
-      console.log('[planner] Sanitized length:', sanitized.length);
-      console.log('[planner] Sanitized (last 200 chars):', sanitized.slice(-200));
+      if (process.env.DEBUG_PLANNER === 'true') {
+        console.log('[planner] Sanitized length:', sanitized.length);
+      }
+      jsonString = sanitized;
     }
 
     try {
-      const raw = JSON.parse(sanitized) as Record<string, unknown>;
+      const raw = JSON.parse(jsonString) as Record<string, unknown>;
       // Parse without max constraint, then enforce 8-step limit
       if (
         raw.goal &&
@@ -1315,7 +1330,7 @@ export async function decomposeTask(
         // FIX 1: Extract step/milestone counts from failed attempt for validation on repair
         if (expectedStepCount === null || expectedMilestoneCount === null) {
           try {
-            const parsed = JSON.parse(sanitized) as Record<string, unknown>;
+            const parsed = JSON.parse(jsonString) as Record<string, unknown>;
             if (expectedStepCount === null && Array.isArray(parsed.steps)) {
               expectedStepCount = parsed.steps.length;
             }
@@ -1327,13 +1342,15 @@ export async function decomposeTask(
         retryFeedback = buildRepairMessage(result.error);
       }
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       if (process.env.DEBUG_PLANNER === 'true') {
-        console.log('[planner] JSON parse or processing error:', err instanceof Error ? err.message : String(err));
+        console.log('[planner] JSON parse or processing error:', errMsg);
       }
+      transparency.emit({ type: 'plan_json_parse_failed', data: { attempt, error: errMsg } });
       // FIX 1: Extract counts before parse failure
       if (expectedStepCount === null || expectedMilestoneCount === null) {
         try {
-          const parsed = JSON.parse(sanitized) as Record<string, unknown>;
+          const parsed = JSON.parse(jsonString) as Record<string, unknown>;
           if (expectedStepCount === null && Array.isArray(parsed.steps)) {
             expectedStepCount = parsed.steps.length;
           }

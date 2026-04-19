@@ -42,12 +42,25 @@ export interface ResolvedMemory {
     contents: string[];
     relationships: Relationship[];
 }
-export type LLMHandler = (messages: Message[], options?: {
+export type UserConstraintType = 'deadline' | 'budget' | 'format' | 'scope' | 'quality' | 'other';
+export interface UserConstraint {
+    type: UserConstraintType;
+    value: string;
+    raw: string;
+}
+export type LLMHandlerOptions = {
     responseSchema?: Record<string, unknown>;
     maxTokens?: number;
     temperature?: number;
     disableThinking?: boolean;
-}) => Promise<string>;
+    tools?: Array<{
+        name: string;
+        description?: string;
+        input_schema: Record<string, unknown>;
+    }>;
+    toolChoice?: string;
+};
+export type LLMHandler = (messages: Message[], options?: LLMHandlerOptions) => Promise<string>;
 export interface AgentResponse {
     reply: string;
     intent: Intent;

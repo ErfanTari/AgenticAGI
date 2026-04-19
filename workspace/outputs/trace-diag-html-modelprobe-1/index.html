@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Daily Crumb - Artisan Neighborhood Bakery</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Open+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        /* General Styles & Resets */
+        :root {
+            --primary-brown: #6F4E37; /* Deep Coffee */
+            --secondary-cream: #F5EFE6; /* Off-white */
+            --accent-gold: #D4AF37; /* Muted Gold */
+            --accent-red: #A0522D; /* Sienna */
+            --text-dark: #333333;
+            --text-light: #F5EFE6;
+            --bg-light: #FFFFFF;
+            --bg-dark: #F0EAD6; /* Light Tan */
+            --font-heading: 'Playfair Display', serif;
+            --font-body: 'Open Sans', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-body);
+            line-height: 1.6;
+            color: var(--text-dark);
+            background-color: var(--bg-light);
+        }
+
+        a {
+            text-decoration: none;
+            color: var(--primary-brown);
+        }
+
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: var(--font-heading);
+            color: var(--primary-brown);
+            margin-bottom: 0.8em;
+        }
+
+        h1 { font-size: 3.5em; }
+        h2 { font-size: 2.5em; }
+        h3 { font-size: 1.8em; }
+
+        /* Header */
+        header {
+            background-color: var(--primary-brown);
+            color: var(--text-light);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        header .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .logo {
+            font-family: var(--font-heading);
+            font-size: 2.2em;
+            font-weight: 700;
+            color: var(--accent-gold);
+            margin-right: 20px;
+        }
+
+        nav ul {
+            list-style: none;
+            display: flex;
+            flex-wrap: wrap;
+        }
+
+        nav ul li {
+            margin-left: 25px;
+        }
+
+        nav ul li a {
+            color: var(--text-light);
+            font-weight: 600;
+            padding: 5px 0;
+            transition: color 0.3s ease, border-bottom 0.3s ease;
+            border-bottom: 2px solid transparent;
+        }
+
+        nav ul li a:hover,
+        nav ul li a.active {
+            color: var(--accent-gold);
+            border-bottom: 2px solid var(--accent-gold);
+        }
+
+        /* Hero Section */
+        #home {
+            background: url('https://images.unsplash.com/photo-1583339097940-27907577884d?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1920&q=80') no-repeat center center/cover;
+            color: var(--text-light);
+            text-align: center;
+            padding: 150px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 70vh;
+            position: relative;
+        }
+
+        #home::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4); /* Dark overlay */
+        }
+
+        #home .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 800px;
+        }
+
+        #home h1 {
+            font-size: 4.5em;
+            margin-bottom: 0.3em;
+            color: var(--accent-gold);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.7);
+        }
+
+        #home p {
+            font-size: 1.5em;
+            margin-bottom: 2em;
+            color: var(--text-light);
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+        }
+
+        .btn {
+            display: inline-block;
+            background-color: var(--accent-red);
+            color: var(--text-light);
+            padding: 15px 30px;
+            border-radius: 5px;
+            font-weight: 600;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .btn:hover {
+            background-color: var(--primary-brown);
+            transform: translateY(-2px);
+        }
+
+        /* Section Styling */
+        section {
+            padding: 80px 0;
+            text-align: center;
+        }
+
+        section:nth-of-type(even) {
+            background-color: var(--bg-dark);
+        }
+
+        section h2 {
+            margin-bottom: 1.5em;
+            color: var(--primary-brown);
+            position: relative;
+            display: inline-block;
+        }
+
+        section h2::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: -10px;
+            width: 80px;
+            height: 3px;
+            background-color: var(--accent-gold);
+        }
+
+        /* Menu Section */
+        .menu-categories {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+        }
+
+        .menu-category-btn {
+            background-color: var(--secondary-cream);
+            color: var(--primary-brown);
+            border: 1px solid var(--primary-brown);
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, color 0.3s ease;
+            font-weight: 600;
+        }
+
+        .menu-category-btn.active,
+        .menu-category-btn:hover {
+            background-color: var(--primary-brown);
+            color: var(--text-light);
+        }
+
+        .menu-items-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            margin-top: 40px;
+        }
+
+        .menu-item {
+            background-color: var(--bg-light);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            text-align: left;
+            transition: transform 0.3s ease;
+            display: none; /* Hidden by default, shown by JS */
+        }
+
+        .menu-item.active {
+            display: block;
+        }
+
+        .menu-item:hover {
+            transform: translateY(-5px);
+        }
+
+        .menu-item img {
+            width: 100%;
+            height: 250px;
+            object-fit: cover;
+        }
+
+        .menu-item-content {
+            padding: 20px;
+        }
+
+        .menu-item h3 {
+            font-size: 1.5em;
+            margin-bottom: 0.5em;
+            color: var(--accent-red);
+        }
+
+        .menu-item p {
+            font-size: 0.95em;
+            color: var(--text-dark);
+            margin-bottom: 1em;
+        }
+
+        .menu-item .price {
+            font-weight: 700;
+            color: var(--primary-brown);
+            font-size: 1.2em;
+        }
+
+        /* About Section */
+        #about .container {
+            max-width: 800px;
+        }
+
+        #about p {
+            font-size: 1.1em;
+            margin-bottom: 1.5em;
+            color: var(--text-dark);
+        }
+
+        /* Contact Section */
+        #contact .contact-info {
+            display: flex;
+            justify-content: center;
+            gap: 50px;
+            margin-bottom: 50px;
+            flex-wrap: wrap;
+        }
+
+        .contact-item {
+            text-align: center;
+            flex: 1;
+            min-width: 200px;
+            max-width: 300px;
+        }
+
+        .contact-item h3 {
+            color: var(--accent-red);
+            font-size: 1.3em;
+            margin-bottom: 0.5em;
+        }
+
+        .contact-item p {
+            color: var(--text-dark);
+            font-size: 1em;
+        }
+
+        .contact-form {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: var(--bg-light);
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            text-align: left;
+        }
+
+        .contact-form label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--primary-brown);
+        }
+
+        .contact-form input[type="text"],
+        .contact-form input[type="email"],
+        .contact-form textarea {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 20px;
+            border: 1px solid var(--secondary-cream);
+            border-radius: 5px;
+            font-family: var(--font-body);
+            font-size: 1em;
+            background-color: var(--bg-dark);
+            color: var(--text-dark);
+        }
+
+        .contact-form input[type="text"]:focus,
+        .contact-form input[type="email"]:focus,
+        .contact-form textarea:focus {
+            outline: none;
+            border-color: var(--accent-gold);
+            box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.2);
+        }
+
+        .contact-form textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .contact-form button {
+            background-color: var(--primary-brown);
+            color: var(--text-light);
+            padding: 15px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: 600;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            width: auto;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .contact-form button:hover {
+            background-color: var(--accent-red);
+            transform: translateY(-2px);
+        }
+
+        .form-message {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+
+        .form-message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+
+        .form-message.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+
+        /* Footer */
+        footer {
+            background-color: var(--primary-brown);
+            color: var(--text-light);
+            padding: 40px 0;
+            text-align: center;
+            font-size: 0.9em;
+        }
+
+        footer .social-links {
+            margin-top: 20px;
+        }
+
+        footer .social-links a {
+            color: var(--text-light);
+            font-size: 1.5em;
+            margin: 0 10px;
+            transition: color 0.3s ease;
+        }
+
+        footer .social-links a:hover {
+            color: var(--accent-gold);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            h1 { font-size: 3em; }
+            h2 { font-size: 2em; }
+            #home h1 { font-size: 3.5em; }
+            #home p { font-size: 1.2em; }
+
+            header .container {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .logo {
+                margin-bottom: 15px;
+                margin-right: 0;
+            }
+
+            nav ul {
+                flex-direction: column;
+                width: 100%;
+                margin-top: 10px;
+            }
+
+            nav ul li {
+                margin: 5px 0;
+            }
+
+            .menu-items-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .contact-info {
+                flex-direction: column;
+                gap: 30px;
+            }
+
+            .contact-form {
+                padding: 25px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            h1 { font-size: 2.5em; }
+            #home h1 { font-size: 2.8em; }
+            #home p { font-size: 1em; }
+            .btn {
+                padding: 12px 25px;
+                font-size: 0.9em;
+            }
+            section {
+                padding: 60px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <a href="#home" class="logo">The Daily Crumb</a>
+            <nav>
+                <ul>
+                    <li><a href="#home">Home</a></li>
+                    <li><a href="#menu">Menu</a></li>
+                    <li><a href="#about">About</a></li>
+                    <li><a href="#contact">Contact</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section id="home">
+            <div class="hero-content">
+                <h1>Crafted with Love, Baked to Perfection</h1>
+                <p>Experience the warmth and aroma of freshly baked artisan goods, made daily for our community.</p>
+                <a href="#menu" class="btn">View Our Menu</a>
+            </div>
+        </section>
+
+        <section id="menu">
+            <div class="container">
+                <h2>Our Delicious Offerings</h2>
+                <div class="menu-categories">
+                    <button class="menu-category-btn active" data-category="all">All Items</button>
+                    <button class="menu-category-btn" data-category="breads">Breads</button>
+                    <button class="menu-category-btn" data-category="pastries">Pastries</button>
+                    <button class="menu-category-btn" data-category="cakes">Cakes</button>
+                </div>
+                <div class="menu-items-grid">
+                    <!-- Breads -->
+                    <div class="menu-item active" data-category="breads">
+                        <img src="https://images.unsplash.com/photo-1595178129853-276941193188?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80" alt="Sourdough Loaf">
+                        <div class="menu-item-content">
+                            <h3>Artisan Sourdough</h3>
+                            <p>Our signature sourdough, naturally leavened with a perfect crust and airy interior.</p>
+                            <span class="price">$6.50</span>
+                        </div>
+                    </div>
+                    <div class="menu-item active" data-category="breads">
+                        <img src="https://images.unsplash.com/photo-1517677208171-0bc7b679936d?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80" alt="Rye Bread">
+                        <div class="menu-item-content">
+                            <h3>Rustic Rye</h3>
+                            <p>A hearty rye bread with caraway seeds, perfect for sandwiches or a simple toast.</p>
+                            <span class="price">$7.00</span>
+                        </div>
+                    </div>
+                    <div class="menu-item active" data-category="breads">
+                        <img src="https://images.unsplash.com/photo-1509440159596-0249088772ce?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80" alt="Baguette">
+                        <div class="menu-item-content">
+                            <h3>Classic Baguette</h3>
+                            <p>Crispy on the outside, soft on the inside. The quintessential French bread.</p>
+                            <span class="price">$4.00</span>
+                        </div>
+                    </div>
+
+                    <!-- Pastries -->
+                    <div class="menu-item active" data-category="pastries">
+                        <img src="https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80" alt="Croissant">
+                        <div class="menu-item-content">
+                            <h3>Butter Croissant</h3>
+                            <p>Flaky, buttery, and golden-brown. A perfect start to your day.</p>
+                            <span class="price">$3.50</span>
+                        </div>
+                    </div>
+                    <div class="menu-item active" data-category="pastries">
+                        <img src="https://images.unsplash.com/photo-1530610476181-bd27235aed1b?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80" alt="Cinnamon Roll">
+                        <div class="menu-item-content">
+                            <h3>Cinnamon Roll</h3>
+                            <p>Soft, sweet, and swirled with cinnamon, topped with a cream cheese glaze.</p>
+                            <span class="price">$4.25</span>
+                        </div>
+                    </div>
+                    <div class="menu-item active" data-category="pastries">
+                        <img src="https://images.unsplash.com/photo-1558961363-fa1fdf82db35?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80" alt="Blueberry Muffin">
+                        <div class="menu-item-content">
+                            <h3>Blueberry Muffin</h3>
+                            <p>Moist and bursting with fresh blueberries, a classic favorite.</p>
+                            <span class="price">$3.75</span>
+                        </div>
+                    </div>
+
+                    <!-- Cakes -->
+                    <div class="menu-item active" data-category="cakes">
+                        <img src="https://images.unsplash.com/photo-1578985545062-6992954d5668?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80" alt="Chocolate Cake">
+                        <div class="menu-item-content">
+                            <h3>Decadent Chocolate Cake</h3>
+                            <p>Rich, moist chocolate cake with a smooth ganache frosting. Pure indulgence.</p>
+                            <span class="price">$35.00 (whole) / $6.00 (slice)</span>
+                        </div>
+                    </div>
+                    <div class="menu-item active" data-category="cakes">
+                        <img src="https://images.unsplash.com/photo-1563729781179-d7790e10156d?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80" alt="Carrot Cake">
+                        <div class="menu-item-content">
+                            <h3>Classic Carrot Cake</h3>
+                            <p>Spiced carrot cake with walnuts and a tangy cream cheese frosting.</p>
+                            <span class="price">$32.00 (whole) / $5.50 (slice)</span>
+                        </div>
+                    </div>
+                    <div class="menu-item active" data-category="cakes">
+                        <img src="https://images.unsplash.com/photo-1542826433-e6274431818e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80" alt="Lemon Drizzle Cake">
+                        <div class="menu-item-content">
+                            <h3>Lemon Drizzle Cake</h3>
+                            <p>Light and zesty lemon cake, soaked in a sweet lemon syrup.</p>
+                            <span class="price">$28.00 (whole) / $5.00 (slice)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="about">
+            <div class="container">
+                <h2>Our Story & Philosophy</h2>
+                <p>Welcome to The Daily Crumb, a neighborhood bakery born from a passion for traditional baking and a love for our community. We believe that the best bread and pastries are made with simple, high-quality ingredients, time-honored techniques, and a generous sprinkle of heart.</p>
+                <p>Every morning, our ovens come alive, filling the air with the irresistible aroma of freshly baked goods. From our slow-fermented sourdoughs to our delicate, flaky pastries, each item is crafted by hand with meticulous care. We source local ingredients whenever possible, supporting our fellow artisans and ensuring the freshest flavors.</p>
+                <p>The Daily Crumb is more than just a bakery; it's a gathering place, a source of comfort, and a celebration of the simple joys of life. We invite you to taste the difference that passion and dedication make, and become a part of our baking family.</p>
+            </div>
+        </section>
+
+        <section id="contact">
+            <div class="container">
+                <h2>Get In Touch</h2>
+                <div class="contact-info">
+                    <div class="contact-item">
+                        <h3>Address</h3>
+                        <p>123 Bakery Lane</p>
+                        <p>Artisanville, BC 12345</p>
+                    </div>
+                    <div class="contact-item">
+                        <h3>Phone</h3>
+                        <p><a href="tel:+15551234567">(555) 123-4567</a></p>
+                    </div>
+                    <div class="contact-item">
+                        <h3>Email</h3>
+                        <p><a href="mailto:info@thedailycrumb.com">info@thedailycrumb.com</a></p>
+                    </div>
+                </div>
+
+                <div class="contact-form">
+                    <h3>Send Us a Message</h3>
+                    <form id="contactForm">
+                        <label for="name">Name:</label>
+                        <input type="text" id="name" name="name" required>
+
+                        <label for="email">Email:</label>
+                        <input type="email" id="email" name="email" required>
+
+                        <label for="message">Message:</label>
+                        <textarea id="message" name="message" rows="6" required></textarea>
+
+                        <button type="submit">Send Message</button>
+                        <div id="formMessage" class="form-message"></div>
+                    </form>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2023 The Daily Crumb. All rights reserved.</p>
+            <div class="social-links">
+                <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+                <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+                <a href="#" aria-label="Twitter"><i class="fab fa-twitter"></i></a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Font Awesome for social icons (CDN) -->
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Smooth Scroll for Navigation Links
+            document.querySelectorAll('nav a').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+
+                    document.querySelector(this.getAttribute('href')).scrollIntoView({
+                        behavior: 'smooth'
+                    });
+
+                    // Optional: Update active class for navigation
+                    document.querySelectorAll('nav a').forEach(link => link.classList.remove('active'));
+                    this.classList.add('active');
+                });
+            });
+
+            // Set initial active class for Home on load
+            const homeLink = document.querySelector('nav a[href="#home"]');
+            if (homeLink) {
+                homeLink.classList.add('active');
+            }
+
+            // Intersection Observer for active navigation link on scroll
+            const sections = document.querySelectorAll('section');
+            const navLinks = document.querySelectorAll('nav a');
+
+            const observerOptions = {
+                root: null,
+                rootMargin: '0px',
+                threshold: 0.7 // Adjust this value based on when you want the link to become active
+            };
+
+            const sectionObserver = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        navLinks.forEach(link => {
+                            link.classList.remove('active');
+                            if (link.getAttribute('href') === '#' + entry.target.id) {
+                                link.classList.add('active');
+                            }
+                        });
+                    }
+                });
+            }, observerOptions);
+
+            sections.forEach(section => {
+                sectionObserver.observe(section);
+            });
+
+
+            // Menu Category Filtering
+            const categoryButtons = document.querySelectorAll('.menu-category-btn');
+            const menuItems = document.querySelectorAll('.menu-item');
+
+            categoryButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // Remove active class from all buttons
+                    categoryButtons.forEach(btn => btn.classList.remove('active'));
+                    // Add active class to the clicked button
+                    this.classList.add('active');
+
+                    const category = this.dataset.category;
+
+                    menuItems.forEach(item => {
+                        if (category === 'all' || item.dataset.category === category) {
+                            item.classList.add('active');
+                        } else {
+                            item.classList.remove('active');
+                        }
+                    });
+                });
+            });
+
+            // Contact Form Validation
+            const contactForm = document.getElementById('contactForm');
+            const formMessage = document.getElementById('formMessage');
+
+            contactForm.addEventListener('submit', function(e) {
+                e.preventDefault(); // Prevent actual form submission
+
+                const name = document.getElementById('name').value.trim();
+                const email = document.getElementById('email').value.trim();
+                const message = document.getElementById('message').value.trim();
+
+                formMessage.style.display = 'none'; // Hide previous messages
+                formMessage.classList.remove('success', 'error');
+
+                if (name === '' || email === '' || message === '') {
+                    formMessage.classList.add('error');
+                    formMessage.textContent = 'Please fill in all fields.';
+                    formMessage.style.display = 'block';
+                } else if (!isValidEmail(email)) {
+                    formMessage.classList.add('error');
+                    formMessage.textContent = 'Please enter a valid email address.';
+                    formMessage.style.display = 'block';
+                } else {
+                    // Simulate form submission
+                    formMessage.classList.add('success');
+                    formMessage.textContent = 'Thank you for your message! We will get back to you soon.';
+                    formMessage.style.display = 'block';
+                    contactForm.reset(); // Clear the form
+                }
+            });
+
+            function isValidEmail(email) {
+                // Basic email validation regex
+                const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                return regex.test(email);
+            }
+        });
+    </script>
+</body>
+</html>

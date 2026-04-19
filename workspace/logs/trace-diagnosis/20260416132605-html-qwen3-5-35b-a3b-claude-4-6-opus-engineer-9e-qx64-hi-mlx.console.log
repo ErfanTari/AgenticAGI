@@ -1,0 +1,19 @@
+[2026-04-16T13:26:25.558Z] [log] [llm] Provider: diag-local-primary (qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx) — 12324ms
+[2026-04-16T13:26:25.560Z] [warn] [llm] stripThinkingTags: result was empty after stripping — returning original response
+[2026-04-16T13:26:25.562Z] [warn] [llm] stripThinkingTags: result was empty after stripping — returning original response
+[2026-04-16T13:26:25.562Z] [warn] [zaraban][intake] No <summary> tag found in response. Length: 2534
+[2026-04-16T13:26:25.562Z] [warn] [zaraban][intake] Schema validation failed. Raw length: 2534. Falling back.
+[2026-04-16T13:26:34.694Z] [log] [llm] Provider: diag-local-primary (qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx) — 9130ms
+[2026-04-16T13:27:04.870Z] [log] [llm] Provider: diag-local-primary (qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx) — 30131ms
+[2026-04-16T13:27:04.872Z] [log] [planner] Attempt 1 response (first 500 chars): <plan>
+<goal>Create a complete single-file artisan bakery website (index.html) with inline CSS and JavaScript, saved to outputs/trace-diag-html-qwenprobe/ folder or a numbered variant if the folder exists.</goal>
+<complexity>MEDIUM</complexity>
+<needsConfirmation>false</needsConfirmation>
+<estimatedDuration>45s</estimatedDuration>
+
+<milestone id="m1" title="Create bakery website specification">
+<description>A detailed specification for the artisan bakery website will be stored in memory, definin
+[2026-04-16T13:27:04.874Z] [log] [planner] XML parsed — steps: 2 milestones: 1
+[2026-04-16T13:27:28.587Z] [log] [llm] Provider: diag-local-primary (qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx) — 23692ms
+[2026-04-16T13:27:28.711Z] [log] [generate_and_save_file] spec source=inline path=outputs/trace-diag-html-qwenprobe-1/index.html spec_length=1899 has_context=false
+[2026-04-16T13:29:56.306Z] [log] [llm] Provider: diag-local-primary (qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx) — 147589ms

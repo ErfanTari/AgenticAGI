@@ -9,7 +9,7 @@ import { assessComplexity } from './planner.js';
 import { runQueryLoop } from './query-loop.js';
 import { searchMemoryForUnits } from './memory/unit-search.js';
 import { runWithRetry } from './react.js';
-import { addRelationship, fetchByCode, getEntryByCode, hybridSearch, upsertEntry, savePendingPlan, clearPendingPlan, } from './memory/mod.js';
+import { addRelationship, fetchByCode, getEntryByCode, hybridSearch, upsertEntry, savePendingPlan, clearPendingPlan, loadPendingUserInput, clearPendingUserInput, } from './memory/mod.js';
 import { startHeartbeat, stopHeartbeat, recordActivity } from './heartbeat.js';
 import { getDb } from './memory/index.js';
 import { classifyFailure } from './executor.js';
@@ -19,7 +19,8 @@ import { createPlanEX } from './memory/plan-ex.js';
 import { extractMemoryMetadata } from './memory/lifecycle.js';
 import { quickResolve } from './memory/quick-resolve.js';
 import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
-import { transparency } from './transparency.js';
+import { transparency, withRequestId } from './transparency.js';
+import { getMemoryMode } from './memory-mode.js';
 import { runIntake } from './intake.js';
 import { createWorkingMemory, loadWorkingMemory } from './memory/working-memory.js';
 import { setPendingConfirmationPlan as skillSetPendingPlan, clearPendingConfirmationPlan as skillClearPendingPlan, } from './skills/tools/confirm_plan.js';
@@ -1055,9 +1056,13 @@ function classifyConfirmationResponse(message) {
     // Ambiguous: anything else
     return 'ambiguous';
 }
-export async function processMessage(message, history, options) {
+export function processMessage(message, history, options) {
+    return withRequestId(() => _processMessageImpl(message, history, options));
+}
+async function _processMessageImpl(message, history, options) {
     isProcessingMessage = true;
     recordActivity(); // Phase 16: track last activity for AutoDream idle detection
+    transparency.emit({ type: 'memory_mode', data: { mode: getMemoryMode() } });
     let decomposition = null;
     try {
         // === FIX 0: Plan Confirmation Interceptor (step [0]) ===
@@ -1100,6 +1105,20 @@ export async function processMessage(message, history, options) {
                 : `Could you clarify? Do you want me to execute the plan?`;
             return {
                 reply: findingsPrefix + clarification,
+                intent: 'general',
+                resolved: null,
+            };
+        }
+        // === User Input Intercept (step [0b]) ===
+        // If a prior skill called request_user_input, the next message IS the answer.
+        const pendingInput = loadPendingUserInput();
+        if (pendingInput) {
+            clearPendingUserInput();
+            transparency.emit({ type: 'user_input_received', data: { question: pendingInput.question, answer: message } });
+            transparency.emit({ type: 'user_input_cleared', data: {} });
+            const findingsPrefix = await buildFindingsPrefix();
+            return {
+                reply: findingsPrefix + `Got it — you answered: "${message}"\n\nQuestion was: ${pendingInput.question}`,
                 intent: 'general',
                 resolved: null,
             };
@@ -1325,7 +1344,7 @@ The memory entries provided above are confirmed to exist in the database. You MU
                 // Working memory creation is best-effort
             }
         }
-        const routed = await routeDecomposedUnits(decomposition.units, unitResults, history, handler, workingMemory ?? undefined);
+        const routed = await routeDecomposedUnits(decomposition.units, unitResults, history, handler, workingMemory ?? undefined, intakeResult?.constraints ?? []);
         // FIX 0: If routing produced a plan that needs confirmation, store it and return the confirmation prompt
         if (routed.plan?.needsConfirmation && !routed.execution) {
             _setPendingConfirmationPlan(routed.plan);

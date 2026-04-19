@@ -48,3 +48,11 @@ export declare function loadPendingPlan(): unknown | null;
  * clearPendingPlan — delete pending plan from SQLite
  */
 export declare function clearPendingPlan(): void;
+export interface PendingUserInput {
+    question: string;
+    context?: string;
+    createdAt: string;
+}
+export declare function savePendingUserInput(question: string, context?: string): void;
+export declare function loadPendingUserInput(): PendingUserInput | null;
+export declare function clearPendingUserInput(): void;

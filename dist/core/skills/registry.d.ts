@@ -6,6 +6,10 @@ export declare function _unfreezeRegistry(): void;
 export declare function getSkill(name: string): MCPSkill | undefined;
 export declare function getAllSkills(): MCPSkill[];
 export declare function getSkillDescriptions(): string;
-export declare function getSkillsByPermission(mode: PermissionLevel): MCPSkill[];
-export declare function getSkillDescriptionsForPermission(mode: PermissionLevel): string;
+export declare function getSkillsByPermission(mode: PermissionLevel, opts?: {
+    memoryEnabled?: boolean;
+}): MCPSkill[];
+export declare function getSkillDescriptionsForPermission(mode: PermissionLevel, opts?: {
+    memoryEnabled?: boolean;
+}): string;
 export declare function getSkillsForIntent(intent: Intent): Skill[];

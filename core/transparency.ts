@@ -1,6 +1,21 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { randomUUID } from 'node:crypto';
 import type { TaskPlan, TaskStep } from './schemas.js';
 import type { SkillResult } from './skills/types.js';
 import type { DecompositionResult, Message, DecomposedUnit, UnitMemoryResult } from './types.js';
+
+// ─── Correlation ID store ──────────────────────────────────────────────────────
+const _requestIdStore = new AsyncLocalStorage<string>();
+
+/** Run fn inside a new request scope with a generated or provided requestId. */
+export function withRequestId<T>(fn: () => T, requestId?: string): T {
+  return _requestIdStore.run(requestId ?? randomUUID(), fn);
+}
+
+/** Returns the current request ID, or undefined if called outside a withRequestId scope. */
+export function getCurrentRequestId(): string | undefined {
+  return _requestIdStore.getStore();
+}
 
 export type TransparencyEvent =
   | { type: 'decomposition'; data: DecompositionResult }
@@ -89,9 +104,23 @@ export type TransparencyEvent =
   | { type: 'startup_prefetch_error'; data: { error: string } }
   | { type: 'context_lazy_loaded'; data: Record<string, never> }
   // Token counter
-  | { type: 'token_usage'; data: { inputTokens: number; outputTokens: number; callCount: number; estimatedCostUSD: number } };
+  | { type: 'token_usage'; data: { inputTokens: number; outputTokens: number; callCount: number; estimatedCostUSD: number } }
+  // Memory toggle sprint
+  | { type: 'memory_mode'; data: { mode: import('./memory-mode.js').MemoryMode } }
+  | { type: 'filename_auto_renamed'; data: { original: string; final: string; skill: string } }
+  // Planner JSON path telemetry
+  | { type: 'plan_json_parse_failed'; data: { attempt: number; error: string } }
+  | { type: 'plan_parser_fallback_used'; data: { attempt: number } }
+  // Constraint-aware routing
+  | { type: 'user_constraints_extracted'; data: { constraints: import('./types.js').UserConstraint[] } }
+  | { type: 'coding_route_escalated'; data: { reason: string; constraints: import('./types.js').UserConstraint[] } }
+  | { type: 'user_input_requested'; data: { question: string; context?: string } }
+  | { type: 'user_input_received'; data: { question: string; answer: string } }
+  | { type: 'user_input_cleared'; data: Record<string, never> };
 
-type TransparencyHandler = (event: TransparencyEvent) => void;
+export type TransparencyEventEnvelope = TransparencyEvent & { requestId?: string };
+
+type TransparencyHandler = (event: TransparencyEventEnvelope) => void;
 
 class TransparencyBus {
   private handlers: TransparencyHandler[] = [];
@@ -118,9 +147,10 @@ class TransparencyBus {
 
   emit(event: TransparencyEvent) {
     if (!this.active) return;
+    const envelope: TransparencyEventEnvelope = { ...event, requestId: getCurrentRequestId() };
     for (const handler of this.handlers) {
       try {
-        handler(event);
+        handler(envelope);
       } catch {
         // never propagate handler errors
       }

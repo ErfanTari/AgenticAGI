@@ -6,6 +6,9 @@ import { callLLM } from '../../llm.js';
 import { fetchByCode } from '../../memory/fetch.js';
 import { TOKEN_BUDGETS } from '../../../config/agent.config.js';
 import { runSkill } from '../runner.js';
+import { resolveCollision } from '../../utils/path-collision.js';
+import { transparency } from '../../transparency.js';
+import * as nodePath from 'node:path';
 import type { MCPSkill, SkillResult } from '../types.js';
 import type { IndexEntry } from '../../memory/types.js';
 
@@ -204,15 +207,31 @@ const generateAndSaveFileSkill: MCPSkill = {
         description: 'File write mode: "write" (default) or "append"',
         enum: ['write', 'append'],
       },
+      overwrite: {
+        type: 'boolean',
+        description: 'Set to true to overwrite an existing file in place. Default false auto-renames to avoid collision.',
+      },
     },
     required: ['path'],
   },
 
   async execute(input: Record<string, unknown>): Promise<SkillResult> {
     const pathValue = String(input.path ?? '').trim();
+    const overwrite = input.overwrite === true;
 
     if (!pathValue) {
       return { success: false, output: '', error: 'Invalid input: path must be a non-empty string' };
+    }
+
+    // Resolve filename collisions before generation
+    const WORKSPACE_ROOT = nodePath.resolve(process.cwd(), 'workspace');
+    const normalizedPath = pathValue.replace(/^\.\/+/, '').replace(/^\/?workspace\//, '');
+    const absTarget = nodePath.resolve(WORKSPACE_ROOT, normalizedPath);
+    const collision = resolveCollision(absTarget, { overwrite });
+    const finalAbsPath = collision.finalPath;
+    const finalRelPath = nodePath.relative(WORKSPACE_ROOT, finalAbsPath).split(nodePath.sep).join('/');
+    if (collision.renamed) {
+      transparency.emit({ type: 'filename_auto_renamed', data: { original: absTarget, final: finalAbsPath, skill: 'generate_and_save_file' } });
     }
 
     // Guard: spec_code must be a memory code string, not a JSON blob from memory_read output
@@ -308,17 +327,22 @@ const generateAndSaveFileSkill: MCPSkill = {
         if (errors.length === 0) {
           // Valid — write file via permission gate
           const writeResult = await runSkill('file_writer', {
-            path: pathValue,
+            path: finalRelPath,
             content,
             mode: input.mode,
+            overwrite: true,
           });
 
           if (!writeResult.success) return writeResult;
 
           return {
             success: true,
-            output: `Generated and saved ${pathValue}`,
-            display: `Generated and saved ${pathValue}`,
+            output: collision.renamed
+              ? `Generated and saved ${finalRelPath} (renamed from ${pathValue} to avoid collision)`
+              : `Generated and saved ${finalRelPath}`,
+            display: collision.renamed
+              ? `Generated and saved ${finalRelPath} (renamed from ${pathValue} to avoid collision)`
+              : `Generated and saved ${finalRelPath}`,
           };
         }
 
@@ -331,17 +355,22 @@ const generateAndSaveFileSkill: MCPSkill = {
 
       // For non-HTML: write immediately via permission gate
       const writeResult = await runSkill('file_writer', {
-        path: pathValue,
+        path: finalRelPath,
         content,
         mode: input.mode,
+        overwrite: true,
       });
 
       if (!writeResult.success) return writeResult;
 
       return {
         success: true,
-        output: `Generated and saved ${pathValue}`,
-        display: `Generated and saved ${pathValue}`,
+        output: collision.renamed
+          ? `Generated and saved ${finalRelPath} (renamed from ${pathValue} to avoid collision)`
+          : `Generated and saved ${finalRelPath}`,
+        display: collision.renamed
+          ? `Generated and saved ${finalRelPath} (renamed from ${pathValue} to avoid collision)`
+          : `Generated and saved ${finalRelPath}`,
       };
     }
 

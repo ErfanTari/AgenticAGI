@@ -1,0 +1,199 @@
+{
+  "runId": "20260416125901",
+  "taskName": "html",
+  "model": "qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx",
+  "modelSlug": "qwen3-5-35b-a3b-claude-4-6-opus-engineer-9e-qx64-hi-mlx",
+  "prompt": "Benchmark task: create a complete single-file bakery website for an artisan neighborhood bakery. Save it as one self-contained index.html in a fresh output folder under outputs/trace-diag-html-125901-qwen3-5-35b-a3b-claude-4-6-opus-engineer-9e-qx64-hi-mlx/. If the intended folder already exists, create a new numbered variant instead of overwriting. Keep all CSS and JavaScript inline, and make the result polished, intentional, and visually distinctive.",
+  "startedAt": "2026-04-16T12:59:02.850Z",
+  "finishedAt": "2026-04-16T12:59:34.225Z",
+  "durationMs": 31375,
+  "intent": "skill",
+  "reply": "3-5-35 = -37",
+  "error": null,
+  "events": [
+    {
+      "ts": "2026-04-16T12:59:02.862Z",
+      "clock": "15:59:02",
+      "type": "llm_request",
+      "data": {
+        "system": "You are a message intake classifier. Analyze the user message and respond with XML tags only. Do not explain. Do not reason. No preamble. No JSON.\n\nOutput format:\n<summary>one sentence describing what the message is about</summary>\n<person_name>name of person mentioned, or empty</person_name>\n<person_confidence>0.0 to 1.0</person_confidence>\n<project_name>name of project referenced, or empty</project_name>\n<project_confidence>0.0 to 1.0</project_confidence>\n<time_description>deadline or scheduling description, or empty</time_description>\n<agentic>true or false</agentic>\n<procedure>true or false</procedure>\n<query>true or false</query>\n\nRules:\n- person_name/confidence: set if a specific named person is mentioned (confidence > 0.7 = certain)\n- project_name/confidence: set if a specific project is referenced by name or pronoun (confidence > 0.7 = certain)\n- time_description: set if a deadline, date, or scheduling element is present\n- agentic: true if the message requests an action that requires planning or execution\n- procedure: true if the message describes a method or workflow\n- query: true if the message asks to retrieve or recall information\n\n## FIX F: Identity Lookups Are NOT Agentic\n\nIMPORTANT: Identity lookups (requests for information about a person or thing) are QUERY, not AGENTIC.\nThe following patterns are QUERIES, not agentic tasks:\n- \"who is X\" → query: true, agentic: false\n- \"what is X\" → query: true, agentic: false\n- \"tell me about X\" → query: true, agentic: false\n- \"what does X do\" → query: true, agentic: false\n\nagentic should ONLY be true when the user is asking the system to CREATE, MODIFY, DELETE, BUILD, IMPLEMENT, EXECUTE, or RUN something — not when they are asking for information retrieval.\n\nRespond ONLY with the XML tags above. No JSON. No markdown. No extra text.\n",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a message intake classifier. Analyze the user message and respond with XML tags only. Do not explain. Do not reason. No preamble. No JSON.\n\nOutput format:\n<summary>one sentence describing what the message is about</summary>\n<person_name>name of person mentioned, or empty</person_name>\n<person_confidence>0.0 to 1.0</person_confidence>\n<project_name>name of project referenced, or empty</project_name>\n<project_confidence>0.0 to 1.0</project_confidence>\n<time_description>deadline or scheduling description, or empty</time_description>\n<agentic>true or false</agentic>\n<procedure>true or false</procedure>\n<query>true or false</query>\n\nRules:\n- person_name/confidence: set if a specific named person is mentioned (confidence > 0.7 = certain)\n- project_name/confidence: set if a specific project is referenced by name or pronoun (confidence > 0.7 = certain)\n- time_description: set if a deadline, date, or scheduling element is present\n- agentic: true if the message requests an action that requires planning or execution\n- procedure: true if the message describes a method or workflow\n- query: true if the message asks to retrieve or recall information\n\n## FIX F: Identity Lookups Are NOT Agentic\n\nIMPORTANT: Identity lookups (requests for information about a person or thing) are QUERY, not AGENTIC.\nThe following patterns are QUERIES, not agentic tasks:\n- \"who is X\" → query: true, agentic: false\n- \"what is X\" → query: true, agentic: false\n- \"tell me about X\" → query: true, agentic: false\n- \"what does X do\" → query: true, agentic: false\n\nagentic should ONLY be true when the user is asking the system to CREATE, MODIFY, DELETE, BUILD, IMPLEMENT, EXECUTE, or RUN something — not when they are asking for information retrieval.\n\nRespond ONLY with the XML tags above. No JSON. No markdown. No extra text.\n"
+          },
+          {
+            "role": "user",
+            "content": "Benchmark task: create a complete single-file bakery website for an artisan neighborhood bakery. Save it as one self-contained index.html in a fresh output folder under outputs/trace-diag-html-125901-qwen3-5-35b-a3b-claude-4-6-opus-engineer-9e-qx64-hi-mlx/. If the intended folder already exists, create a new numbered variant instead of overwriting. Keep all CSS and JavaScript inline, and make the result polished, intentional, and visually distinctive."
+          }
+        ],
+        "provider": "diag-local-primary",
+        "model": "qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx",
+        "disableThinking": false,
+        "schemaMode": "none",
+        "requestFormat": "openai_chat"
+      }
+    },
+    {
+      "ts": "2026-04-16T12:59:23.010Z",
+      "clock": "15:59:23",
+      "type": "token_usage",
+      "data": {
+        "inputTokens": 575,
+        "outputTokens": 496,
+        "callCount": 1,
+        "estimatedCostUSD": 0.009165
+      }
+    },
+    {
+      "ts": "2026-04-16T12:59:23.011Z",
+      "clock": "15:59:23",
+      "type": "llm_raw",
+      "data": {
+        "raw": "\n\n<think>\nLet me analyze this user message step by step:\n\n1. **What is the message about?**\n   The user is requesting creation of a complete single-file bakery website. This involves creating/modifying content - it's not just retrieving information.\n\n2. **Person name mentioned?**\n   I don't see any specific person's name mentioned in this message. It's about a bakery website, not about a particular individual.\n\n3. **Project name referenced?**\n   There's no specific project name mentioned. The user is asking to create something new, not reference an existing named project.\n\n4. **Time description?**\n   No deadline or scheduling element is mentioned.\n\n5. **Agentic?**\n   YES - This message requests the system to CREATE a complete website file. The user is asking for creation/modification of content, which falls under the agentic category (CREATE, BUILD, IMPLEMENT).\n\n6. **Procedure?**\n   YES - The message describes specific methods and workflows: create single-file website, save to specific folder path, create numbered variant if folder exists, keep CSS/JS inline, make it polished and visually distinctive. This describes a method/workflow.\n\n7. **Query?**\n   NO - The user is not asking to retrieve or recall information. They're asking for creation of new content.\n\nLet me verify against the rules:\n- person_name/confidence: No specific named person → empty, 0.0\n- project_name/confidence: No specific project referenced by name → empty, 0.0\n- time_description: No deadline/date/scheduling → empty\n- agentic: true (requesting CREATE/BUILD of a website)\n- procedure: true (describes method/workflow with specific steps)\n- query: false (not asking for information retrieval)\n\nThe message is about creating a bakery website with specific technical requirements.\n</think>\n\n<summary>User requests creation of a complete single-file artisan bakery website with inline CSS/JS, saved to a specific folder path.</summary>\n<person_name></person_name>\n<person_confidence>0.0</person_confidence>\n<project_name></project_name>\n<project_confidence>0.0</project_confidence>\n<time_description></time_description>\n<agentic>true</agentic>\n<procedure>true</procedure>\n<query>false</query>",
+        "ms": 20149
+      }
+    },
+    {
+      "ts": "2026-04-16T12:59:23.015Z",
+      "clock": "15:59:23",
+      "type": "llm_stripped",
+      "data": {
+        "stripped": "<summary>User requests creation of a complete single-file artisan bakery website with inline CSS/JS, saved to a specific folder path.</summary>\n<person_name></person_name>\n<person_confidence>0.0</person_confidence>\n<project_name></project_name>\n<project_confidence>0.0</project_confidence>\n<time_description></time_description>\n<agentic>true</agentic>\n<procedure>true</procedure>\n<query>false</query>"
+      }
+    },
+    {
+      "ts": "2026-04-16T12:59:23.019Z",
+      "clock": "15:59:23",
+      "type": "intake_signals",
+      "data": {
+        "personSignal": null,
+        "projectSignal": null,
+        "querySignal": false,
+        "agenticSignal": true
+      }
+    },
+    {
+      "ts": "2026-04-16T12:59:23.019Z",
+      "clock": "15:59:23",
+      "type": "intake",
+      "data": {
+        "summary": "User requests creation of a complete single-file artisan bakery website with inline CSS/JS, saved to a specific folder path.",
+        "signals": {
+          "summary": "User requests creation of a complete single-file artisan bakery website with inline CSS/JS, saved to a specific folder path.",
+          "personSignal": null,
+          "projectSignal": null,
+          "timeSignal": null,
+          "agenticSignal": true,
+          "procedureSignal": true,
+          "querySignal": false
+        },
+        "resolvedCodes": []
+      }
+    },
+    {
+      "ts": "2026-04-16T12:59:23.020Z",
+      "clock": "15:59:23",
+      "type": "llm_request",
+      "data": {
+        "system": "You decompose one user message into semantic intent units.\nOutput ONLY <unit> blocks. No JSON. No explanation. No preamble. No other text.\n\nOutput format:\n<unit>\n<route>conversational|agentic|query</route>\n<content>exact original meaning for that unit</content>\n</unit>\n\nRules:\n- Preserve meaning exactly.\n- Do not correct grammar.\n- Do not paraphrase.\n- Keep units in original order.\n- A unit must be self-contained.\n- Use \"conversational\" for discussion or questions expecting a response.\n- Use \"agentic\" for requests to perform actions or create/modify things.\n- Use \"query\" for requests to retrieve information from memory, history, or project context.\n- Use \"query\" when the message asks about a specific named person, project, or entity that may be stored in memory (WHO, WHAT, PLAN notebooks).\n- Use \"conversational\" only for general knowledge questions with no named entity (e.g. \"what is photosynthesis\", \"how does TCP work\").\n- If the whole message is one intent, return exactly ONE <unit> block.\n- Add <taskType>coding</taskType> inside the unit when it involves writing/editing/debugging/running code, creating or modifying files, or fixing errors in code. Otherwise omit.\n\n## ACTION+QUALIFIER RULE (most important rule)\n\nWhen a message is ONE action described across multiple sentences or clauses, it is ONE unit.\nQualifiers (WHERE to save, HOW to format, IF conditions, style requirements) are NOT separate units.\n\nWRONG — splitting qualifiers into separate units:\nUser: \"Create a bakery website. Save it as index.html in outputs/. Keep CSS inline.\"\nBAD output:\n<unit><route>agentic</route><content>Create a bakery website</content></unit>\n<unit><route>agentic</route><content>Save it as index.html in outputs/</content></unit>\n<unit><route>agentic</route><content>Keep CSS inline</content></unit>\n\nRIGHT — one unit with all qualifiers preserved:\n<unit>\n<route>agentic</route>\n<content>Create a bakery website. Save it as index.html in outputs/. Keep CSS inline.</content>\n<taskType>coding</taskType>\n</unit>\n\nThe test: are these INDEPENDENT goals a person would do separately on different days? If no → ONE unit.\n- \"Create a website\" + \"save it here\" + \"keep CSS inline\" → same goal, ONE unit\n- \"Create a website\" + \"remind me to call Sara\" → different goals, TWO units\n\n## Examples\n\nEXAMPLE — multi-sentence single action (ONE unit):\nUser: \"Create a single-file bakery website. Save as index.html in outputs/bakery/. If the folder exists, use a numbered variant. Keep all CSS and JS inline.\"\nOutput:\n<unit>\n<route>agentic</route>\n<content>Create a single-file bakery website. Save as index.html in outputs/bakery/. If the folder exists, use a numbered variant. Keep all CSS and JS inline.</content>\n<taskType>coding</taskType>\n</unit>\n\nEXAMPLE — two independent goals (TWO units):\nUser: \"Create a calculator app and also remind me to call Sara tomorrow\"\nOutput:\n<unit>\n<route>agentic</route>\n<content>Create a calculator app</content>\n<taskType>coding</taskType>\n</unit>\n<unit>\n<route>agentic</route>\n<content>remind me to call Sara tomorrow</content>\n</unit>\n\nEXAMPLE — general knowledge (ONE unit, conversational):\nUser: \"What is photosynthesis?\"\nOutput:\n<unit>\n<route>conversational</route>\n<content>What is photosynthesis?</content>\n</unit>\n\nEXAMPLE — memory lookup (ONE unit, query):\nUser: \"Who is Sara Ahmadi?\"\nOutput:\n<unit>\n<route>query</route>\n<content>Who is Sara Ahmadi?</content>\n</unit>\n\nCurrent date: 2026-04-16\n\n",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You decompose one user message into semantic intent units.\nOutput ONLY <unit> blocks. No JSON. No explanation. No preamble. No other text.\n\nOutput format:\n<unit>\n<route>conversational|agentic|query</route>\n<content>exact original meaning for that unit</content>\n</unit>\n\nRules:\n- Preserve meaning exactly.\n- Do not correct grammar.\n- Do not paraphrase.\n- Keep units in original order.\n- A unit must be self-contained.\n- Use \"conversational\" for discussion or questions expecting a response.\n- Use \"agentic\" for requests to perform actions or create/modify things.\n- Use \"query\" for requests to retrieve information from memory, history, or project context.\n- Use \"query\" when the message asks about a specific named person, project, or entity that may be stored in memory (WHO, WHAT, PLAN notebooks).\n- Use \"conversational\" only for general knowledge questions with no named entity (e.g. \"what is photosynthesis\", \"how does TCP work\").\n- If the whole message is one intent, return exactly ONE <unit> block.\n- Add <taskType>coding</taskType> inside the unit when it involves writing/editing/debugging/running code, creating or modifying files, or fixing errors in code. Otherwise omit.\n\n## ACTION+QUALIFIER RULE (most important rule)\n\nWhen a message is ONE action described across multiple sentences or clauses, it is ONE unit.\nQualifiers (WHERE to save, HOW to format, IF conditions, style requirements) are NOT separate units.\n\nWRONG — splitting qualifiers into separate units:\nUser: \"Create a bakery website. Save it as index.html in outputs/. Keep CSS inline.\"\nBAD output:\n<unit><route>agentic</route><content>Create a bakery website</content></unit>\n<unit><route>agentic</route><content>Save it as index.html in outputs/</content></unit>\n<unit><route>agentic</route><content>Keep CSS inline</content></unit>\n\nRIGHT — one unit with all qualifiers preserved:\n<unit>\n<route>agentic</route>\n<content>Create a bakery website. Save it as index.html in outputs/. Keep CSS inline.</content>\n<taskType>coding</taskType>\n</unit>\n\nThe test: are these INDEPENDENT goals a person would do separately on different days? If no → ONE unit.\n- \"Create a website\" + \"save it here\" + \"keep CSS inline\" → same goal, ONE unit\n- \"Create a website\" + \"remind me to call Sara\" → different goals, TWO units\n\n## Examples\n\nEXAMPLE — multi-sentence single action (ONE unit):\nUser: \"Create a single-file bakery website. Save as index.html in outputs/bakery/. If the folder exists, use a numbered variant. Keep all CSS and JS inline.\"\nOutput:\n<unit>\n<route>agentic</route>\n<content>Create a single-file bakery website. Save as index.html in outputs/bakery/. If the folder exists, use a numbered variant. Keep all CSS and JS inline.</content>\n<taskType>coding</taskType>\n</unit>\n\nEXAMPLE — two independent goals (TWO units):\nUser: \"Create a calculator app and also remind me to call Sara tomorrow\"\nOutput:\n<unit>\n<route>agentic</route>\n<content>Create a calculator app</content>\n<taskType>coding</taskType>\n</unit>\n<unit>\n<route>agentic</route>\n<content>remind me to call Sara tomorrow</content>\n</unit>\n\nEXAMPLE — general knowledge (ONE unit, conversational):\nUser: \"What is photosynthesis?\"\nOutput:\n<unit>\n<route>conversational</route>\n<content>What is photosynthesis?</content>\n</unit>\n\nEXAMPLE — memory lookup (ONE unit, query):\nUser: \"Who is Sara Ahmadi?\"\nOutput:\n<unit>\n<route>query</route>\n<content>Who is Sara Ahmadi?</content>\n</unit>\n\nCurrent date: 2026-04-16\n\n"
+          },
+          {
+            "role": "user",
+            "content": "Benchmark task: create a complete single-file bakery website for an artisan neighborhood bakery. Save it as one self-contained index.html in a fresh output folder under outputs/trace-diag-html-125901-qwen3-5-35b-a3b-claude-4-6-opus-engineer-9e-qx64-hi-mlx/. If the intended folder already exists, create a new numbered variant instead of overwriting. Keep all CSS and JavaScript inline, and make the result polished, intentional, and visually distinctive."
+          }
+        ],
+        "provider": "diag-local-primary",
+        "model": "qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx",
+        "disableThinking": false,
+        "schemaMode": "none",
+        "requestFormat": "openai_chat"
+      }
+    },
+    {
+      "ts": "2026-04-16T12:59:34.066Z",
+      "clock": "15:59:34",
+      "type": "token_usage",
+      "data": {
+        "inputTokens": 1613,
+        "outputTokens": 1004,
+        "callCount": 2,
+        "estimatedCostUSD": 0.019899
+      }
+    },
+    {
+      "ts": "2026-04-16T12:59:34.067Z",
+      "clock": "15:59:34",
+      "type": "llm_raw",
+      "data": {
+        "raw": "\n\n<think>\nLet me analyze this user message carefully to determine the appropriate unit structure.\n\nThe message contains:\n1. \"create a complete single-file bakery website for an artisan neighborhood bakery\" - This is the main action\n2. \"Save it as one self-contained index.html in a fresh output folder under outputs/trace-diag-html-125901-qwen3-5-35b-a3b-claude-4-6-opus-engineer-9e-qx64-hi-mlx/\" - This is a qualifier about where to save\n3. \"If the intended folder already exists, create a new numbered variant instead of overwriting\" - This is another qualifier about handling existing folders\n4. \"Keep all CSS and JavaScript inline, and make the result polished, intentional, and visually distinctive\" - These are style/format qualifiers\n\nAccording to the ACTION+QUALIFIER RULE, this is ONE action described across multiple sentences/clauses. The qualifiers (WHERE to save, HOW to format, IF conditions, style requirements) are NOT separate units.\n\nThis is clearly an agentic task (creating something), and it involves writing code, so I should include <taskType>coding</taskType>.\n\nThe route should be \"agentic\" since this is a request to perform an action (create a website).\n\nLet me verify:\n- Is this one independent goal? Yes - all parts describe aspects of creating the same website\n- Would a person do these separately on different days? No - they're all part of the same website creation task\n- Does it involve coding? Yes - creating a website with HTML, CSS, and JavaScript\n\nThis should be ONE unit with all the content preserved exactly as written.\n</think>\n\n<unit>\n<route>agentic</route>\n<content>Benchmark task: create a complete single-file bakery website for an artisan neighborhood bakery. Save it as one self-contained index.html in a fresh output folder under outputs/trace-diag-html-125901-qwen3-5-35b-a3b-claude-4-6-opus-engineer-9e-qx64-hi-mlx/. If the intended folder already exists, create a new numbered variant instead of overwriting. Keep all CSS and JavaScript inline, and make the result polished, intentional, and visually distinctive.</content>\n<taskType>coding</taskType>\n</unit>",
+        "ms": 11046
+      }
+    },
+    {
+      "ts": "2026-04-16T12:59:34.068Z",
+      "clock": "15:59:34",
+      "type": "llm_stripped",
+      "data": {
+        "stripped": "<unit>\n<route>agentic</route>\n<content>Benchmark task: create a complete single-file bakery website for an artisan neighborhood bakery. Save it as one self-contained index.html in a fresh output folder under outputs/trace-diag-html-125901-qwen3-5-35b-a3b-claude-4-6-opus-engineer-9e-qx64-hi-mlx/. If the intended folder already exists, create a new numbered variant instead of overwriting. Keep all CSS and JavaScript inline, and make the result polished, intentional, and visually distinctive.</content>\n<taskType>coding</taskType>\n</unit>"
+      }
+    },
+    {
+      "ts": "2026-04-16T12:59:34.069Z",
+      "clock": "15:59:34",
+      "type": "decomposition",
+      "data": {
+        "units": [
+          {
+            "id": "unit_1",
+            "route": "agentic",
+            "content": "Benchmark task: create a complete single-file bakery website for an artisan neighborhood bakery. Save it as one self-contained index.html in a fresh output folder under outputs/trace-diag-html-125901-qwen3-5-35b-a3b-claude-4-6-opus-engineer-9e-qx64-hi-mlx/. If the intended folder already exists, create a new numbered variant instead of overwriting. Keep all CSS and JavaScript inline, and make the result polished, intentional, and visually distinctive.",
+            "order": 0,
+            "taskType": "coding"
+          }
+        ]
+      }
+    }
+  ],
+  "logs": [
+    {
+      "level": "log",
+      "text": "[llm] Provider: diag-local-primary (qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx) — 20149ms",
+      "ts": "2026-04-16T12:59:23.010Z"
+    },
+    {
+      "level": "log",
+      "text": "[llm] Provider: diag-local-primary (qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx) — 11046ms",
+      "ts": "2026-04-16T12:59:34.066Z"
+    }
+  ],
+  "compactTrace": "[15:59:02] llm_request\n2 msgs  ·  diag-local-primary/qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx\n\n[15:59:23] token_usage\n{\"inputTokens\":575,\"outputTokens\":496,\"callCount\":1,\"estimatedCostUSD\":0.009165}\n\n[15:59:23] llm_raw\n{\"raw\":\"\\n\\n<think>\\nLet me analyze this user message step by step:\\n\\n1. **What is the message about?**\\n The user is requesting creation of a complete single-file bakery website…\n\n[15:59:23] llm_stripped\n{\"stripped\":\"<summary>User requests creation of a complete single-file artisan bakery website with inline CSS/JS, saved to a specific folder path.</summary>\\n<person_name></person…\n\n[15:59:23] intake_signals\n{\"personSignal\":null,\"projectSignal\":null,\"querySignal\":false,\"agenticSignal\":true}\n\n[15:59:23] intake\nUser requests creation of a complete single-file artisan bakery website with inline CSS/JS, saved to a specific folder path.\n\n[15:59:23] llm_request\n2 msgs  ·  diag-local-primary/qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx\n\n[15:59:34] token_usage\n{\"inputTokens\":1613,\"outputTokens\":1004,\"callCount\":2,\"estimatedCostUSD\":0.019899}\n\n[15:59:34] llm_raw\n{\"raw\":\"\\n\\n<think>\\nLet me analyze this user message carefully to determine the appropriate unit structure.\\n\\nThe message contains:\\n1. \\\"create a complete single-file bakery we…\n\n[15:59:34] llm_stripped\n{\"stripped\":\"<unit>\\n<route>agentic</route>\\n<content>Benchmark task: create a complete single-file bakery website for an artisan neighborhood bakery. Save it as one self-containe…\n\n[15:59:34] decomposition\n{\"units\":[{\"id\":\"unit_1\",\"route\":\"agentic\",\"content\":\"Benchmark task: create a complete single-file bakery website for an artisan neighborhood bakery. Save it as one self-containe…",
+  "summary": {
+    "durationMs": 31375,
+    "intent": "skill",
+    "errorCount": 0,
+    "errors": [],
+    "llmRequestCount": 2,
+    "llmTargets": [
+      "diag-local-primary:qwen3.5-35b-a3b-claude-4.6-opus-engineer-9e-qx64-hi-mlx"
+    ],
+    "narrationCount": 0,
+    "skillCalls": 0,
+    "skillResults": 0,
+    "corruptedIntake": false,
+    "agenticFalse": false,
+    "typeCounts": {
+      "llm_request": 2,
+      "token_usage": 2,
+      "llm_raw": 2,
+      "llm_stripped": 2,
+      "intake_signals": 1,
+      "intake": 1,
+      "decomposition": 1
+    }
+  }
+}

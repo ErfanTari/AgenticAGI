@@ -170,154 +170,8 @@ export function stripThinkingTags(text) {
 export function sanitizeFinalOutput(text) {
     let cleaned = stripThinkingTags(text);
     // Remove model control tokens that should never appear in output
-    // Handles both "<|tool_call|>" style and "<tool_call|>" style variants seen in some local models.
     cleaned = cleaned.replace(/<\|?(?:tool_call|tool_response|channel|im_start|im_end|endoftext|pad)[^>]*\|?>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response|channel)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response|channel)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response|channel)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response|channel)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response|channel)\|>/gi, '');
-    // Also strip the common closing-token fragments like "<tool_call|>" and "<tool_response|>"
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
-    cleaned = cleaned.replace(/<(?:tool_call|tool_response)\|>/gi, '');
+    // (closing-token variant covered by pattern above)
     // Remove pseudo-tool-call narrative lines: lines that look like the model is narrating its own tool use
     cleaned = cleaned.replace(/^(?:\*\*)?(?:Calling|Using|Executing|Running)\s+(?:tool|function|memory_read|memory_write)[:\s].+$/gm, '');
     // Remove lines that are clearly internal thought preamble
@@ -347,36 +201,40 @@ async function callOpenAICompatibleEndpoint(endpoint, model, apiKey, messages, o
         headers.Authorization = `Bearer ${apiKey}`;
     // Clone messages to avoid mutating the original array
     const workingMessages = messages.map(m => ({ ...m }));
+    // For OpenAI-compatible endpoints, map tool definitions → responseSchema fallback
+    const effectiveOptions = options?.tools?.length
+        ? { ...options, responseSchema: options.tools[0].input_schema, tools: undefined, toolChoice: undefined }
+        : options;
     const requestBody = {
         model,
         messages: workingMessages,
-        max_tokens: options?.maxTokens ?? defaultMaxTokens,
+        max_tokens: effectiveOptions?.maxTokens ?? defaultMaxTokens,
         temperature,
     };
     // LM Studio / llama.cpp thinking suppression.
     // Enabled when the call site passes disableThinking:true OR when DISABLE_THINKING=true
     // in .env (global fallback). Only applied to primary/local calls — never to cloud fallback.
-    const shouldDisableThinking = options?.disableThinking === true ||
-        (options?.disableThinking === undefined && process.env.DISABLE_THINKING === 'true');
+    const shouldDisableThinking = effectiveOptions?.disableThinking === true ||
+        (effectiveOptions?.disableThinking === undefined && process.env.DISABLE_THINKING === 'true');
     if (shouldDisableThinking && (label === 'primary' || label === 'local-primary')) {
         requestBody.thinking = { type: 'disabled' };
     }
     // Only send response_format to non-primary (cloud/fallback) providers.
     // For the primary local model, inject schema as a prompt instruction instead.
     const isPrimary = label === 'primary' || label === 'local-primary';
-    if (options?.responseSchema && !isPrimary) {
+    if (effectiveOptions?.responseSchema && !isPrimary) {
         requestBody.response_format = {
             type: 'json_schema',
             json_schema: {
                 name: 'response',
                 strict: true,
-                schema: options.responseSchema,
+                schema: effectiveOptions.responseSchema,
             },
         };
     }
-    else if (options?.responseSchema && isPrimary) {
+    else if (effectiveOptions?.responseSchema && isPrimary) {
         // For local models: inject schema as instruction in system prompt
-        const schemaInstruction = `\nRespond ONLY with valid JSON matching this schema:\n${JSON.stringify(options.responseSchema, null, 2)}\nNo other text.`;
+        const schemaInstruction = `\nRespond ONLY with valid JSON matching this schema:\n${JSON.stringify(effectiveOptions.responseSchema, null, 2)}\nNo other text.`;
         const systemMsg = workingMessages.find(m => m.role === 'system');
         if (systemMsg) {
             systemMsg.content += schemaInstruction;
@@ -392,15 +250,15 @@ async function callOpenAICompatibleEndpoint(endpoint, model, apiKey, messages, o
         signal,
     });
     // Retry-on-400: if 400 AND we sent response_format, retry without it
-    if (response.status === 400 && options?.responseSchema && !isPrimary) {
+    if (response.status === 400 && effectiveOptions?.responseSchema && !isPrimary) {
         const retryBody = {
             model,
             messages: workingMessages,
-            max_tokens: options?.maxTokens ?? defaultMaxTokens,
+            max_tokens: effectiveOptions?.maxTokens ?? defaultMaxTokens,
             temperature,
         };
         // Inject schema as prompt instruction instead
-        const schemaInstruction = `\nRespond ONLY with valid JSON matching this schema:\n${JSON.stringify(options.responseSchema, null, 2)}\nNo other text.`;
+        const schemaInstruction = `\nRespond ONLY with valid JSON matching this schema:\n${JSON.stringify(effectiveOptions.responseSchema, null, 2)}\nNo other text.`;
         const systemMsg = workingMessages.find(m => m.role === 'system');
         if (systemMsg) {
             systemMsg.content += schemaInstruction;
@@ -453,6 +311,23 @@ async function callAnthropicProfile(profile, messages, options) {
     }
     const systemParts = messages.filter(m => m.role === 'system').map(m => m.content);
     const nonSystem = messages.filter(m => m.role !== 'system');
+    const requestBody = {
+        model: profile.model,
+        system: systemParts.join('\n'),
+        messages: nonSystem,
+        max_tokens: options?.maxTokens ?? profile.maxTokens,
+    };
+    // Tool use: forces Anthropic to respond with a tool_use content block (guaranteed valid JSON)
+    if (options?.tools && options.tools.length > 0) {
+        requestBody.tools = options.tools.map(t => ({
+            name: t.name,
+            description: t.description ?? '',
+            input_schema: t.input_schema,
+        }));
+        if (options.toolChoice) {
+            requestBody.tool_choice = { type: 'tool', name: options.toolChoice };
+        }
+    }
     const response = await fetch(profile.endpoint, {
         method: 'POST',
         headers: {
@@ -460,19 +335,29 @@ async function callAnthropicProfile(profile, messages, options) {
             'x-api-key': profile.apiKey,
             'anthropic-version': '2023-06-01',
         },
-        body: JSON.stringify({
-            model: profile.model,
-            system: systemParts.join('\n'),
-            messages: nonSystem,
-            max_tokens: options?.maxTokens ?? profile.maxTokens,
-        }),
+        body: JSON.stringify(requestBody),
     });
     if (!response.ok) {
         throw new Error(`${profile.label}: ${response.status} ${response.statusText}`);
     }
     const data = await response.json();
+    // Extract tool_use input as clean JSON string (no sanitization needed)
+    if (options?.tools) {
+        const toolBlock = data.content.find((b) => b.type === 'tool_use');
+        if (toolBlock) {
+            return {
+                content: JSON.stringify(toolBlock.input),
+                inputTokens: data.usage?.input_tokens ?? 0,
+                outputTokens: data.usage?.output_tokens ?? 0,
+            };
+        }
+    }
+    const textBlock = data.content.find((b) => b.type === 'text');
+    if (!textBlock) {
+        throw new Error(`${profile.label}: no text or tool_use content block in response`);
+    }
     return {
-        content: data.content[0].text,
+        content: textBlock.text,
         inputTokens: data.usage?.input_tokens ?? 0,
         outputTokens: data.usage?.output_tokens ?? 0,
     };

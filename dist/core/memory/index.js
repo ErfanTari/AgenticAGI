@@ -347,6 +347,13 @@ export function initDatabase(dbPath) {
       plan_json  TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS pending_user_inputs (
+      id         INTEGER PRIMARY KEY CHECK (id = 1),
+      question   TEXT NOT NULL,
+      context    TEXT,
+      created_at TEXT NOT NULL
+    );
   `);
     // Phase 5 migration: add due_date column for existing databases
     try {
@@ -576,4 +583,24 @@ export function loadPendingPlan() {
 export function clearPendingPlan() {
     const d = getDb();
     d.prepare('DELETE FROM pending_plans WHERE id = 1').run();
+}
+export function savePendingUserInput(question, context) {
+    const d = getDb();
+    d.prepare('INSERT OR REPLACE INTO pending_user_inputs (id, question, context, created_at) VALUES (1, ?, ?, ?)').run(question, context ?? null, new Date().toISOString());
+}
+export function loadPendingUserInput() {
+    try {
+        const d = getDb();
+        const row = d.prepare('SELECT question, context, created_at FROM pending_user_inputs WHERE id = 1').get();
+        if (!row)
+            return null;
+        return { question: row.question, context: row.context ?? undefined, createdAt: row.created_at };
+    }
+    catch {
+        return null;
+    }
+}
+export function clearPendingUserInput() {
+    const d = getDb();
+    d.prepare('DELETE FROM pending_user_inputs WHERE id = 1').run();
 }

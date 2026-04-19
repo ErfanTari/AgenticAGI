@@ -1,0 +1,13 @@
+{
+  "name": "trace-diag-coding-qwenprobe",
+  "version": "1.0.0",
+  "description": "Node.js Express server with GET /ok endpoint",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

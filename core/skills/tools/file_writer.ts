@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { MCPSkill, SkillResult } from '../types.js';
+import { resolveCollision } from '../../utils/path-collision.js';
+import { transparency } from '../../transparency.js';
 
 function normalizeWorkspacePath(inputPath: string): string {
   return inputPath
@@ -115,33 +117,43 @@ export const fileWriter: MCPSkill = {
         }
       }
 
-      // Guard: prevent overwriting existing files unless explicitly requested
-      if (fs.existsSync(resolved) && !overwrite) {
-        return {
-          success: false,
-          output: '',
-          error: 'File already exists. Use patch_file for targeted modifications, or pass overwrite: true to replace the entire file.',
-        };
-      }
+      // Resolve filename collisions — append mode always targets original path (intentional),
+      // write mode auto-renames unless overwrite: true.
+      const collision = mode === 'append'
+        ? { finalPath: resolved, renamed: false, originalPath: resolved }
+        : resolveCollision(resolved, { overwrite });
+      const finalResolved = collision.finalPath;
+      const finalFilePath = path.relative(WORKSPACE_ROOT, finalResolved);
 
       // Create parent directories if needed
-      const dirName = path.dirname(resolved);
+      const dirName = path.dirname(finalResolved);
       if (!fs.existsSync(dirName)) {
         fs.mkdirSync(dirName, { recursive: true });
       }
 
+      // Emit rename event before writing
+      if (collision.renamed) {
+        transparency.emit({ type: 'filename_auto_renamed', data: { original: collision.originalPath, final: finalResolved, skill: 'file_writer' } });
+      }
+
       // Write or append
       if (mode === 'append') {
-        fs.appendFileSync(resolved, content, 'utf-8');
+        fs.appendFileSync(finalResolved, content, 'utf-8');
         return {
           success: true,
-          output: `Appended to ${filePath}`,
+          output: `Appended to ${finalFilePath}`,
+          display: `Appended to ${finalFilePath}`,
         };
       } else {
-        fs.writeFileSync(resolved, content, 'utf-8');
+        fs.writeFileSync(finalResolved, content, 'utf-8');
         return {
           success: true,
-          output: `Written to ${filePath}`,
+          output: collision.renamed
+            ? `Written to ${finalFilePath} (renamed from ${filePath} to avoid collision)`
+            : `Written to ${finalFilePath}`,
+          display: collision.renamed
+            ? `File written to ${finalFilePath} (renamed from ${filePath} to avoid collision)`
+            : `Written to ${finalFilePath}`,
         };
       }
     } catch (err) {

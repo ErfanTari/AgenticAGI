@@ -1,0 +1,59 @@
+[16:04:48] llm_request
+2 msgs  ·  diag-local-primary/glm-4.7-flash-mlx
+
+[16:05:11] token_usage
+{"inputTokens":519,"outputTokens":599,"callCount":1,"estimatedCostUSD":0.010542}
+
+[16:05:11] llm_raw
+{"raw":"Use a generic placeholder image for product images.\n\n<summary>create a complete single-file bakery website\\\\'s\\` artisan neighborhood bakery</summary>\n<person_name><…
+
+[16:05:11] llm_stripped
+{"stripped":"Use a generic placeholder image for product images.\n\n<summary>create a complete single-file bakery website\\\\'s\\` artisan neighborhood bakery</summary>\n<person_n…
+
+[16:05:11] intake_signals
+{"personSignal":null,"projectSignal":null,"querySignal":false,"agenticSignal":false}
+
+[16:05:11] intake
+create a complete single-file bakery website\\'s\` artisan neighborhood bakery
+
+[16:05:11] llm_request
+2 msgs  ·  diag-local-primary/glm-4.7-flash-mlx
+
+[16:06:00] token_usage
+{"inputTokens":1445,"outputTokens":2598,"callCount":2,"estimatedCostUSD":0.043304999999999996}
+
+[16:06:00] llm_raw
+{"raw":"The design should be\\\\n- use aSass-like CSS variables for them`\n\n<unit>\n<route>ag\n```\nimport os\n\ndef create_bakery_website():\n # Create the directory if itSass-l…
+
+[16:06:00] llm_stripped
+{"stripped":"The design should be\\\\n- use aSass-like CSS variables for them`\n\n<unit>\n<route>ag\n```\nimport os\n\ndef create_bakery_website():\n # Create the directory if itS…
+
+[16:06:00] decomposition_retry
+{"message":"Benchmark task: create a complete single-file bakery website for an artisan neighborhood bakery. Sav","repairCount":1,"reason":"no_valid_units"}
+
+[16:06:00] llm_request
+6 msgs  ·  diag-local-primary/glm-4.7-flash-mlx
+
+[16:06:47] token_usage
+{"inputTokens":1689,"outputTokens":4597,"callCount":3,"estimatedCostUSD":0.074022}
+
+[16:06:47] llm_raw
+{"raw":"The bakery is called \"The Golden Crumb\" (https://www.golden-crumb.com). It *must* use the only available color palette: #F2E8D5 (cream), #A6B090 (s\\\\u000a\\n\\u001b[1m…
+
+[16:06:47] llm_stripped
+{"stripped":"The bakery is called \"The Golden Crumb\" (https://www.golden-crumb.com). It *must* use the only available color palette: #F2E8D5 (cream), #A6B090 (s\\\\u000a\\n\\u00…
+
+[16:06:47] decomposition
+{"units":[{"id":"unit_1","route":"agentic","content":"Benchmark task: create a complete single-file bakery website for an artisan neighborhood bakery. Save it as one self-containe…
+
+[16:06:47] unit_memory_search
+{"unit":{"id":"unit_1","route":"agentic","content":"Benchmark task: create a complete single-file bakery website for an artisan neighborhood bakery. Save it as one self-contained …
+
+[16:06:47] working_memory_created
+{"taskId":"wm-1776344807324","projectCode":null}
+
+[16:06:47] llm_request
+2 msgs  ·  diag-local-primary/glm-4.7-flash-mlx
+
+[16:10:28] error
+glm-4.7-flash-mlx failed after 221151ms: Error: diag-local-primary: 400 Bad Request
