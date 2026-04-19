@@ -3,8 +3,8 @@ code: PLAN.EX-000019
 nb: PLAN
 type: EX
 name: artisan-bakery-spec
-status: active
-updated: 2026-04-18
+status: failed
+updated: 2026-04-19
 summary: Specification for a polished, single-file artisan bakery website
 importance_score: 0
 utility_score: 0

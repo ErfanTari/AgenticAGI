@@ -11,6 +11,18 @@ import { scheduleMemoryCommit } from './versioning.js';
 import { localDateString } from '../utils/date.js';
 import { sessionCache } from './session-cache.js';
 import { upsertPointerEntry } from './pointer-index.js';
+import { isMemoryFullyDisabled } from '../memory-mode.js';
+
+const MEMORY_DISABLED_SENTINEL: IndexEntry = {
+  code: 'MEMORY_DISABLED',
+  nb: '',
+  type: '',
+  name: '',
+  status: 'active',
+  updated: '',
+  path: '',
+  summary: '',
+};
 
 // --- Phase 15: Identity Fingerprint Extraction ---
 
@@ -313,6 +325,7 @@ function defaultBodyFor(nb: string, type: string): string | null {
 }
 
 export function createEntry(input: CreateEntryInput): IndexEntry {
+  if (isMemoryFullyDisabled()) return { ...MEMORY_DISABLED_SENTINEL, nb: input.nb, type: input.type, name: input.name };
   const d = getDb();
 
   // Step 1: Generate code (atomic counter increment in its own implicit transaction)
@@ -397,6 +410,7 @@ export function createEntry(input: CreateEntryInput): IndexEntry {
 export function upsertEntry(
   input: CreateEntryInput,
 ): { code: string; created: boolean } {
+  if (isMemoryFullyDisabled()) return { code: 'MEMORY_DISABLED', created: false };
   const d = getDb();
 
   // Phase 15 Stage 1: Fingerprint-based dedup for WHO entries

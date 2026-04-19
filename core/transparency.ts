@@ -108,6 +108,8 @@ export type TransparencyEvent =
   // Memory toggle sprint
   | { type: 'memory_mode'; data: { mode: import('./memory-mode.js').MemoryMode } }
   | { type: 'filename_auto_renamed'; data: { original: string; final: string; skill: string } }
+  | { type: 'memory_disabled_drop'; data: { taskType: string } }
+  | { type: 'heartbeat_skipped_memory_disabled'; data: Record<string, never> }
   // Planner JSON path telemetry
   | { type: 'plan_json_parse_failed'; data: { attempt: number; error: string } }
   | { type: 'plan_parser_fallback_used'; data: { attempt: number } }

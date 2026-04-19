@@ -19,6 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PATHS } from '../../config/agent.config.js';
 import { localDateString } from '../utils/date.js';
+import { isMemoryFullyDisabled } from '../memory-mode.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -227,6 +228,7 @@ function writeFullIndex(activeLoops: ActiveLoopEntry[], knownEntries: PointerEnt
  * Never throws.
  */
 export function upsertPointerEntry(entry: PointerEntry): void {
+  if (isMemoryFullyDisabled()) return;
   try {
     const content = loadPointerIndex();
     const activeLoops = parseActiveLoopEntries(content);
@@ -256,6 +258,7 @@ export function upsertPointerEntry(entry: PointerEntry): void {
  * Remove a known pointer entry by code. Never throws.
  */
 export function removePointerEntry(code: string): void {
+  if (isMemoryFullyDisabled()) return;
   try {
     const content = loadPointerIndex();
     const activeLoops = parseActiveLoopEntries(content);
@@ -274,6 +277,7 @@ export function removePointerEntry(code: string): void {
  * Never throws.
  */
 export function upsertActiveLoop(entry: ActiveLoopEntry): void {
+  if (isMemoryFullyDisabled()) return;
   try {
     const content = loadPointerIndex();
     const loops = parseActiveLoopEntries(content);
@@ -302,6 +306,7 @@ export function upsertActiveLoop(entry: ActiveLoopEntry): void {
  * Never throws.
  */
 export function removeActiveLoop(code: string): void {
+  if (isMemoryFullyDisabled()) return;
   try {
     const content = loadPointerIndex();
     const loops = parseActiveLoopEntries(content).filter(e => e.code !== code);

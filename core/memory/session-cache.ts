@@ -9,12 +9,14 @@ import type { IndexEntry } from './types.js';
 import { transparency } from '../transparency.js';
 import { upsertPointerEntry } from './pointer-index.js';
 import { localDateString } from '../utils/date.js';
+import { isMemoryFullyDisabled } from '../memory-mode.js';
 
 class SessionCache {
   private entries: Map<string, IndexEntry> = new Map();
   private nameIndex: Map<string, string> = new Map();
 
   set(code: string, entry: IndexEntry): void {
+    if (isMemoryFullyDisabled()) return;
     // FIX 6: Never cache terminal PLAN.EX entries — they cannot be resumed and
     // should not appear in context. filterTerminalPlanEx handles the read side,
     // but we should not store them at all.

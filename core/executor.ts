@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { isMemoryFullyDisabled, appendScratchpad, clearScratchpad } from './memory-mode.js';
+import { getCurrentRequestId } from './transparency.js';
 import { promptLoader } from './prompt-loader.js';
 import { TOKEN_BUDGETS } from '../config/agent.config.js';
 import type { LLMHandler, Message } from './types.js';
@@ -320,7 +322,7 @@ export async function writeMilestoneMemoryCycle(
   const linkedCodes = collectLinkedCodes(completedSteps);
 
   let eventCode: string | undefined;
-  try {
+  if (!isMemoryFullyDisabled()) try {
     eventCode = await writeEpisodicEvent({
       trigger: plan.goal,
       task_name: `${plan.goal} — ${milestone.title}`,
@@ -713,11 +715,16 @@ export async function executePlan(
   const initialPlanEx = buildInitialPlanEX(plan, milestones);
   let planExCode: string | undefined;
   let planEx: PlanEXEntry = { ...initialPlanEx, code: '' };
-  try {
-    planExCode = createPlanEX(initialPlanEx);
-    planEx = loadActivePlanEX() ?? { ...initialPlanEx, code: planExCode };
-  } catch {
-    planEx = { ...initialPlanEx, code: '' };
+  const _requestId = getCurrentRequestId() ?? plan.createdAt ?? Date.now().toString();
+  if (isMemoryFullyDisabled()) {
+    appendScratchpad(_requestId, 'plan-header', JSON.stringify(plan.milestones));
+  } else {
+    try {
+      planExCode = createPlanEX(initialPlanEx);
+      planEx = loadActivePlanEX() ?? { ...initialPlanEx, code: planExCode };
+    } catch {
+      planEx = { ...initialPlanEx, code: '' };
+    }
   }
 
   // Write initial active loop entry into MEMORY.md so queryLoop and /resume
@@ -928,6 +935,9 @@ export async function executePlan(
     if (milestoneEscalated || milestoneRevised) continue; // Skip milestone completion logic
 
     completedMilestones.push(milestone.id);
+    if (isMemoryFullyDisabled()) {
+      try { appendScratchpad(_requestId, `milestone-${milestoneIndex}`, milestone.title); } catch { /* best-effort */ }
+    }
     // Phase 15: enqueue milestone_complete event (fire-and-forget)
     memoryAgent.enqueue({
       type: 'milestone_complete',
@@ -1009,8 +1019,13 @@ export async function executePlan(
     try { removeActiveLoop(planExCode); } catch { /* best-effort */ }
   }
 
+  // Clear ephemeral scratchpad if memory is disabled.
+  if (isMemoryFullyDisabled()) {
+    try { clearScratchpad(_requestId); } catch { /* best-effort */ }
+  }
+
   try {
-    savePlanEX({
+    if (!isMemoryFullyDisabled()) savePlanEX({
       ...planEx,
       status: 'complete',
       abort_reason: undefined,
@@ -1033,7 +1048,7 @@ export async function executePlan(
   });
 
   // FIX-4: Safety — ensure PLAN.EX is in terminal state if it was created
-  if (planEx.code) {
+  if (planEx.code && !isMemoryFullyDisabled()) {
     try {
       const db = getDb();
       const currentPlanEx = db.prepare(

@@ -1,4 +1,5 @@
 import { EMBEDDING_CONFIG } from '../../config/agent.config.js';
+import { isMemoryFullyDisabled } from '../memory-mode.js';
 import { fetchByCode, getEntryByCode, queryEntries } from './mod.js';
 import { searchBM25 } from './fts.js';
 import { fetchEmbeddings, searchVectors } from './embeddings.js';
@@ -727,6 +728,15 @@ export async function searchMemoryForUnits(
   alreadyResolvedCodes?: string[],
   options?: UnitSearchOptions,
 ): Promise<UnitMemoryResult[]> {
+  if (isMemoryFullyDisabled()) {
+    return units.map(unit => ({
+      unitId: unit.id,
+      strategy: 'disabled' as const,
+      confidence: 0,
+      entries: [],
+      contents: [],
+    }));
+  }
   return Promise.all(units.map(async unit => {
     try {
       return await searchUnit(unit, alreadyResolvedCodes, options);

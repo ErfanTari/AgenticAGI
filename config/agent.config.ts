@@ -117,6 +117,16 @@ export const ANTHROPIC_CLOUD_CONFIG = process.env.ANTHROPIC_API_KEY
     }
   : null;
 
+// --- Known cloud models (used by UI dropdown) ---
+export const KNOWN_CLOUD_MODELS = [
+  { id: 'gemini', label: 'Gemini 2.5 Flash', provider: 'gemini' },
+  { id: 'claude', label: 'Claude Sonnet 4.6', provider: 'anthropic' },
+  { id: 'gemma-4-26b', label: 'Gemma 4 26B', provider: 'gemini' },
+  { id: 'gemma-4-31b', label: 'Gemma 4 31B', provider: 'gemini' },
+] as const;
+
+export type KnownCloudModelId = typeof KNOWN_CLOUD_MODELS[number]['id'];
+
 // --- Planner + Executor LLM configs ---
 const _plannerModel = process.env.PLANNER_MODEL || _llmModel;
 const _executorModel = process.env.EXECUTOR_MODEL || _llmModel;

@@ -3,8 +3,8 @@ code: PLAN.EX-000014
 nb: PLAN
 type: EX
 name: bakery-website-spec
-status: active
-updated: 2026-04-18
+status: failed
+updated: 2026-04-19
 summary: Specification for an artisan neighborhood bakery single-file website
 importance_score: 0
 utility_score: 0

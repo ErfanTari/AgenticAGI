@@ -20,7 +20,7 @@ import { extractMemoryMetadata } from './memory/lifecycle.js';
 import { quickResolve } from './memory/quick-resolve.js';
 import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
 import { transparency, withRequestId } from './transparency.js';
-import { getMemoryMode } from './memory-mode.js';
+import { getMemoryMode, isMemoryFullyDisabled } from './memory-mode.js';
 import { runIntake } from './intake.js';
 import { createWorkingMemory, loadWorkingMemory } from './memory/working-memory.js';
 import { setPendingConfirmationPlan as skillSetPendingPlan, clearPendingConfirmationPlan as skillClearPendingPlan, } from './skills/tools/confirm_plan.js';
@@ -1061,7 +1061,8 @@ export function processMessage(message, history, options) {
 }
 async function _processMessageImpl(message, history, options) {
     isProcessingMessage = true;
-    recordActivity(); // Phase 16: track last activity for AutoDream idle detection
+    if (!isMemoryFullyDisabled())
+        recordActivity(); // Phase 16: track last activity for AutoDream idle detection
     transparency.emit({ type: 'memory_mode', data: { mode: getMemoryMode() } });
     let decomposition = null;
     try {

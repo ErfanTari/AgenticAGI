@@ -10,6 +10,17 @@ import { scheduleMemoryCommit } from './versioning.js';
 import { localDateString } from '../utils/date.js';
 import { sessionCache } from './session-cache.js';
 import { upsertPointerEntry } from './pointer-index.js';
+import { isMemoryFullyDisabled } from '../memory-mode.js';
+const MEMORY_DISABLED_SENTINEL = {
+    code: 'MEMORY_DISABLED',
+    nb: '',
+    type: '',
+    name: '',
+    status: 'active',
+    updated: '',
+    path: '',
+    summary: '',
+};
 function extractFingerprint(text) {
     const fp = {};
     const emailMatch = text.match(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/);
@@ -268,6 +279,8 @@ function defaultBodyFor(nb, type) {
     return null;
 }
 export function createEntry(input) {
+    if (isMemoryFullyDisabled())
+        return { ...MEMORY_DISABLED_SENTINEL, nb: input.nb, type: input.type, name: input.name };
     const d = getDb();
     // Step 1: Generate code (atomic counter increment in its own implicit transaction)
     const code = generateCode(input.nb, input.type);
@@ -339,6 +352,8 @@ export function createEntry(input) {
  * Returns: { code, created: true } on new creation, { code, created: false } on update.
  */
 export function upsertEntry(input) {
+    if (isMemoryFullyDisabled())
+        return { code: 'MEMORY_DISABLED', created: false };
     const d = getDb();
     // Phase 15 Stage 1: Fingerprint-based dedup for WHO entries
     if (input.nb === 'WHO') {

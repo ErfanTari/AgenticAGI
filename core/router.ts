@@ -164,6 +164,7 @@ function maybeAddRelationship(fromCode: string, toCode: string, note: string): v
 }
 
 function persistFactualAssertions(unitTexts: string[]): void {
+  if (isMemoryDisabled()) return;
   Promise.resolve().then(() => {
     let currentProject: ProjectLink | null = null;
 

@@ -15,6 +15,7 @@
 import { queryEntries, getEntryByCode } from './index.js';
 import { fetchByCode } from './fetch.js';
 import type { IndexEntry } from './types.js';
+import { isMemoryFullyDisabled } from '../memory-mode.js';
 
 export interface QuickResolveResult {
   /** Whether quick-resolve found anything useful. */
@@ -253,6 +254,7 @@ function normalizeLeadingCommandPrefix(message: string): string {
  */
 export async function quickResolve(message: string): Promise<QuickResolveResult> {
   const EMPTY: QuickResolveResult = { resolved: false, entries: [], strategy: 'none', bodies: [] };
+  if (isMemoryFullyDisabled()) return EMPTY;
 
   // Phase 20b: Check for command intent early
   const isCommand = isCommandIntent(message);

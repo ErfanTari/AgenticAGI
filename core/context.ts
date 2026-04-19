@@ -7,6 +7,7 @@ import { transparency } from './transparency.js';
 import { queryEntries } from './memory/index.js';
 import { fetchByCode } from './memory/fetch.js';
 import { sessionCache } from './memory/session-cache.js';
+import { isMemoryFullyDisabled } from './memory-mode.js';
 
 const SYSTEM_PROMPT = `You are a personal AI agent with memory, skills, and reasoning capabilities.
 
@@ -333,29 +334,32 @@ export async function buildContext(
   }
   const systemParts = [SYSTEM_PROMPT];
 
-  // Inject owner persona from WHO.CT (cached, non-throwing)
-  const persona = fetchOwnerPersona();
-  if (persona) {
-    systemParts.push(persona);
+  if (!isMemoryFullyDisabled()) {
+    // Inject owner persona from WHO.CT (cached, non-throwing)
+    const persona = fetchOwnerPersona();
+    if (persona) {
+      systemParts.push(persona);
+    }
+
+    // Only include notebook counts for summary/overview queries (BUG 4)
+    if (needsSummary(intent ?? 'general', userMessage)) {
+      systemParts.push(getIndexSummary());
+    }
+
+    // BUG-H2 fix: rank memory entries by relevance BEFORE formatting and injecting into prompt.
+    // Previously rankByRelevance was called AFTER formatResolved, making it dead code.
+    if (resolved && resolved.entries.length > 1) {
+      resolved = { ...resolved, entries: rankByRelevance(resolved.entries, userMessage) };
+    }
+
+    systemParts.push(formatResolved(resolved));
   }
 
-  // Only include notebook counts for summary/overview queries (BUG 4)
-  if (needsSummary(intent ?? 'general', userMessage)) {
-    systemParts.push(getIndexSummary());
-  }
-
-  // BUG-H2 fix: rank memory entries by relevance BEFORE formatting and injecting into prompt.
-  // Previously rankByRelevance was called AFTER formatResolved, making it dead code.
-  if (resolved && resolved.entries.length > 1) {
-    resolved = { ...resolved, entries: rankByRelevance(resolved.entries, userMessage) };
-  }
-
-  systemParts.push(formatResolved(resolved));
   systemParts.push(formatSkills(skills));
 
-  // Inject active PLAN.CT constraints into every step's context
+  // Inject active PLAN.CT constraints into every step's context (skip when memory disabled)
   // Phase 15 Conflict 1: check session cache before SQLite for each constraint entry
-  try {
+  if (!isMemoryFullyDisabled()) try {
     const constraints = queryEntries({ nb: 'PLAN', type: 'CT' }).filter(e => e.status === 'active');
     if (constraints.length > 0) {
       const constraintLines = constraints.map(c => {

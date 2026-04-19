@@ -4,6 +4,7 @@ import { transparency } from './transparency.js';
 import { queryEntries } from './memory/index.js';
 import { fetchByCode } from './memory/fetch.js';
 import { sessionCache } from './memory/session-cache.js';
+import { isMemoryFullyDisabled } from './memory-mode.js';
 const SYSTEM_PROMPT = `You are a personal AI agent with memory, skills, and reasoning capabilities.
 
 Your capabilities:
@@ -262,39 +263,42 @@ export async function buildContext(userMessage, resolved, history, skills, inten
         });
     }
     const systemParts = [SYSTEM_PROMPT];
-    // Inject owner persona from WHO.CT (cached, non-throwing)
-    const persona = fetchOwnerPersona();
-    if (persona) {
-        systemParts.push(persona);
-    }
-    // Only include notebook counts for summary/overview queries (BUG 4)
-    if (needsSummary(intent ?? 'general', userMessage)) {
-        systemParts.push(getIndexSummary());
-    }
-    // BUG-H2 fix: rank memory entries by relevance BEFORE formatting and injecting into prompt.
-    // Previously rankByRelevance was called AFTER formatResolved, making it dead code.
-    if (resolved && resolved.entries.length > 1) {
-        resolved = { ...resolved, entries: rankByRelevance(resolved.entries, userMessage) };
-    }
-    systemParts.push(formatResolved(resolved));
-    systemParts.push(formatSkills(skills));
-    // Inject active PLAN.CT constraints into every step's context
-    // Phase 15 Conflict 1: check session cache before SQLite for each constraint entry
-    try {
-        const constraints = queryEntries({ nb: 'PLAN', type: 'CT' }).filter(e => e.status === 'active');
-        if (constraints.length > 0) {
-            const constraintLines = constraints.map(c => {
-                // Prefer session cache for summary (avoids redundant SQLite fetch)
-                const cached = sessionCache.getByCode(c.code);
-                const summary = (cached ?? c).summary;
-                return `- [${c.code}] ${c.name}: ${summary}`;
-            });
-            systemParts.push('## Active Constraints\n' +
-                constraintLines.join('\n') +
-                '\n\nIMPORTANT: These are user-authored constraints. NEVER silently modify or remove them. If the user asks to change a constraint, warn them that this is a protected user rule and ask for explicit confirmation before proceeding.');
+    if (!isMemoryFullyDisabled()) {
+        // Inject owner persona from WHO.CT (cached, non-throwing)
+        const persona = fetchOwnerPersona();
+        if (persona) {
+            systemParts.push(persona);
         }
+        // Only include notebook counts for summary/overview queries (BUG 4)
+        if (needsSummary(intent ?? 'general', userMessage)) {
+            systemParts.push(getIndexSummary());
+        }
+        // BUG-H2 fix: rank memory entries by relevance BEFORE formatting and injecting into prompt.
+        // Previously rankByRelevance was called AFTER formatResolved, making it dead code.
+        if (resolved && resolved.entries.length > 1) {
+            resolved = { ...resolved, entries: rankByRelevance(resolved.entries, userMessage) };
+        }
+        systemParts.push(formatResolved(resolved));
     }
-    catch { /* non-fatal */ }
+    systemParts.push(formatSkills(skills));
+    // Inject active PLAN.CT constraints into every step's context (skip when memory disabled)
+    // Phase 15 Conflict 1: check session cache before SQLite for each constraint entry
+    if (!isMemoryFullyDisabled())
+        try {
+            const constraints = queryEntries({ nb: 'PLAN', type: 'CT' }).filter(e => e.status === 'active');
+            if (constraints.length > 0) {
+                const constraintLines = constraints.map(c => {
+                    // Prefer session cache for summary (avoids redundant SQLite fetch)
+                    const cached = sessionCache.getByCode(c.code);
+                    const summary = (cached ?? c).summary;
+                    return `- [${c.code}] ${c.name}: ${summary}`;
+                });
+                systemParts.push('## Active Constraints\n' +
+                    constraintLines.join('\n') +
+                    '\n\nIMPORTANT: These are user-authored constraints. NEVER silently modify or remove them. If the user asks to change a constraint, warn them that this is a protected user rule and ask for explicit confirmation before proceeding.');
+            }
+        }
+        catch { /* non-fatal */ }
     // Inject skill output into context
     if (skillOutput) {
         systemParts.push('## Skill Output\n' + skillOutput);

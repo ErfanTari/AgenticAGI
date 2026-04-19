@@ -159,6 +159,24 @@ export declare const ANTHROPIC_CLOUD_CONFIG: {
     apiKey: string;
     endpoint: string;
 } | null;
+export declare const KNOWN_CLOUD_MODELS: readonly [{
+    readonly id: "gemini";
+    readonly label: "Gemini 2.5 Flash";
+    readonly provider: "gemini";
+}, {
+    readonly id: "claude";
+    readonly label: "Claude Sonnet 4.6";
+    readonly provider: "anthropic";
+}, {
+    readonly id: "gemma-4-26b";
+    readonly label: "Gemma 4 26B";
+    readonly provider: "gemini";
+}, {
+    readonly id: "gemma-4-31b";
+    readonly label: "Gemma 4 31B";
+    readonly provider: "gemini";
+}];
+export type KnownCloudModelId = typeof KNOWN_CLOUD_MODELS[number]['id'];
 export declare const PLANNER_CONFIG: {
     endpoint: string;
     model: string;

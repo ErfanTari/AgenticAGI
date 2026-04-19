@@ -4,8 +4,8 @@ nb: PLAN
 type: EX
 name: Cache Logic Test Specification
 handle: cache-logic-spec
-status: active
-updated: 2026-04-11
+status: failed
+updated: 2026-04-19
 summary: Specification for testing the file-based caching logic.
 importance_score: 0
 utility_score: 0

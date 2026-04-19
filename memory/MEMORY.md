@@ -2,11 +2,12 @@
 # Auto-maintained. Edit with caution.
 
 ## Active loops
+PLAN.EX-000001: Milestone write order · M2/2 · next→ memory write
 
 ## Known entries
 WHO.CT-000001: Erfan Tari — Contact entry for Erfan Tari
 WHO.CT-000010: Sara — Developer
-WHO.CT-000011: Entry11 — Summary for Entry11
+WHO.CT-000011: James — Developer
 WHO.CT-000012: James Chen — Team Lead
 WHO.CT-000002: Bob Jones — Summary for Bob Jones
 WHO.CT-000003: Jane Doe — Test contact 2
@@ -36,7 +37,7 @@ WHEN.EV-000185: Charlie B. Presentation — Charlie B. will present on Friday.
 WHEN.EV-000189: Charlie B. reviewed code — Charlie B. completed a code review.
 WHEN.EV-000196: Charlie reviewed code — Charlie completed a code review.
 PLAN.EX-000002: Test execution — Test
-WHAT.PJ-000001: Test Project — Project summary
+WHAT.PJ-000001: Test execution — Test
 NOW.LOG-000001: Log 2026-03-17 10:21 — just finished the session
 WHO.CT-000015: Farzad Hamadi — Software engineer from Tehran interested in AI; personal contact of ERFAN TARI
 WHY.MT-000013: Heartbeat — stale_project_brain — 6 project brain(s) not updated in 3+ days

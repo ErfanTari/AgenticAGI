@@ -1439,6 +1439,7 @@
         <div class="panel-actions">
           <button id="clear-log-btn" class="btn btn-ghost" type="button">Clear</button>
           <button id="copy-log-btn" class="btn btn-ghost" type="button">Copy Trace</button>
+          <button id="copy-details-btn" class="btn btn-ghost" type="button" title="Copy full JSON envelopes">Copy Details</button>
         </div>
       </div>
       <div id="thinkingStream" class="thinking-stream">
@@ -1551,6 +1552,21 @@
       </section>
 
       <section class="settings-section">
+        <div class="settings-section-title">Memory</div>
+        <div class="settings-card">
+          <div class="settings-row">
+            <div class="settings-label">Memory System</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <button id="memoryToggleButton" class="btn" type="button" style="min-width:90px">Enabled</button>
+            </div>
+          </div>
+          <div id="memoryDisabledBanner" class="settings-note" style="display:none;color:#d97706;font-weight:600;">
+            Memory is disabled. No reads or writes will be performed. Ephemeral scratchpad active for plans.
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-section">
         <div class="settings-section-title">Model Catalog</div>
         <div class="settings-card">
           <div class="settings-note">To add models, edit the <code>MODEL_CATALOG</code> constant at the top of <code>public/index.html</code>, add local ids to <code>LOCAL_MODELS</code> in <code>.env</code>, then click ↻.</div>
@@ -1602,7 +1618,7 @@
       cloud: [
         {
           id: 'gemini',
-          label: 'Gemini',
+          label: 'Gemini 2.5 Flash',
           tag: 'cloud',
           tagColor: 'cyan',
           size: '—',
@@ -1610,11 +1626,27 @@
         },
         {
           id: 'claude',
-          label: 'Claude',
+          label: 'Claude Sonnet 4.6',
           tag: 'cloud',
           tagColor: 'blue',
           size: '—',
           note: 'Uses the configured Anthropic cloud profile'
+        },
+        {
+          id: 'gemma-4-26b',
+          label: 'Gemma 4 26B',
+          tag: 'open',
+          tagColor: 'green',
+          size: '—',
+          note: 'Gemma 4 26B via Gemini API (needs GOOGLE_API_KEY)'
+        },
+        {
+          id: 'gemma-4-31b',
+          label: 'Gemma 4 31B',
+          tag: 'open',
+          tagColor: 'green',
+          size: '—',
+          note: 'Gemma 4 31B via Gemini API (needs GOOGLE_API_KEY)'
         },
       ],
     };
@@ -1795,8 +1827,18 @@
       window.location.reload();
     });
 
+    document.getElementById('memoryToggleButton').addEventListener('click', () => {
+      const btn = document.getElementById('memoryToggleButton');
+      const currentlyEnabled = btn.textContent.trim() === 'Enabled';
+      const newMode = currentlyEnabled ? 'disabled' : 'enabled';
+      if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+        state.socket.send(JSON.stringify({ type: 'set_memory_mode', mode: newMode }));
+      }
+    });
+
     elements.clearLogButton.addEventListener('click', clearTransparencyLog);
     elements.copyLogButton.addEventListener('click', copyTransparencyLog);
+    document.getElementById('copy-details-btn').addEventListener('click', copyDetailedTransparencyLog);
     elements.rawLogToggle.addEventListener('click', () => {
       setRawTransparencyOpen(!state.rawTransparencyOpen);
     });
@@ -2014,9 +2056,11 @@
 
     function normalizeCloudModelId(modelId) {
       if (!modelId) return getDefaultModelId('cloud');
-      if (modelId === 'gemini' || modelId === 'claude') return modelId;
+      if (modelId === 'gemini' || modelId === 'claude' || modelId === 'gemma-4-26b' || modelId === 'gemma-4-31b') return modelId;
       if (String(modelId).startsWith('gemini-')) return 'gemini';
       if (String(modelId).startsWith('claude-')) return 'claude';
+      if (String(modelId).includes('gemma-4-26b')) return 'gemma-4-26b';
+      if (String(modelId).includes('gemma-4-31b')) return 'gemma-4-31b';
       return modelId;
     }
 
@@ -2056,6 +2100,17 @@
       };
       state.modelCatalog[provider].push(existing);
       return existing;
+    }
+
+    function syncMemoryModeUi(mode) {
+      const btn = document.getElementById('memoryToggleButton');
+      const banner = document.getElementById('memoryDisabledBanner');
+      if (!btn || !banner) return;
+      const enabled = mode !== 'disabled';
+      btn.textContent = enabled ? 'Enabled' : 'Disabled';
+      btn.style.background = enabled ? '' : 'var(--color-danger, #dc2626)';
+      btn.style.color = enabled ? '' : '#fff';
+      banner.style.display = enabled ? 'none' : 'block';
     }
 
     function syncProviderUi() {
@@ -2287,6 +2342,10 @@
         }
 
         if (payload.type === 'transparency') {
+          const envelope = { event: payload.event, payload: payload.payload, ts: payload.ts, requestId: payload.requestId };
+          window.__fullEnvelopes = window.__fullEnvelopes || [];
+          window.__fullEnvelopes.push(envelope);
+          if (window.__fullEnvelopes.length > 2000) window.__fullEnvelopes.shift();
           addTransparencyEvent(payload.event, payload.payload, payload.ts);
           return;
         }
@@ -2308,6 +2367,11 @@
 
         if (payload.type === 'milestone_update') {
           applyMilestoneUpdate(payload.milestoneId, payload.status);
+          return;
+        }
+
+        if (payload.type === 'memory_mode_status') {
+          syncMemoryModeUi(payload.mode);
           return;
         }
 
@@ -2646,9 +2710,28 @@
       });
     }
 
+    function copyDetailedTransparencyLog() {
+      const envelopes = window.__fullEnvelopes || [];
+      if (envelopes.length === 0) {
+        toast('No detailed events captured yet', 'info');
+        return;
+      }
+      const text = 'Zaraban Detailed Transparency Log\n' +
+        new Date().toISOString() + '\n' +
+        '='.repeat(60) + '\n\n' +
+        JSON.stringify(envelopes, null, 2);
+      const btn = document.getElementById('copy-details-btn');
+      copyTextToClipboard(text).then(() => {
+        if (btn) btn.textContent = 'Copied!';
+        toast(`${envelopes.length} envelopes copied`, 'success');
+        setTimeout(() => { if (btn) btn.textContent = 'Copy Details'; }, 1500);
+      }).catch(() => { toast('Copy failed', 'error'); });
+    }
+
     function clearTransparencyLog() {
       state.transparencyLog = [];
       state.traceV2 = null;
+      window.__fullEnvelopes = [];
       elements.rawLogStream.innerHTML = '';
       elements.rawLogCount.textContent = '0';
       elements.traceV2Body.textContent = '';

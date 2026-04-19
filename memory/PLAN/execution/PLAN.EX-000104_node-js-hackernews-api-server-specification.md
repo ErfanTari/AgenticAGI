@@ -4,8 +4,8 @@ nb: PLAN
 type: EX
 name: Node.js HackerNews API Server Specification
 handle: node-js-spec
-status: active
-updated: 2026-04-11
+status: failed
+updated: 2026-04-19
 summary: Specification for a Node.js server that fetches, caches, and serves HackerNews top headlines.
 importance_score: 0
 utility_score: 0

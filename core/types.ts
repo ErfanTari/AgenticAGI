@@ -39,7 +39,8 @@ export type UnitSearchStrategy =
   | 'bm25'
   | 'bm25_person_scoped'
   | 'bm25_project_scoped'
-  | 'vector_fallback';
+  | 'vector_fallback'
+  | 'disabled';
 
 export interface UnitMemoryResult {
   unitId: string;

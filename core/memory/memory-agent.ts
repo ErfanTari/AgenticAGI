@@ -10,6 +10,8 @@
 import type { WorkingMemory } from './working-memory.js';
 import type { LLMHandler } from '../types.js';
 import type Database from 'better-sqlite3';
+import { isMemoryFullyDisabled } from '../memory-mode.js';
+import { transparency } from '../transparency.js';
 
 // --- Types ---
 
@@ -187,6 +189,10 @@ class MemoryAgent {
   }
 
   enqueue(update: MemoryUpdate): void {
+    if (isMemoryFullyDisabled()) {
+      transparency.emit({ type: 'memory_disabled_drop', data: { taskType: update.type } });
+      return;
+    }
     this.queue.push(update);
     if (!this.processing) {
       this.processNext().catch(err => {

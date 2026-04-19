@@ -8,6 +8,8 @@ import { PATHS } from '../config/agent.config.js';
 import { createEntry, updateEntry } from './memory/write.js';
 import { isProcessingMessage } from './agent.js';
 import { upsertPointerEntry } from './memory/pointer-index.js';
+import { isMemoryFullyDisabled } from './memory-mode.js';
+import { transparency } from './transparency.js';
 
 export interface Notification {
   type: 'upcoming_event' | 'overdue_todo' | 'stale_question' | 'stale_plan' | 'stale_project' | 'vision_drift' | 'stale_project_brain';
@@ -497,6 +499,10 @@ export async function checkAutoDream(): Promise<Notification | null> {
 }
 
 export async function runHeartbeat(): Promise<HeartbeatResult> {
+  if (isMemoryFullyDisabled()) {
+    transparency.emit({ type: 'heartbeat_skipped_memory_disabled', data: {} });
+    return { ran_at: today(), notifications: [], created: [] };
+  }
   // Guard: skip all checks if DB is not initialized
   try {
     const db = getDb();

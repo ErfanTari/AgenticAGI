@@ -7,6 +7,8 @@ import { PATHS } from '../config/agent.config.js';
 import { createEntry, updateEntry } from './memory/write.js';
 import { isProcessingMessage } from './agent.js';
 import { upsertPointerEntry } from './memory/pointer-index.js';
+import { isMemoryFullyDisabled } from './memory-mode.js';
+import { transparency } from './transparency.js';
 // --- Phase 16: Activity tracking for AutoDream ---
 const AUTO_DREAM_IDLE_MS = 10 * 60 * 1000; // 10 minutes
 let _lastActivityAt = Date.now();
@@ -408,6 +410,10 @@ export async function checkAutoDream() {
     return null; // AutoDream never produces a user-facing notification
 }
 export async function runHeartbeat() {
+    if (isMemoryFullyDisabled()) {
+        transparency.emit({ type: 'heartbeat_skipped_memory_disabled', data: {} });
+        return { ran_at: today(), notifications: [], created: [] };
+    }
     // Guard: skip all checks if DB is not initialized
     try {
         const db = getDb();

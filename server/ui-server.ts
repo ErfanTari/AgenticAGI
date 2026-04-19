@@ -16,6 +16,7 @@ import { loadActivePlanEX, type PlanEXEntry } from '../core/memory/plan-ex.js';
 import { loadWorkingMemory } from '../core/memory/working-memory.js';
 import { memoryAgent } from '../core/memory/memory-agent.js';
 import { transparency, type TransparencyEvent } from '../core/transparency.js';
+import { setMemoryMode, getMemoryMode } from '../core/memory-mode.js';
 import type { TaskMilestone, TaskPlan, TaskStep } from '../core/schemas.js';
 import type { Message } from '../core/types.js';
 
@@ -24,10 +25,11 @@ type ClientMessage =
   | { type: 'set_provider_mode'; mode: ProviderMode }
   | { type: 'set_local_model'; model: string }
   | { type: 'set_cloud_model'; model: string }
+  | { type: 'set_memory_mode'; mode: 'enabled' | 'disabled' }
   | { type: 'ping' };
 
 type ProviderMode = 'local' | 'cloud';
-type CloudModelId = 'gemini' | 'claude';
+type CloudModelId = 'gemini' | 'claude' | 'gemma-4-26b' | 'gemma-4-31b';
 type ProviderStatus = {
   mode: ProviderMode;
   primaryLabel: string;
@@ -70,6 +72,7 @@ type ServerMessage =
   | { type: 'step_update'; stepId: string; status: 'running' | 'done' | 'failed'; elapsed?: number }
   | { type: 'milestone_update'; milestoneId: string; status: 'running' | 'done' | 'failed' }
   | { type: 'provider_status'; provider: ProviderStatus }
+  | { type: 'memory_mode_status'; mode: 'enabled' | 'disabled' }
   | { type: 'error'; message: string }
   | { type: 'pong' };
 
@@ -131,13 +134,23 @@ console.log('  Anthropic:', anthropicCloudProfile?.model ?? 'NOT CONFIGURED');
 // Track which cloud model is active per-server (shared across connections)
 let activeCloudModel: CloudModelId = geminiCloudProfile ? 'gemini' : (anthropicCloudProfile ? 'claude' : 'gemini');
 
+const GEMMA_MODEL_IDS: Record<'gemma-4-26b' | 'gemma-4-31b', string> = {
+  'gemma-4-26b': 'google/gemma-4-26b-a4b-it',
+  'gemma-4-31b': 'google/gemma-4-31b-it',
+};
+
 function getActiveCloudProfile(): LLMProfile | null {
-  return activeCloudModel === 'claude' ? anthropicCloudProfile : geminiCloudProfile;
+  if (activeCloudModel === 'claude') return anthropicCloudProfile;
+  if (activeCloudModel === 'gemma-4-26b' || activeCloudModel === 'gemma-4-31b') {
+    if (!geminiCloudProfile) return null;
+    return { ...geminiCloudProfile, model: GEMMA_MODEL_IDS[activeCloudModel] };
+  }
+  return geminiCloudProfile;
 }
 
 function getAvailableCloudModels(): CloudModelId[] {
   const models: CloudModelId[] = [];
-  if (geminiCloudProfile) models.push('gemini');
+  if (geminiCloudProfile) models.push('gemini', 'gemma-4-26b', 'gemma-4-31b');
   if (anthropicCloudProfile) models.push('claude');
   return models;
 }
@@ -616,6 +629,14 @@ function handleClientMessage(connection: ClientConnection, raw: string) {
     return;
   }
 
+  if (parsed.type === 'set_memory_mode') {
+    const newMode = parsed.mode === 'disabled' ? 'disabled' : 'enabled';
+    setMemoryMode(newMode);
+    for (const c of clients) sendJson(c, { type: 'memory_mode_status', mode: newMode });
+    console.log('[ui] Memory mode switched to:', newMode);
+    return;
+  }
+
   if (parsed.type === 'set_local_model') {
     const model = parsed.model.trim();
     if (!model) {
@@ -741,6 +762,7 @@ function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buffer) {
   clients.add(connection);
   bindSocket(connection);
   sendProviderStatus(connection);
+  sendJson(connection, { type: 'memory_mode_status', mode: getMemoryMode() });
 
   // FIX-H2: Send resume notice if there is an active PLAN.EX + working memory
   (async () => {

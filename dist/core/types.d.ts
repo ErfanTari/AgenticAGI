@@ -11,7 +11,7 @@ export interface DecomposedUnit {
 export interface DecompositionResult {
     units: DecomposedUnit[];
 }
-export type UnitSearchStrategy = 'person' | 'project' | 'time' | 'procedure' | 'type_scan' | 'list_intent' | 'bm25' | 'bm25_person_scoped' | 'bm25_project_scoped' | 'vector_fallback';
+export type UnitSearchStrategy = 'person' | 'project' | 'time' | 'procedure' | 'type_scan' | 'list_intent' | 'bm25' | 'bm25_person_scoped' | 'bm25_project_scoped' | 'vector_fallback' | 'disabled';
 export interface UnitMemoryResult {
     unitId: string;
     strategy: UnitSearchStrategy;
