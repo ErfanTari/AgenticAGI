@@ -135,8 +135,8 @@ console.log('  Anthropic:', anthropicCloudProfile?.model ?? 'NOT CONFIGURED');
 let activeCloudModel: CloudModelId = geminiCloudProfile ? 'gemini' : (anthropicCloudProfile ? 'claude' : 'gemini');
 
 const GEMMA_MODEL_IDS: Record<'gemma-4-26b' | 'gemma-4-31b', string> = {
-  'gemma-4-26b': 'google/gemma-4-26b-a4b-it',
-  'gemma-4-31b': 'google/gemma-4-31b-it',
+  'gemma-4-26b': 'gemma-4-26b-a4b-it',
+  'gemma-4-31b': 'gemma-4-31b-it',
 };
 
 function getActiveCloudProfile(): LLMProfile | null {
