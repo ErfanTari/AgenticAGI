@@ -1,0 +1,1016 @@
+Here's a thinking process:
+
+2.  **Deconstruct Requirements & Plan Structure:**
+   - `<!DOCTYPE html>`
+   - `<html lang="en">`
+   - `<head>`: meta tags, title, Google Fonts link, `<style>` block
+   - `<body>`:
+     - `<nav>`: sticky, logo, links, hamburger button
+     - `<header id="hero">`: full viewport, parallax elements, animated decorations, CTA
+     - `<section id="about">`: text, stats (counter animation or just static with reveal)
+     - `<section id="menu">`: grid, CSS-drawn icons (bread, pastry, cake), cards with hover effects
+     - `<section id="testimonials">`: carousel (JS-driven)
+     - `<section id="contact">`: hours, map placeholder/form, contact info
+     - `<footer>`: links, copyright, social icons
+   - `<script>`: mobile menu toggle, Intersection Observer for reveals, testimonial carousel logic, smooth scroll, parallax effect
+   - `</body>`
+   - `</html>`
+
+3.  **Draft - CSS (Mental Refinement):**
+   - Variables for colors
+   - Reset & base styles
+   - Custom scrollbar
+   - Grain texture overlay (using SVG data URI or CSS noise pattern)
+   - Typography (Playfair Display for headings, Lato for body)
+   - Nav: sticky, flex, transition, mobile menu (hidden by default, toggled via class)
+   - Hero: 100vh, flex center, parallax layers, animated floating elements (CSS keyframes)
+   - About: grid/flex, stats with counters or just styled numbers
+   - Menu: CSS grid, cards, hover transform/shadow, CSS icons (using pseudo-elements or simple shapes)
+   - Testimonials: overflow hidden, flex container, transform translateX for sliding
+   - Contact: grid, form/styled text
+   - Footer: simple
+   - Media queries: 1024px, 768px
+   - Reveal animations: `.reveal` class with opacity/transform, JS adds `.active`
+   - Grain overlay: `::before` on body or fixed div with `url("data:image/svg+xml,...")`
+
+   Let's write out the CSS carefully.
+
+   *Colors:*
+   `--cream: #FDF6EC;`
+   `--brown: #5C3D2E;`
+   `--gold: #C8956C;`
+   `--espresso: #2C1810;`
+   `--sage: #7A8B6F;`
+
+   *Grain Texture:*
+   I'll use a simple SVG noise pattern encoded as a data URI for the grain overlay.
+   `background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");`
+
+   *Custom Scrollbar:*
+   `::-webkit-scrollbar { width: 10px; }`
+   `::-webkit-scrollbar-track { background: var(--cream); }`
+   `::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 5px; }`
+
+   *CSS Icons:*
+   I'll create simple CSS shapes for bread, pastry, cake using `::before`/`::after` or just inline SVGs? The prompt says "CSS-drawn icons". I'll use pure CSS shapes with `border-radius`, `::before`, `::after`.
+   Bread: rounded rectangle with a slash
+   Pastry: circle with lines
+   Cake: stacked rectangles with a candle
+   Actually, to keep it clean and reliable, I'll use simple CSS shapes inside `.icon-bread`, `.icon-pastry`, `.icon-cake`.
+
+   *Parallax Hero:*
+   Use `transform: translateY()` based on scroll event in JS, or CSS `background-attachment: fixed`? The prompt says "parallax hero elements", so I'll use JS for smooth parallax on floating decorative shapes.
+
+   *Testimonial Carousel:*
+   Simple JS slider with prev/next buttons or auto-play. I'll implement a basic one with JS.
+
+   *Intersection Observer:*
+   Standard setup to add `.visible` class to elements with `.reveal` class.
+
+4.  **Draft - HTML Structure:**
+   ```html
+   <!DOCTYPE html>
+   <html lang="en">
+   <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>The Golden Crust - Artisan Bakery</title>
+     <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
+     <style>
+       /* CSS goes here */
+     </style>
+   </head>
+   <body>
+     <div class="grain-overlay"></div>
+     <nav>...</nav>
+     <header id="hero">...</header>
+     <section id="about">...</section>
+     <section id="menu">...</section>
+     <section id="testimonials">...</section>
+     <section id="contact">...</section>
+     <footer>...</footer>
+     <script>
+       /* JS goes here */
+     </script>
+   </body>
+   </html>
+   ```
+
+5.  **Flesh out CSS (Mental to Text):**
+   I'll write it out systematically.
+   - Variables
+   - Reset
+   - Typography
+   - Scrollbar
+   - Grain overlay
+   - Nav (sticky, flex, mobile menu)
+   - Hero (100vh, parallax layers, animated elements)
+   - About (grid, stats)
+   - Menu (grid, cards, hover, CSS icons)
+   - Testimonials (carousel)
+   - Contact (grid, hours)
+   - Footer
+   - Media queries (1024, 768)
+   - Reveal animations
+
+   *CSS Icons Details:*
+   I'll make them simple but recognizable.
+   Bread: `.icon-bread { width: 40px; height: 30px; background: var(--gold); border-radius: 50% 50% 10% 10%; position: relative; } .icon-bread::after { content: ''; position: absolute; top: 10px; left: 10px; width: 20px; height: 2px; background: var(--brown); transform: rotate(-15deg); }`
+   Pastry: `.icon-pastry { width: 30px; height: 30px; border: 4px solid var(--gold); border-radius: 50%; position: relative; } .icon-pastry::before { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 10px; height: 10px; background: var(--gold); border-radius: 50%; }`
+   Cake: `.icon-cake { width: 30px; height: 20px; background: var(--gold); border-radius: 4px; position: relative; } .icon-cake::before { content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); width: 20px; height: 15px; background: var(--brown); border-radius: 4px 4px 0 0; } .icon-cake::after { content: ''; position: absolute; top: -10px; left: 50%; transform: translateX(-50%); width: 4px; height: 10px; background: var(--espresso); }`
+   This is fine. I'll refine it in the actual code.
+
+   *Parallax & Animations:*
+   Hero decorative elements: `.hero-deco` with `position: absolute`, `animation: float 6s ease-in-out infinite`.
+   Parallax: JS will listen to `scroll` and apply `transform: translateY(scrollY * factor)` to `.parallax-layer`.
+
+   *Testimonial Carousel:*
+   HTML: `.carousel-container > .carousel-track > .testimonial-card`
+   JS: track index, update `transform: translateX(-${index * 100}%)`, handle wrap-around or just simple next/prev.
+
+   *Reveal Animation:*
+   `.reveal { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; } .reveal.active { opacity: 1; transform: translateY(0); }`
+
+   *Responsive:*
+   1024px: menu grid 3 cols -> 2 cols? Or keep 3, adjust padding.
+   768px: nav becomes hamburger, hero text smaller, menu grid 2 cols, about stats stack.
+
+   Let's write it out carefully. I'll ensure all requirements are met.
+
+   Structure check:
+   - Sticky nav with mobile hamburger menu: ✅
+   - Full-viewport hero with animated decorative elements: ✅
+   - About section with stats: ✅
+   - Menu grid with CSS-drawn icons: ✅
+   - Testimonial carousel: ✅
+   - Contact/hours section: ✅
+   - Footer: ✅
+   - Color palette: ✅
+   - Google Fonts: ✅
+   - Scroll-triggered reveal via Intersection Observer: ✅
+   - Hover card effects: ✅
+   - Smooth scrolling: ✅
+   - Responsive breakpoints 768/1024: ✅
+   - CSS grain texture overlay: ✅
+   - Custom scrollbar: ✅
+   - Parallax hero elements: ✅
+
+   I will now generate the complete code. I'll be meticulous about syntax and structure.
+   I'll make sure the CSS is comprehensive but concise enough to fit in a single response without truncation.
+   I'll use `requestAnimationFrame` for smooth parallax if needed, or just direct scroll event with throttling, but for simplicity and performance, I'll use a simple scroll listener with `transform`.
+   For the carousel, I'll implement a simple JS slider.
+   For the grain overlay, I'll use a fixed div with the SVG noise.
+   I'll ensure all tags are closed properly.
+
+   Let's draft it step-by-step in mind, then output.
+   *Self-Correction/Refinement during thought:*
+   - CSS icons might be too complex to make look good with pure CSS in a short time. I'll keep them simple but elegant, using borders and pseudo-elements.
+   - Parallax: I'll use `window.addEventListener('scroll', ...)` and update `transform` on `.parallax-el`.
+   - Carousel: I'll make it auto-play and manual.
+   - I'll add `scroll-behavior: smooth` to html.
+   - I'll ensure the grain overlay doesn't interfere with clicks: `pointer-events: none;`.
+   - I'll double-check the color palette usage.
+   - I'll make sure the output starts exactly with `<!DOCTYPE html>` and ends with `</html>`.
+
+   All set. Generating. 
+   I will carefully construct the HTML/CSS/JS to be complete and valid.
+   Structure:
+   ```html
+   <!DOCTYPE html>
+   <html lang="en">
+   <head>...
+   <style>...
+   </style>
+   </head>
+   <body>
+   <nav>...</nav>
+   <header id="hero">...</header>
+   <section id="about">...</section>
+   <section id="menu">...</section>
+   <section id="testimonials">...</section>
+   <section id="contact">...</section>
+   <footer>...</footer>
+   <script>...
+   </script>
+   </body>
+   </html>
+   ```
+   I'll write it out now. 
+   *Self-Correction/Verification during drafting:*
+   - Check breakpoints: `@media (max-width: 1024px)` and `@media (max-width: 768px)`
+   - Check colors: `#FDF6EC`, `#5C3D2E`, `#C8956C`, `#2C1810`, `#7A8B6F`
+   - Check fonts: Playfair Display, Lato
+   - Check features: sticky nav, hamburger, hero, about/stats, menu grid/CSS icons, carousel, contact/hours, footer, grain, scrollbar, parallax, reveal, hover, smooth scroll.
+   - All good. I will produce the full code now. 
+   Output matches exactly what's requested. No extra text. Starts with `<!DOCTYPE html>`, ends with `</html>`. Inline CSS/JS. CDN for fonts only. Valid HTML5.
+   Proceeds. 
+   [Output Generation] -> *See response.* 
+   I will carefully format it to avoid any markdown fences as requested: "Output ONLY the complete file content with no explanation, no markdown fences, no commentary."
+   I'll make sure the raw text is exactly the file content.
+   Let's generate. 
+   *Self-Correction/Note during thought*: The prompt says "no markdown fences". I will output raw text only. I will not use ```html or ```. I will start directly with `<!DOCTYPE html>` and end with `</html>`.
+   All constraints met. Proceeding. 
+   [Output Generation] -> *Proceeds.* 
+   *(Done.)*
+</think>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Golden Crust - Artisan Bakery</title>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --cream: #FDF6EC;
+            --brown: #5C3D2E;
+            --gold: #C8956C;
+            --espresso: #2C1810;
+            --sage: #7A8B6F;
+            --white: #FFFFFF;
+            --shadow: rgba(44, 24, 16, 0.1);
+        }
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Lato', sans-serif;
+            background-color: var(--cream);
+            color: var(--brown);
+            line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--cream);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--gold);
+            border-radius: 5px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--brown);
+        }
+
+        /* Grain Texture Overlay */
+        .grain-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.4;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
+        }
+
+        /* Typography */
+        h1, h2, h3, h4 {
+            font-family: 'Playfair Display', serif;
+            color: var(--espresso);
+            font-weight: 700;
+        }
+        h1 { font-size: 3.5rem; line-height: 1.1; }
+        h2 { font-size: 2.5rem; margin-bottom: 1rem; }
+        h3 { font-size: 1.5rem; }
+        p { margin-bottom: 1rem; }
+        a { text-decoration: none; color: inherit; transition: 0.3s; }
+        ul { list-style: none; }
+
+        /* Utility */
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+        .btn {
+            display: inline-block;
+            padding: 0.8rem 2rem;
+            background: var(--gold);
+            color: var(--espresso);
+            font-weight: 700;
+            border-radius: 4px;
+            border: 2px solid var(--gold);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            background: transparent;
+            color: var(--gold);
+        }
+        .section-padding {
+            padding: 5rem 0;
+        }
+        .text-center { text-align: center; }
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.8s ease, transform 0.8s ease;
+        }
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Navigation */
+        nav {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: rgba(253, 246, 236, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 10px var(--shadow);
+            padding: 1rem 0;
+        }
+        .nav-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--espresso);
+        }
+        .logo span { color: var(--gold); }
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+        .nav-links a {
+            font-weight: 600;
+            position: relative;
+        }
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--gold);
+            transition: width 0.3s;
+        }
+        .nav-links a:hover::after { width: 100%; }
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            cursor: pointer;
+            gap: 5px;
+        }
+        .hamburger span {
+            width: 25px;
+            height: 3px;
+            background: var(--espresso);
+            transition: 0.3s;
+        }
+
+        /* Hero Section */
+        #hero {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, var(--cream) 0%, #f4e8d8 100%);
+        }
+        .hero-content {
+            text-align: center;
+            z-index: 2;
+            max-width: 800px;
+        }
+        .hero-content h1 { margin-bottom: 1.5rem; }
+        .hero-content p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            color: var(--brown);
+        }
+        .parallax-layer {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+        .deco-circle {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.6;
+        }
+        .deco-1 {
+            width: 300px; height: 300px;
+            background: var(--gold);
+            top: 10%; left: -5%;
+            animation: float 8s ease-in-out infinite;
+        }
+        .deco-2 {
+            width: 200px; height: 200px;
+            background: var(--sage);
+            bottom: 15%; right: -3%;
+            animation: float 10s ease-in-out infinite reverse;
+        }
+        .deco-3 {
+            width: 100px; height: 100px;
+            background: var(--brown);
+            top: 40%; right: 20%;
+            animation: float 6s ease-in-out infinite;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(5deg); }
+        }
+
+        /* About Section */
+        #about { background: var(--white); }
+        .about-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+        }
+        .about-img {
+            width: 100%;
+            height: 400px;
+            background: #e8d8c8;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Playfair Display', serif;
+            color: var(--brown);
+            font-size: 1.5rem;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        .stat-item {
+            text-align: center;
+            padding: 1.5rem;
+            background: var(--cream);
+            border-radius: 8px;
+            border-bottom: 3px solid var(--gold);
+        }
+        .stat-num {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--espresso);
+            display: block;
+        }
+
+        /* Menu Section */
+        #menu { background: var(--cream); }
+        .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+        .menu-card {
+            background: var(--white);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px var(--shadow);
+            transition: transform 0.3s, box-shadow 0.3s;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .menu-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 12px 25px rgba(44, 24, 16, 0.15);
+        }
+        .menu-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 4px;
+            background: var(--gold);
+        }
+        .css-icon {
+            width: 60px;
+            height: 60px;
+            margin: 0 auto 1.5rem;
+            position: relative;
+        }
+        /* Bread Icon */
+        .icon-bread {
+            width: 50px; height: 35px;
+            background: var(--gold);
+            border-radius: 50% 50% 10% 10%;
+            position: relative;
+        }
+        .icon-bread::after {
+            content: '';
+            position: absolute;
+            top: 10px; left: 12px;
+            width: 26px; height: 3px;
+            background: var(--brown);
+            transform: rotate(-15deg);
+        }
+        /* Pastry Icon */
+        .icon-pastry {
+            width: 40px; height: 40px;
+            border: 4px solid var(--gold);
+            border-radius: 50%;
+            position: relative;
+        }
+        .icon-pastry::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 12px; height: 12px;
+            background: var(--gold);
+            border-radius: 50%;
+        }
+        .icon-pastry::after {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%) rotate(45deg);
+            width: 20px; height: 2px;
+            background: var(--gold);
+        }
+        /* Cake Icon */
+        .icon-cake {
+            width: 40px; height: 25px;
+            background: var(--brown);
+            border-radius: 4px;
+            position: relative;
+        }
+        .icon-cake::before {
+            content: '';
+            position: absolute;
+            bottom: 100%; left: 50%;
+            transform: translateX(-50%);
+            width: 30px; height: 18px;
+            background: var(--gold);
+            border-radius: 4px 4px 0 0;
+        }
+        .icon-cake::after {
+            content: '';
+            position: absolute;
+            top: -12px; left: 50%;
+            transform: translateX(-50%);
+            width: 4px; height: 12px;
+            background: var(--espresso);
+        }
+        .price {
+            display: block;
+            margin-top: 1rem;
+            font-weight: 700;
+            color: var(--gold);
+            font-size: 1.2rem;
+        }
+
+        /* Testimonials */
+        #testimonials {
+            background: var(--espresso);
+            color: var(--cream);
+            overflow: hidden;
+        }
+        #testimonials h2 { color: var(--gold); }
+        .carousel-wrapper {
+            position: relative;
+            max-width: 800px;
+            margin: 3rem auto 0;
+        }
+        .carousel-track {
+            display: flex;
+            transition: transform 0.5s ease-in-out;
+        }
+        .testimonial-card {
+            min-width: 100%;
+            padding: 2rem;
+            text-align: center;
+        }
+        .testimonial-card p {
+            font-size: 1.3rem;
+            font-style: italic;
+            margin-bottom: 1.5rem;
+        }
+        .testimonial-card cite {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.1rem;
+            color: var(--gold);
+        }
+        .carousel-controls {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        .carousel-btn {
+            background: transparent;
+            border: 2px solid var(--gold);
+            color: var(--gold);
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .carousel-btn:hover {
+            background: var(--gold);
+            color: var(--espresso);
+        }
+
+        /* Contact & Hours */
+        #contact { background: var(--white); }
+        .contact-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+        }
+        .hours-box {
+            background: var(--cream);
+            padding: 2rem;
+            border-radius: 8px;
+            border-left: 4px solid var(--sage);
+        }
+        .hours-box h3 { margin-bottom: 1rem; color: var(--sage); }
+        .hours-list li {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px dashed #ddd;
+        }
+        .contact-form input, .contact-form textarea {
+            width: 100%;
+            padding: 0.8rem;
+            margin-bottom: 1rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: 'Lato', sans-serif;
+        }
+        .contact-form button {
+            width: 100%;
+        }
+
+        /* Footer */
+        footer {
+            background: var(--espresso);
+            color: var(--cream);
+            padding: 3rem 0 1rem;
+            text-align: center;
+        }
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        .footer-col h4 { color: var(--gold); margin-bottom: 1rem; }
+        .footer-col ul li { margin-bottom: 0.5rem; }
+        .footer-col a:hover { color: var(--gold); }
+        .socials { display: flex; gap: 1rem; justify-content: center; margin-top: 1rem; }
+        .social-icon {
+            width: 36px; height: 36px;
+            background: var(--brown);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            transition: 0.3s;
+        }
+        .social-icon:hover { background: var(--gold); color: var(--espresso); }
+        .copyright {
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 1.5rem;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        /* Responsive Breakpoints */
+        @media (max-width: 1024px) {
+            .menu-grid { grid-template-columns: repeat(2, 1fr); }
+            .about-grid { gap: 2rem; }
+            .about-img { height: 300px; }
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 2.5rem; }
+            h2 { font-size: 2rem; }
+            .nav-links {
+                position: fixed;
+                top: 70px;
+                right: -100%;
+                width: 70%;
+                height: calc(100vh - 70px);
+                background: var(--cream);
+                flex-direction: column;
+                align-items: center;
+                padding-top: 2rem;
+                transition: 0.4s ease;
+                box-shadow: -5px 0 15px var(--shadow);
+            }
+            .nav-links.active { right: 0; }
+            .hamburger { display: flex; }
+            .hamburger.active span:nth-child(1) { transform: rotate(45deg) translate(5px, 6px); }
+            .hamburger.active span:nth-child(2) { opacity: 0; }
+            .hamburger.active span:nth-child(3) { transform: rotate(-45deg) translate(5px, -6px); }
+            .about-grid, .contact-grid { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .menu-grid { grid-template-columns: 1fr; }
+            .footer-content { flex-direction: column; text-align: center; }
+            .socials { justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="grain-overlay"></div>
+
+    <nav>
+        <div class="container nav-container">
+            <a href="#" class="logo">The Golden <span>Crust</span></a>
+            <ul class="nav-links">
+                <li><a href="#hero">Home</a></li>
+                <li><a href="#about">About</a></li>
+                <li><a href="#menu">Menu</a></li>
+                <li><a href="#testimonials">Reviews</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+            <div class="hamburger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </nav>
+
+    <header id="hero">
+        <div class="parallax-layer deco-1"></div>
+        <div class="parallax-layer deco-2"></div>
+        <div class="parallax-layer deco-3"></div>
+        <div class="container hero-content">
+            <h1 class="reveal">Artisan Baked with Love & Tradition</h1>
+            <p class="reveal">Experience the warmth of neighborhood craftsmanship. Fresh sourdough, delicate pastries, and cakes made daily from scratch.</p>
+            <a href="#menu" class="btn reveal">Explore Our Menu</a>
+        </div>
+    </header>
+
+    <section id="about" class="section-padding">
+        <div class="container">
+            <div class="about-grid">
+                <div class="about-text reveal">
+                    <h2>Our Story</h2>
+                    <p>Founded in 1998, The Golden Crust began as a small family kitchen with a big dream: to bring authentic, slow-fermented breads and handcrafted pastries back to our community. Every morning, our bakers arrive before dawn to mix, fold, and bake using time-honored techniques.</p>
+                    <p>We source organic flour, farm-fresh eggs, and locally grown herbs. No shortcuts, just pure flavor and the comforting aroma of a true bakery.</p>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-num">25+</span>
+                            <span>Years of Craft</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-num">100%</span>
+                            <span>Organic Ingredients</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-num">50k+</span>
+                            <span>Happy Customers</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="about-img reveal">
+                    [Bakery Interior Image Placeholder]
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="menu" class="section-padding">
+        <div class="container">
+            <h2 class="text-center reveal">Fresh From the Oven</h2>
+            <p class="text-center reveal">Handcrafted daily. Available while supplies last.</p>
+            <div class="menu-grid">
+                <div class="menu-card reveal">
+                    <div class="css-icon icon-bread"></div>
+                    <h3>Classic Sourdough</h3>
+                    <p>48-hour fermented crust with a soft, airy crumb. Perfect for toasting.</p>
+                    <span class="price">$8.50</span>
+                </div>
+                <div class="menu-card reveal">
+                    <div class="css-icon icon-pastry"></div>
+                    <h3>Almond Croissant</h3>
+                    <p>Buttery layers filled with frangipane and topped with toasted almonds.</p>
+                    <span class="price">$5.75</span>
+                </div>
+                <div class="menu-card reveal">
+                    <div class="css-icon icon-cake"></div>
+                    <h3>Vanilla Bean Layer Cake</h3>
+                    <p>Light sponge with real vanilla buttercream and fresh berry compote.</p>
+                    <span class="price">$42.00</span>
+                </div>
+                <div class="menu-card reveal">
+                    <div class="css-icon icon-bread"></div>
+                    <h3>Herb Focaccia</h3>
+                    <p>Golden olive oil crust with rosemary, sea salt, and roasted garlic.</p>
+                    <span class="price">$7.00</span>
+                </div>
+                <div class="menu-card reveal">
+                    <div class="css-icon icon-pastry"></div>
+                    <h3>Seasonal Fruit Tart</h3>
+                    <p>Buttery pastry shell, pastry cream, and market-fresh seasonal fruits.</p>
+                    <span class="price">$6.50</span>
+                </div>
+                <div class="menu-card reveal">
+                    <div class="css-icon icon-cake"></div>
+                    <h3>Dark Chocolate Mousse</h3>
+                    <p>Rich, decadent mousse on a coffee biscuit base. Gluten-free option.</p>
+                    <span class="price">$8.00</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="testimonials" class="section-padding">
+        <div class="container">
+            <h2 class="text-center reveal">What Our Neighbors Say</h2>
+            <div class="carousel-wrapper reveal">
+                <div class="carousel-track">
+                    <div class="testimonial-card">
+                        <p>"The sourdough here changed my life. I've tried every bakery in town, and nothing compares to the depth of flavor and perfect crust."</p>
+                        <cite>- Elena R.</cite>
+                    </div>
+                    <div class="testimonial-card">
+                        <p>"Walking in on a Saturday morning feels like stepping into a warm hug. The pastries are always fresh, and the staff knows your name."</p>
+                        <cite>- Marcus T.</cite>
+                    </div>
+                    <div class="testimonial-card">
+                        <p>"We ordered the vanilla bean cake for our anniversary. It was stunning, incredibly moist, and the perfect centerpiece for our dinner."</p>
+                        <cite>- Sarah & David L.</cite>
+                    </div>
+                </div>
+                <div class="carousel-controls">
+                    <button class="carousel-btn" id="prevBtn">&#10094;</button>
+                    <button class="carousel-btn" id="nextBtn">&#10095;</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="contact" class="section-padding">
+        <div class="container">
+            <h2 class="text-center reveal">Visit Us or Get in Touch</h2>
+            <div class="contact-grid">
+                <div class="hours-box reveal">
+                    <h3>Opening Hours</h3>
+                    <ul class="hours-list">
+                        <li><span>Monday - Friday</span> <span>6:00 AM - 4:00 PM</span></li>
+                        <li><span>Saturday</span> <span>7:00 AM - 5:00 PM</span></li>
+                        <li><span>Sunday</span> <span>8:00 AM - 2:00 PM</span></li>
+                    </ul>
+                    <p style="margin-top: 1.5rem;"><strong>Address:</strong><br>123 Artisan Lane, Baker District<br>Cityville, ST 12345</p>
+                    <p><strong>Phone:</strong> (555) 123-4567</p>
+                    <p><strong>Email:</strong> hello@goldencrust.com</p>
+                </div>
+                <div class="contact-form reveal">
+                    <h3>Send a Message</h3>
+                    <form onsubmit="event.preventDefault(); alert('Thank you for your message! We will get back to you shortly.');">
+                        <input type="text" placeholder="Your Name" required>
+                        <input type="email" placeholder="Your Email" required>
+                        <textarea rows="5" placeholder="Your Message or Custom Order Inquiry" required></textarea>
+                        <button type="submit" class="btn">Send Message</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-col">
+                    <h4>The Golden Crust</h4>
+                    <p>Artisan breads & pastries<br>crafted with passion since 1998.</p>
+                </div>
+                <div class="footer-col">
+                    <h4>Quick Links</h4>
+                    <ul>
+                        <li><a href="#hero">Home</a></li>
+                        <li><a href="#about">Our Story</a></li>
+                        <li><a href="#menu">Menu</a></li>
+                        <li><a href="#contact">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h4>Follow Us</h4>
+                    <div class="socials">
+                        <a href="#" class="social-icon">FB</a>
+                        <a href="#" class="social-icon">IG</a>
+                        <a href="#" class="social-icon">TW</a>
+                    </div>
+                </div>
+            </div>
+            <div class="copyright">
+                &copy; 2023 The Golden Crust Bakery. All rights reserved. Designed with care.
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Mobile Menu Toggle
+        const hamburger = document.querySelector('.hamburger');
+        const navLinks = document.querySelector('.nav-links');
+        const navItems = document.querySelectorAll('.nav-links a');
+
+        hamburger.addEventListener('click', () => {
+            hamburger.classList.toggle('active');
+            navLinks.classList.toggle('active');
+        });
+
+        navItems.forEach(item => {
+            item.addEventListener('click', () => {
+                hamburger.classList.remove('active');
+                navLinks.classList.remove('active');
+            });
+        });
+
+        // Intersection Observer for Reveal Animations
+        const revealElements = document.querySelectorAll('.reveal');
+        const revealObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                    revealObserver.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.15 });
+
+        revealElements.forEach(el => revealObserver.observe(el));
+
+        // Parallax Effect
+        const parallaxLayers = document.querySelectorAll('.parallax-layer');
+        window.addEventListener('scroll', () => {
+            const scrollY = window.scrollY;
+            parallaxLayers.forEach((layer, index) => {
+                const speed = (index + 1) * 0.15;
+                layer.style.transform = `translateY(${scrollY * speed}px)`;
+            });
+        });
+
+        // Testimonial Carousel
+        const track = document.querySelector('.carousel-track');
+        const cards = document.querySelectorAll('.testimonial-card');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        let currentIndex = 0;
+
+        function updateCarousel() {
+            track.style.transform = `translateX(-${currentIndex * 100}%)`;
+        }
+
+        nextBtn.addEventListener('click', () => {
+            currentIndex = (currentIndex + 1) % cards.length;
+            updateCarousel();
+        });
+
+        prevBtn.addEventListener('click', () => {
+            currentIndex = (currentIndex - 1 + cards.length) % cards.length;
+            updateCarousel();
+        });
+
+        // Auto-play carousel
+        setInterval(() => {
+            currentIndex = (currentIndex + 1) % cards.length;
+            updateCarousel();
+        }, 5000);
+
+        // Smooth Scroll for older browsers fallback
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    window.scrollTo({
+                        top: target.offsetTop - 80,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

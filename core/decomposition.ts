@@ -1,5 +1,5 @@
 import { applyRepairPasses, extractFirstJsonObject } from './structured.js';
-import { transparency } from './transparency.js';
+import { transparency, withSpan, getCurrentRequestId } from './transparency.js';
 import type { DecompositionResult, DecomposedUnit, LLMHandler, Message, RouteKind } from './types.js';
 import type { ResolvedEntry } from './intake.js';
 import { promptLoader } from './prompt-loader.js';
@@ -279,7 +279,11 @@ export async function decomposeMessage(
   llmHandler: LLMHandler,
   resolvedContext?: ResolvedEntry[],
   repairContext?: DecompositionRepairContext,
+  parentCtx?: import('./transparency.js').SpanContext,
 ): Promise<DecompositionResult> {
+  if (!parentCtx) transparency.emit({ type: 'orphan_span', data: { label: 'Decomposition: split into units' } });
+  const effectiveRequestId = parentCtx?.requestId ?? getCurrentRequestId() ?? 'unknown';
+  return withSpan('Decomposition: split into units', parentCtx, effectiveRequestId, async () => {
   if (GREETING_ONLY.test(message)) {
     const fallback = buildSingleUnitFallback(message);
     transparency.emit({ type: 'decomposition', data: fallback });
@@ -443,4 +447,5 @@ Rules: route must be "conversational", "agentic", or "query". content must be a 
     transparency.emit({ type: 'decomposition', data: fallback });
     return fallback;
   }
+  }); // end withSpan
 }

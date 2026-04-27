@@ -1,0 +1,876 @@
+Here's a thinking process:
+
+2.  **Structure the HTML:**
+   ```html
+   <!DOCTYPE html>
+   <html lang="en">
+   <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>The Golden Crust | Artisan Bakery</title>
+     <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+     <style>
+       /* CSS goes here */
+     </style>
+   </head>
+   <body>
+     <!-- Header -->
+     <!-- Hero -->
+     <!-- About -->
+     <!-- Featured Products -->
+     <!-- Daily Specials -->
+     <!-- Testimonials -->
+     <!-- Hours & Location -->
+     <!-- Newsletter -->
+     <!-- Footer -->
+     <script>
+       /* JS goes here */
+     </script>
+   </body>
+   </html>
+   ```
+
+3.  **Develop CSS (Mental Refinement & Implementation):**
+   - Variables for colors
+   - Reset & base styles
+   - Typography (Playfair Display, Lora)
+   - Header: sticky, transparent initially, solid on scroll, smooth transition
+   - Hero: full viewport height, gradient background, centered content, CTA button
+   - Sections: padding, max-width, container styling
+   - About: decorative divider (CSS/SVG)
+   - Products Grid: CSS grid, 3 columns desktop, 2 tablet, 1 mobile, hover effects, SVG placeholders
+   - Carousel: flex container, overflow hidden, JS controls, transition
+   - Testimonials: card layout, quotes, styling
+   - Hours & Location: grid/flex, map placeholder (CSS gradient/SVG), table for hours
+   - Newsletter: form styling, input/button
+   - Footer: social links (emoji/SVG), copyright
+   - Animations: fade-in on scroll (IntersectionObserver), parallax-like effect (CSS transform or background-attachment)
+   - Responsive: media queries
+
+   Let's draft the CSS carefully:
+   ```css
+   :root {
+     --cream: #FDF6EC;
+     --brown: #3C2415;
+     --orange: #C47A4B;
+     --sage: #7A8B6F;
+     --gold: #D4A853;
+     --white: #FFFFFF;
+     --shadow: rgba(60, 36, 21, 0.15);
+   }
+   * { margin: 0; padding: 0; box-sizing: border-box; }
+   html { scroll-behavior: smooth; }
+   body {
+     font-family: 'Lora', serif;
+     background-color: var(--cream);
+     color: var(--brown);
+     line-height: 1.6;
+     overflow-x: hidden;
+   }
+   h1, h2, h3, h4 { font-family: 'Playfair Display', serif; font-weight: 700; }
+   a { text-decoration: none; color: inherit; transition: 0.3s; }
+   ul { list-style: none; }
+   img, svg { max-width: 100%; display: block; }
+
+   /* Header */
+   header {
+     position: fixed; top: 0; left: 0; width: 100%; z-index: 1000;
+     padding: 1rem 2rem;
+     display: flex; justify-content: space-between; align-items: center;
+     background: transparent;
+     transition: background 0.4s ease, box-shadow 0.4s ease, padding 0.4s ease;
+   }
+   header.scrolled {
+     background: rgba(253, 246, 236, 0.95);
+     box-shadow: 0 2px 10px var(--shadow);
+     padding: 0.8rem 2rem;
+   }
+   .logo { font-family: 'Playfair Display', serif; font-size: 1.8rem; font-weight: 700; color: var(--brown); }
+   .logo span { color: var(--gold); }
+   nav ul { display: flex; gap: 2rem; }
+   nav a { font-weight: 500; position: relative; }
+   nav a::after {
+     content: ''; position: absolute; bottom: -4px; left: 0; width: 0; height: 2px;
+     background: var(--orange); transition: width 0.3s;
+   }
+   nav a:hover::after { width: 100%; }
+   .mobile-menu-btn { display: none; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--brown); }
+
+   /* Hero */
+   .hero {
+     height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center;
+     text-align: center; padding: 2rem;
+     background: linear-gradient(135deg, #FDF6EC 0%, #F5E6D3 30%, #E8D5C4 60%, #D4A853 100%);
+     position: relative; overflow: hidden;
+   }
+   .hero::before {
+     content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+     background: radial-gradient(circle, rgba(212, 168, 83, 0.2) 0%, transparent 60%);
+     animation: float 15s infinite linear;
+   }
+   @keyframes float { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+   .hero h1 { font-size: 4.5rem; margin-bottom: 1rem; color: var(--brown); text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+   .hero p { font-size: 1.4rem; margin-bottom: 2rem; color: var(--sage); max-width: 600px; }
+   .cta-btn {
+     display: inline-block; padding: 1rem 2.5rem; background: var(--orange); color: var(--white);
+     font-family: 'Playfair Display', serif; font-size: 1.2rem; font-weight: 600;
+     border-radius: 50px; box-shadow: 0 4px 15px rgba(196, 122, 75, 0.4);
+     transition: transform 0.3s, box-shadow 0.3s, background 0.3s;
+   }
+   .cta-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(196, 122, 75, 0.6); background: #b06a3f; }
+
+   /* Sections General */
+   section { padding: 5rem 2rem; max-width: 1200px; margin: 0 auto; }
+   .section-title { text-align: center; font-size: 2.8rem; margin-bottom: 3rem; color: var(--brown); position: relative; }
+   .section-title::after {
+     content: ''; display: block; width: 80px; height: 4px; background: var(--gold);
+     margin: 1rem auto 0; border-radius: 2px;
+   }
+
+   /* About */
+   .about-content { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: center; }
+   .about-text p { margin-bottom: 1.5rem; font-size: 1.1rem; }
+   .divider { display: flex; justify-content: center; align-items: center; gap: 1rem; margin: 2rem 0; color: var(--gold); font-size: 1.5rem; }
+   .divider::before, .divider::after { content: ''; width: 100px; height: 1px; background: var(--gold); }
+   .about-img {
+     width: 100%; height: 400px; background: linear-gradient(45deg, var(--sage), var(--cream));
+     border-radius: 12px; display: flex; align-items: center; justify-content: center;
+     box-shadow: 0 10px 30px var(--shadow); position: relative; overflow: hidden;
+   }
+   .about-img::after { content: '🥐🍞🥖'; font-size: 4rem; opacity: 0.8; }
+
+   /* Products Grid */
+   .products-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; }
+   .product-card {
+     background: var(--white); border-radius: 16px; padding: 2rem; text-align: center;
+     box-shadow: 0 5px 15px var(--shadow); transition: transform 0.3s, box-shadow 0.3s;
+     position: relative; overflow: hidden;
+   }
+   .product-card:hover { transform: translateY(-8px); box-shadow: 0 12px 25px rgba(60, 36, 21, 0.2); }
+   .product-card::before {
+     content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 5px;
+     background: linear-gradient(90deg, var(--orange), var(--gold));
+   }
+   .product-icon { width: 100px; height: 100px; margin: 0 auto 1.5rem; }
+   .product-icon svg { width: 100%; height: 100%; }
+   .product-card h3 { font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--brown); }
+   .product-card p { font-size: 0.95rem; color: #665c52; margin-bottom: 1rem; }
+   .price { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 700; color: var(--orange); }
+
+   /* Carousel */
+   .carousel-section { background: var(--brown); color: var(--cream); padding: 5rem 2rem; }
+   .carousel-section .section-title { color: var(--cream); }
+   .carousel-section .section-title::after { background: var(--gold); }
+   .carousel-container { max-width: 900px; margin: 0 auto; position: relative; overflow: hidden; }
+   .carousel-track { display: flex; transition: transform 0.5s ease-in-out; }
+   .carousel-slide { min-width: 100%; padding: 2rem; text-align: center; }
+   .carousel-slide h3 { font-size: 2rem; margin-bottom: 1rem; color: var(--gold); }
+   .carousel-slide p { font-size: 1.2rem; margin-bottom: 2rem; }
+   .carousel-controls { display: flex; justify-content: center; gap: 1rem; margin-top: 2rem; }
+   .carousel-btn {
+     background: var(--gold); border: none; width: 50px; height: 50px; border-radius: 50%;
+     cursor: pointer; font-size: 1.2rem; color: var(--brown); transition: 0.3s;
+   }
+   .carousel-btn:hover { background: var(--orange); color: var(--white); }
+
+   /* Testimonials */
+   .testimonials-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; }
+   .testimonial-card {
+     background: var(--white); padding: 2rem; border-radius: 12px; box-shadow: 0 4px 12px var(--shadow);
+     position: relative;
+   }
+   .testimonial-card::before {
+     content: '"'; font-family: 'Playfair Display', serif; font-size: 4rem; color: var(--gold);
+     position: absolute; top: 10px; left: 20px; opacity: 0.3;
+   }
+   .testimonial-text { font-style: italic; margin-bottom: 1.5rem; color: #5a4a3a; }
+   .testimonial-author { font-weight: 600; color: var(--brown); }
+   .stars { color: var(--gold); margin-bottom: 0.5rem; }
+
+   /* Hours & Location */
+   .location-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; }
+   .map-placeholder {
+     width: 100%; height: 300px; background: linear-gradient(135deg, #e8e0d5, #d4c8b8);
+     border-radius: 12px; display: flex; align-items: center; justify-content: center;
+     font-size: 3rem; color: var(--brown); box-shadow: inset 0 0 20px rgba(0,0,0,0.1);
+   }
+   .hours-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+   .hours-table td { padding: 0.8rem; border-bottom: 1px solid #e0d5c5; }
+   .hours-table tr:last-child td { border-bottom: none; }
+   .hours-table td:first-child { font-weight: 600; color: var(--brown); }
+   .hours-table td:last-child { text-align: right; color: #665c52; }
+   .contact-info p { margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem; }
+
+   /* Newsletter */
+   .newsletter { background: linear-gradient(135deg, var(--sage), #6a7b5f); color: var(--cream); padding: 4rem 2rem; text-align: center; border-radius: 20px; margin: 4rem auto; max-width: 1000px; }
+   .newsletter h2 { color: var(--cream); margin-bottom: 1rem; }
+   .newsletter p { margin-bottom: 2rem; opacity: 0.9; }
+   .newsletter-form { display: flex; gap: 1rem; max-width: 500px; margin: 0 auto; }
+   .newsletter-form input {
+     flex: 1; padding: 1rem; border: none; border-radius: 8px; font-family: 'Lora', serif;
+   }
+   .newsletter-form button {
+     padding: 1rem 2rem; background: var(--gold); color: var(--brown); border: none;
+     border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.3s;
+   }
+   .newsletter-form button:hover { background: var(--cream); }
+
+   /* Footer */
+   footer { background: var(--brown); color: var(--cream); padding: 3rem 2rem; text-align: center; }
+   .footer-content { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
+   .social-links { display: flex; gap: 1.5rem; font-size: 1.5rem; }
+   .social-links a { transition: transform 0.3s, color 0.3s; }
+   .social-links a:hover { transform: scale(1.2); color: var(--gold); }
+   .copyright { font-size: 0.9rem; opacity: 0.7; }
+
+   /* Animations */
+   .fade-in { opacity: 0; transform: translateY(30px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
+   .fade-in.visible { opacity: 1; transform: translateY(0); }
+
+   /* Responsive */
+   @media (max-width: 992px) {
+     .products-grid, .testimonials-grid { grid-template-columns: repeat(2, 1fr); }
+     .about-content, .location-grid { grid-template-columns: 1fr; }
+     .hero h1 { font-size: 3.5rem; }
+   }
+   @media (max-width: 768px) {
+     nav ul { display: none; }
+     .mobile-menu-btn { display: block; }
+     .products-grid, .testimonials-grid { grid-template-columns: 1fr; }
+     .hero h1 { font-size: 2.8rem; }
+     .newsletter-form { flex-direction: column; }
+     .carousel-slide h3 { font-size: 1.6rem; }
+   }
+   ```
+
+4.  **Develop JavaScript:**
+   - Sticky header transition
+   - Intersection Observer for fade-in
+   - Carousel logic
+   - Smooth scroll for nav links (already handled by CSS, but JS can enhance)
+   - Mobile menu toggle (optional but good)
+   Let's write the JS carefully:
+   ```javascript
+   document.addEventListener('DOMContentLoaded', () => {
+     // Sticky Header
+     const header = document.querySelector('header');
+     window.addEventListener('scroll', () => {
+       if (window.scrollY > 50) header.classList.add('scrolled');
+       else header.classList.remove('scrolled');
+     });
+
+     // Fade-in on scroll
+     const fadeElements = document.querySelectorAll('.fade-in');
+     const observer = new IntersectionObserver((entries) => {
+       entries.forEach(entry => {
+         if (entry.isIntersecting) {
+           entry.target.classList.add('visible');
+           observer.unobserve(entry.target);
+         }
+       });
+     }, { threshold: 0.1 });
+     fadeElements.forEach(el => observer.observe(el));
+
+     // Carousel
+     const track = document.querySelector('.carousel-track');
+     const slides = document.querySelectorAll('.carousel-slide');
+     const prevBtn = document.querySelector('.prev-btn');
+     const nextBtn = document.querySelector('.next-btn');
+     let currentIndex = 0;
+
+     function updateCarousel() {
+       track.style.transform = `translateX(-${currentIndex * 100}%)`;
+     }
+
+     nextBtn.addEventListener('click', () => {
+       currentIndex = (currentIndex + 1) % slides.length;
+       updateCarousel();
+     });
+
+     prevBtn.addEventListener('click', () => {
+       currentIndex = (currentIndex - 1 + slides.length) % slides.length;
+       updateCarousel();
+     });
+
+     // Auto-play
+     setInterval(() => {
+       currentIndex = (currentIndex + 1) % slides.length;
+       updateCarousel();
+     }, 5000);
+
+     // Parallax-like effect on hero
+     const hero = document.querySelector('.hero');
+     window.addEventListener('scroll', () => {
+       const scrolled = window.scrollY;
+       hero.style.backgroundPositionY = `${scrolled * 0.5}px`;
+     });
+   });
+   ```
+
+5.  **Refine & Assemble HTML Structure:**
+   Now I'll put it all together, ensuring all requirements are met. I'll carefully construct the SVG placeholders for products, ensure the carousel works, add the decorative divider, and verify responsive breakpoints. I'll also make sure the CSS art/SVG for products is inline and visually distinct.
+
+   Product SVGs (inline):
+   - Sourdough: 🍞 or simple SVG path
+   - Croissants: 🥐
+   - Pastries: 🧁
+   - Cakes: 🎂
+   - Breads: 🥖
+   - Seasonal: 🍁
+   I'll use simple inline SVGs for better control and to strictly follow "CSS art/SVG" requirement, though emojis are allowed per prompt. I'll stick to clean inline SVGs for professionalism.
+
+   Let's draft the SVGs:
+   ```svg
+   <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+     <path d="M20 70 C20 40 80 40 80 70 C80 85 20 85 20 70 Z" fill="#D4A853"/>
+     <path d="M30 70 C30 50 70 50 70 70" stroke="#3C2415" stroke-width="2"/>
+   </svg>
+   ```
+   Actually, I'll make them distinct and simple. I'll use a mix of CSS shapes and inline SVGs for reliability.
+
+   Let's structure the full document carefully.
+
+   Check requirements:
+   - Google Fonts loaded via CDN? Yes.
+   - Colors used? Yes.
+   - Sections 1-8? Yes.
+   - Smooth scroll, sticky header, fade-in, responsive, parallax? Yes.
+   - All inline CSS/JS? Yes.
+   - No external images? Yes.
+   - Start/End tags correct? Yes.
+   - No markdown? Yes.
+
+   I will now generate the complete HTML. I'll be meticulous about the structure and ensure no truncation.
+   I'll add the decorative divider as requested.
+   I'll ensure the carousel has proper JS.
+   I'll add the parallax effect via JS/CSS.
+   I'll make sure the responsive design covers mobile/tablet/desktop.
+   All set. Generating. 
+   Self-Correction/Verification during thought:
+   - The prompt says "CSS art/SVG" for product placeholders. I'll create simple, elegant inline SVGs for each.
+   - Parallax-like effect: I'll use `background-attachment: fixed` or JS transform. JS is safer for mobile. I'll stick to JS scroll listener for hero background shift.
+   - Carousel: Needs to be robust. I'll add dots or just prev/next buttons.
+   - I'll ensure all CSS variables are correctly applied.
+   - I'll double-check the exact color hex codes: #FDF6EC, #3C2415, #C47A4B, #7A8B6F, #D4A853.
+   - I'll make sure the file is completely self-contained.
+
+   Let's write it out carefully. 
+   Structure:
+   <!DOCTYPE html>
+   <html lang="en">
+   <head>...fonts, style...</head>
+   <body>
+     <header>...</header>
+     <section id="hero">...</section>
+     <section id="about">...</section>
+     <section id="products">...</section>
+     <section id="specials">...</section>
+     <section id="testimonials">...</section>
+     <section id="location">...</section>
+     <section id="newsletter">...</section>
+     <footer>...</footer>
+     <script>...</script>
+   </body>
+   </html>
+
+   I will now generate the full content. All constraints met. No extra text. Output starts with `<!DOCTYPE html>` and ends with `</html>`.
+   Proceed. 
+   *Self-Correction/Refinement during generation prep*: 
+   I need to make sure the SVGs are inline and visually distinct. I'll create a simple grid of paths/shapes for each product.
+   I'll ensure the carousel JS handles touch/swipe? Not strictly required, but I'll keep it simple with buttons and auto-play as requested.
+   I'll add the decorative divider explicitly.
+   I'll verify the sticky header transition works smoothly.
+   All good.
+   Output matches exactly.✅
+   Generating. 
+   [Output Generation] -> *Proceeds*
+   *(Note: I will carefully format the code to be completely valid HTML5 without any markdown formatting as requested.)*
+   Wait, the prompt says "Output ONLY the complete file content with no explanation, no markdown fences, no commentary." So I will literally output raw text starting with `<!DOCTYPE html>` and ending with `</html>`.
+   I will ensure all tags are closed properly.
+   Let's produce it. 
+   *Output Generation* (mental simulation complete) -> *Proceeds to output*
+   [Done] 
+   *Self-Correction/Verification during output generation prep*: 
+   I need to make sure I don't accidentally use markdown. I will output raw text.
+   I will double-check the exact hex codes.
+   I will ensure the JS is robust.
+   All set.
+   Output matches request.✅
+   Proceeds. 
+   [Output Generation] -> *Produces the exact HTML string*
+   *(Note: I'll carefully construct it now.)*
+   `<!DOCTYPE html>\n<html lang="en">...` etc.
+   All good. 
+   *Output Generation* (actual) -> *Proceeds*
+</think>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Golden Crust | Artisan Bakery</title>
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --cream: #FDF6EC;
+      --brown: #3C2415;
+      --orange: #C47A4B;
+      --sage: #7A8B6F;
+      --gold: #D4A853;
+      --white: #FFFFFF;
+      --shadow: rgba(60, 36, 21, 0.12);
+      --transition: all 0.3s ease;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Lora', serif;
+      background-color: var(--cream);
+      color: var(--brown);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    h1, h2, h3, h4 { font-family: 'Playfair Display', serif; font-weight: 700; line-height: 1.2; }
+    a { text-decoration: none; color: inherit; transition: var(--transition); }
+    ul { list-style: none; }
+    img, svg { max-width: 100%; display: block; }
+    button { cursor: pointer; font-family: inherit; }
+
+    /* Header */
+    header {
+      position: fixed; top: 0; left: 0; width: 100%; z-index: 1000;
+      padding: 1.2rem 2rem; display: flex; justify-content: space-between; align-items: center;
+      background: transparent; transition: background 0.4s ease, box-shadow 0.4s ease, padding 0.4s ease;
+    }
+    header.scrolled {
+      background: rgba(253, 246, 236, 0.95);
+      box-shadow: 0 4px 12px var(--shadow);
+      padding: 0.8rem 2rem;
+    }
+    .logo { font-size: 1.8rem; font-weight: 700; color: var(--brown); }
+    .logo span { color: var(--gold); }
+    nav ul { display: flex; gap: 2.5rem; }
+    nav a { font-weight: 500; position: relative; padding: 0.2rem 0; }
+    nav a::after {
+      content: ''; position: absolute; bottom: 0; left: 0; width: 0; height: 2px;
+      background: var(--orange); transition: width 0.3s;
+    }
+    nav a:hover::after { width: 100%; }
+    .mobile-menu-btn { display: none; background: none; border: none; font-size: 1.6rem; color: var(--brown); }
+
+    /* Hero */
+    .hero {
+      height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center;
+      text-align: center; padding: 2rem; position: relative; overflow: hidden;
+      background: linear-gradient(135deg, #FDF6EC 0%, #F5E6D3 35%, #E8D5C4 65%, #D4A853 100%);
+    }
+    .hero::before {
+      content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+      background: radial-gradient(circle, rgba(212, 168, 83, 0.25) 0%, transparent 60%);
+      animation: float 20s infinite linear;
+    }
+    @keyframes float { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .hero-content { position: relative; z-index: 2; }
+    .hero h1 { font-size: 4.5rem; margin-bottom: 1rem; color: var(--brown); text-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    .hero p { font-size: 1.4rem; margin-bottom: 2.5rem; color: var(--sage); max-width: 650px; margin-left: auto; margin-right: auto; }
+    .cta-btn {
+      display: inline-block; padding: 1rem 2.8rem; background: var(--orange); color: var(--white);
+      font-family: 'Playfair Display', serif; font-size: 1.2rem; font-weight: 600;
+      border-radius: 50px; box-shadow: 0 4px 15px rgba(196, 122, 75, 0.4);
+      transition: transform 0.3s, box-shadow 0.3s, background 0.3s;
+    }
+    .cta-btn:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(196, 122, 75, 0.5); background: #b06a3f; }
+
+    /* Sections */
+    section { padding: 5rem 2rem; max-width: 1200px; margin: 0 auto; }
+    .section-title { text-align: center; font-size: 2.8rem; margin-bottom: 3rem; color: var(--brown); position: relative; }
+    .section-title::after {
+      content: ''; display: block; width: 80px; height: 4px; background: var(--gold);
+      margin: 1rem auto 0; border-radius: 2px;
+    }
+
+    /* About */
+    .about-content { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: center; }
+    .about-text p { margin-bottom: 1.5rem; font-size: 1.1rem; }
+    .divider { display: flex; justify-content: center; align-items: center; gap: 1rem; margin: 2.5rem 0; color: var(--gold); font-size: 1.4rem; }
+    .divider::before, .divider::after { content: ''; width: 120px; height: 1px; background: var(--gold); }
+    .about-img {
+      width: 100%; height: 400px; background: linear-gradient(45deg, var(--sage), var(--cream));
+      border-radius: 16px; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 12px 30px var(--shadow); position: relative; overflow: hidden;
+    }
+    .about-img::after { content: '🥐🍞🥖'; font-size: 4.5rem; opacity: 0.85; letter-spacing: 0.5rem; }
+
+    /* Products Grid */
+    .products-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; }
+    .product-card {
+      background: var(--white); border-radius: 16px; padding: 2rem; text-align: center;
+      box-shadow: 0 5px 15px var(--shadow); transition: transform 0.3s, box-shadow 0.3s;
+      position: relative; overflow: hidden;
+    }
+    .product-card:hover { transform: translateY(-8px); box-shadow: 0 12px 25px rgba(60, 36, 21, 0.18); }
+    .product-card::before {
+      content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 5px;
+      background: linear-gradient(90deg, var(--orange), var(--gold));
+    }
+    .product-icon { width: 110px; height: 110px; margin: 0 auto 1.5rem; }
+    .product-icon svg { width: 100%; height: 100%; }
+    .product-card h3 { font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--brown); }
+    .product-card p { font-size: 0.95rem; color: #665c52; margin-bottom: 1rem; }
+    .price { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 700; color: var(--orange); }
+
+    /* Carousel */
+    .carousel-section { background: var(--brown); color: var(--cream); padding: 5rem 2rem; }
+    .carousel-section .section-title { color: var(--cream); }
+    .carousel-section .section-title::after { background: var(--gold); }
+    .carousel-container { max-width: 900px; margin: 0 auto; position: relative; overflow: hidden; }
+    .carousel-track { display: flex; transition: transform 0.5s ease-in-out; }
+    .carousel-slide { min-width: 100%; padding: 2rem; text-align: center; }
+    .carousel-slide h3 { font-size: 2rem; margin-bottom: 1rem; color: var(--gold); }
+    .carousel-slide p { font-size: 1.2rem; margin-bottom: 2rem; opacity: 0.9; }
+    .carousel-controls { display: flex; justify-content: center; gap: 1rem; margin-top: 2rem; }
+    .carousel-btn {
+      background: var(--gold); border: none; width: 50px; height: 50px; border-radius: 50%;
+      cursor: pointer; font-size: 1.2rem; color: var(--brown); transition: 0.3s;
+    }
+    .carousel-btn:hover { background: var(--orange); color: var(--white); }
+
+    /* Testimonials */
+    .testimonials-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; }
+    .testimonial-card {
+      background: var(--white); padding: 2rem; border-radius: 12px; box-shadow: 0 4px 12px var(--shadow);
+      position: relative;
+    }
+    .testimonial-card::before {
+      content: '"'; font-family: 'Playfair Display', serif; font-size: 4rem; color: var(--gold);
+      position: absolute; top: 10px; left: 20px; opacity: 0.3; line-height: 1;
+    }
+    .testimonial-text { font-style: italic; margin-bottom: 1.5rem; color: #5a4a3a; }
+    .testimonial-author { font-weight: 600; color: var(--brown); display: block; margin-top: 0.5rem; }
+    .stars { color: var(--gold); margin-bottom: 0.5rem; letter-spacing: 2px; }
+
+    /* Hours & Location */
+    .location-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; }
+    .map-placeholder {
+      width: 100%; height: 300px; background: linear-gradient(135deg, #e8e0d5, #d4c8b8);
+      border-radius: 12px; display: flex; align-items: center; justify-content: center;
+      font-size: 3rem; color: var(--brown); box-shadow: inset 0 0 20px rgba(0,0,0,0.1);
+    }
+    .hours-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    .hours-table td { padding: 0.8rem; border-bottom: 1px solid #e0d5c5; }
+    .hours-table tr:last-child td { border-bottom: none; }
+    .hours-table td:first-child { font-weight: 600; color: var(--brown); }
+    .hours-table td:last-child { text-align: right; color: #665c52; }
+    .contact-info p { margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.6rem; font-size: 1.05rem; }
+
+    /* Newsletter */
+    .newsletter { background: linear-gradient(135deg, var(--sage), #6a7b5f); color: var(--cream); padding: 4rem 2rem; text-align: center; border-radius: 20px; margin: 4rem auto; max-width: 1000px; }
+    .newsletter h2 { color: var(--cream); margin-bottom: 1rem; }
+    .newsletter p { margin-bottom: 2rem; opacity: 0.9; }
+    .newsletter-form { display: flex; gap: 1rem; max-width: 500px; margin: 0 auto; }
+    .newsletter-form input {
+      flex: 1; padding: 1rem; border: none; border-radius: 8px; font-family: 'Lora', serif;
+    }
+    .newsletter-form button {
+      padding: 1rem 2rem; background: var(--gold); color: var(--brown); border: none;
+      border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.3s;
+    }
+    .newsletter-form button:hover { background: var(--cream); }
+
+    /* Footer */
+    footer { background: var(--brown); color: var(--cream); padding: 3rem 2rem; text-align: center; }
+    .footer-content { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
+    .social-links { display: flex; gap: 1.5rem; font-size: 1.6rem; }
+    .social-links a { transition: transform 0.3s, color 0.3s; }
+    .social-links a:hover { transform: scale(1.2); color: var(--gold); }
+    .copyright { font-size: 0.9rem; opacity: 0.7; margin-top: 1rem; }
+
+    /* Animations */
+    .fade-in { opacity: 0; transform: translateY(30px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
+    .fade-in.visible { opacity: 1; transform: translateY(0); }
+
+    /* Responsive */
+    @media (max-width: 992px) {
+      .products-grid, .testimonials-grid { grid-template-columns: repeat(2, 1fr); }
+      .about-content, .location-grid { grid-template-columns: 1fr; }
+      .hero h1 { font-size: 3.5rem; }
+    }
+    @media (max-width: 768px) {
+      nav ul { display: none; }
+      .mobile-menu-btn { display: block; }
+      .products-grid, .testimonials-grid { grid-template-columns: 1fr; }
+      .hero h1 { font-size: 2.8rem; }
+      .newsletter-form { flex-direction: column; }
+      .carousel-slide h3 { font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">The Golden <span>Crust</span></div>
+    <nav>
+      <ul>
+        <li><a href="#hero">Home</a></li>
+        <li><a href="#about">About</a></li>
+        <li><a href="#products">Products</a></li>
+        <li><a href="#specials">Specials</a></li>
+        <li><a href="#testimonials">Reviews</a></li>
+        <li><a href="#location">Visit</a></li>
+      </ul>
+    </nav>
+    <button class="mobile-menu-btn" aria-label="Toggle Menu">☰</button>
+  </header>
+
+  <section id="hero" class="hero">
+    <div class="hero-content">
+      <h1 class="fade-in">The Golden Crust</h1>
+      <p class="fade-in">Handcrafted with passion, baked with tradition. Experience the warmth of artisan breads and pastries made fresh daily.</p>
+      <a href="#location" class="cta-btn fade-in">Visit Us</a>
+    </div>
+  </section>
+
+  <section id="about">
+    <h2 class="section-title fade-in">Our Story</h2>
+    <div class="about-content">
+      <div class="about-text fade-in">
+        <p>Founded in 2010, The Golden Crust began as a small family kitchen with a big dream: to bring back the true taste of slow-fermented bread and hand-laminated pastries.</p>
+        <p>We believe in patience. Our sourdough rests for 48 hours. Our butter comes from local farms. Every ingredient is chosen with care, and every batch is shaped by hand.</p>
+        <div class="divider">✦ ✦ ✦</div>
+        <p><strong>Our Philosophy:</strong> Quality over quantity. Tradition over trends. We bake not just for today, but for the memories we create around our tables.</p>
+      </div>
+      <div class="about-img fade-in"></div>
+    </div>
+  </section>
+
+  <section id="products">
+    <h2 class="section-title fade-in">Featured Products</h2>
+    <div class="products-grid">
+      <div class="product-card fade-in">
+        <div class="product-icon">
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 75C20 45 80 45 80 75C80 88 20 88 20 75Z" fill="#D4A853"/><path d="M30 75C30 55 70 55 70 75" stroke="#3C2415" stroke-width="2"/><circle cx="35" cy="60" r="2" fill="#3C2415"/><circle cx="50" cy="55" r="2" fill="#3C2415"/><circle cx="65" cy="62" r="2" fill="#3C2415"/></svg>
+        </div>
+        <h3>Artisan Sourdough</h3>
+        <p>48-hour fermented, crusty exterior, soft tangy crumb.</p>
+        <span class="price">$8.50</span>
+      </div>
+      <div class="product-card fade-in">
+        <div class="product-icon">
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30 70C30 40 70 30 70 60C70 80 50 85 30 70Z" fill="#C47A4B"/><path d="M40 65C45 50 60 45 65 55" stroke="#FDF6EC" stroke-width="2"/></svg>
+        </div>
+        <h3>Butter Croissants</h3>
+        <p>72 layers of French butter, baked golden every morning.</p>
+        <span class="price">$4.25</span>
+      </div>
+      <div class="product-card fade-in">
+        <div class="product-icon">
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M35 75L65 75L60 40L40 40Z" fill="#7A8B6F"/><path d="M40 40C40 25 60 25 60 40" fill="#D4A853"/><path d="M45 35L55 35" stroke="#FDF6EC" stroke-width="2"/></svg>
+        </div>
+        <h3>Seasonal Pastries</h3>
+        <p>Fresh fruit tarts, cream puffs, and flaky turnovers.</p>
+        <span class="price">$5.00</span>
+      </div>
+      <div class="product-card fade-in">
+        <div class="product-icon">
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="30" y="45" width="40" height="30" rx="4" fill="#3C2415"/><path d="M30 45C30 30 70 30 70 45" fill="#D4A853"/><circle cx="50" cy="35" r="8" fill="#C47A4B"/></svg>
+        </div>
+        <h3>Layer Cakes</h3>
+        <p>Rich chocolate, vanilla bean, and seasonal fruit layers.</p>
+        <span class="price">$32.00</span>
+      </div>
+      <div class="product-card fade-in">
+        <div class="product-icon">
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M25 65C25 40 75 40 75 65C75 75 25 75 25 65Z" fill="#D4A853"/><path d="M35 65C35 50 65 50 65 65" stroke="#3C2415" stroke-width="1.5"/></svg>
+        </div>
+        <h3>Country Breads</h3>
+        <p>Whole wheat, rye, and multigrain loaves daily.</p>
+        <span class="price">$7.00</span>
+      </div>
+      <div class="product-card fade-in">
+        <div class="product-icon">
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M40 70C40 45 60 45 60 70" fill="#C47A4B"/><path d="M45 45L50 30L55 45" stroke="#7A8B6F" stroke-width="2"/></svg>
+        </div>
+        <h3>Seasonal Specials</h3>
+        <p>Limited edition flavors rotating with the harvest.</p>
+        <span class="price">$6.50</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="specials" class="carousel-section">
+    <h2 class="section-title fade-in">Daily Specials</h2>
+    <div class="carousel-container fade-in">
+      <div class="carousel-track">
+        <div class="carousel-slide">
+          <h3>🥐 Morning Pairing</h3>
+          <p>Any croissant + fresh espresso or latte for just $7.50. Available 7AM-10AM daily.</p>
+        </div>
+        <div class="carousel-slide">
+          <h3>🍞 Weekend Loaf</h3>
+          <p>Pre-order our signature Walnut & Honey Sourdough every Friday. Pick up Saturday morning.</p>
+        </div>
+        <div class="carousel-slide">
+          <h3>🍰 Sweet Treat Tuesday</h3>
+          <p>Buy one pastry, get the second 50% off. Perfect for sharing with friends.</p>
+        </div>
+      </div>
+      <div class="carousel-controls">
+        <button class="carousel-btn prev-btn" aria-label="Previous">❮</button>
+        <button class="carousel-btn next-btn" aria-label="Next">❯</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="testimonials">
+    <h2 class="section-title fade-in">What Our Guests Say</h2>
+    <div class="testimonials-grid">
+      <div class="testimonial-card fade-in">
+        <div class="stars">★★★★★</div>
+        <p class="testimonial-text">"The sourdough here changed my life. Crispy crust, perfect tang, and it stays fresh for days. I drive 30 miles just for this loaf."</p>
+        <span class="testimonial-author">- Elena R.</span>
+      </div>
+      <div class="testimonial-card fade-in">
+        <div class="stars">★★★★★</div>
+        <p class="testimonial-text">"Walking in feels like stepping into a warm French village. The pastries are flaky, the coffee is rich, and the staff remembers your name."</p>
+        <span class="testimonial-author">- Marcus T.</span>
+      </div>
+      <div class="testimonial-card fade-in">
+        <div class="stars">★★★★★</div>
+        <p class="testimonial-text">"We ordered the seasonal cake for our anniversary. It was stunning and tasted even better. Truly artisan work."</p>
+        <span class="testimonial-author">- Sarah & David L.</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="location">
+    <h2 class="section-title fade-in">Hours & Location</h2>
+    <div class="location-grid">
+      <div class="fade-in">
+        <div class="map-placeholder">📍 Map Placeholder</div>
+      </div>
+      <div class="fade-in">
+        <div class="contact-info">
+          <p>📍 123 Baker's Lane, Artisan District, CA 90210</p>
+          <p>📞 (555) 123-4567</p>
+          <p>✉️ hello@goldencrustbakery.com</p>
+        </div>
+        <table class="hours-table">
+          <tr><td>Monday - Friday</td><td>7:00 AM - 6:00 PM</td></tr>
+          <tr><td>Saturday</td><td>8:00 AM - 5:00 PM</td></tr>
+          <tr><td>Sunday</td><td>8:00 AM - 3:00 PM</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="newsletter">
+    <div class="newsletter fade-in">
+      <h2>Join the Crust Club</h2>
+      <p>Subscribe for weekly specials, baking tips, and early access to seasonal drops.</p>
+      <form class="newsletter-form" onsubmit="event.preventDefault(); alert('Thank you for subscribing!');">
+        <input type="email" placeholder="Your email address" required>
+        <button type="submit">Subscribe</button>
+      </form>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-content">
+      <div class="logo">The Golden <span>Crust</span></div>
+      <div class="social-links">
+        <a href="#" aria-label="Facebook">📘</a>
+        <a href="#" aria-label="Instagram">📷</a>
+        <a href="#" aria-label="Twitter">🐦</a>
+        <a href="#" aria-label="Pinterest">📌</a>
+      </div>
+      <p class="copyright">© 2024 The Golden Crust Bakery. All rights reserved. Baked with ❤️ and flour.</p>
+    </div>
+  </footer>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Sticky Header Transition
+      const header = document.querySelector('header');
+      window.addEventListener('scroll', () => {
+        if (window.scrollY > 60) header.classList.add('scrolled');
+        else header.classList.remove('scrolled');
+      });
+
+      // Fade-in on Scroll
+      const fadeElements = document.querySelectorAll('.fade-in');
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+      fadeElements.forEach(el => observer.observe(el));
+
+      // Carousel Logic
+      const track = document.querySelector('.carousel-track');
+      const slides = document.querySelectorAll('.carousel-slide');
+      const prevBtn = document.querySelector('.prev-btn');
+      const nextBtn = document.querySelector('.next-btn');
+      let currentIndex = 0;
+
+      function updateCarousel() {
+        track.style.transform = `translateX(-${currentIndex * 100}%)`;
+      }
+
+      nextBtn.addEventListener('click', () => {
+        currentIndex = (currentIndex + 1) % slides.length;
+        updateCarousel();
+      });
+
+      prevBtn.addEventListener('click', () => {
+        currentIndex = (currentIndex - 1 + slides.length) % slides.length;
+        updateCarousel();
+      });
+
+      // Auto-play
+      let autoPlay = setInterval(() => {
+        currentIndex = (currentIndex + 1) % slides.length;
+        updateCarousel();
+      }, 5000);
+
+      // Pause on hover
+      const carouselContainer = document.querySelector('.carousel-container');
+      carouselContainer.addEventListener('mouseenter', () => clearInterval(autoPlay));
+      carouselContainer.addEventListener('mouseleave', () => {
+        autoPlay = setInterval(() => {
+          currentIndex = (currentIndex + 1) % slides.length;
+          updateCarousel();
+        }, 5000);
+      });
+
+      // Parallax-like effect on Hero
+      const hero = document.querySelector('.hero');
+      window.addEventListener('scroll', () => {
+        const scrolled = window.scrollY;
+        if (scrolled < window.innerHeight) {
+          hero.style.backgroundPositionY = `${scrolled * 0.4}px`;
+        }
+      });
+
+      // Mobile Menu Toggle (Simple)
+      const menuBtn = document.querySelector('.mobile-menu-btn');
+      const nav = document.querySelector('nav ul');
+      menuBtn.addEventListener('click', () => {
+        const isVisible = nav.style.display === 'flex';
+        nav.style.display = isVisible ? 'none' : 'flex';
+        nav.style.flexDirection = 'column';
+        nav.style.position = 'absolute';
+        nav.style.top = '100%';
+        nav.style.left = '0';
+        nav.style.width = '100%';
+        nav.style.background = 'rgba(253, 246, 236, 0.98)';
+        nav.style.padding = '1rem 2rem';
+        nav.style.boxShadow = '0 4px 10px rgba(0,0,0,0.1)';
+        nav.style.zIndex = '999';
+      });
+    });
+  </script>
+</body>
+</html>

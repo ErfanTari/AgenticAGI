@@ -1,8 +1,8 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { isMemoryFullyDisabled, appendScratchpad, clearScratchpad } from './memory-mode.js';
-import { getCurrentRequestId } from './transparency.js';
+import { transparency, getCurrentRequestId, withSpan, type SpanContext } from './transparency.js';
 import { promptLoader } from './prompt-loader.js';
 import { TOKEN_BUDGETS } from '../config/agent.config.js';
 import type { LLMHandler, Message } from './types.js';
@@ -17,7 +17,6 @@ import { stripThinkingTags } from './llm.js';
 import { PATHS } from '../config/agent.config.js';
 import { runWithRetry } from './react.js';
 import { resolveTemplates } from './planner.js';
-import { transparency } from './transparency.js';
 import { upsertEntry } from './memory/write.js';
 import { logExecution } from './memory/execution-log.js';
 import { createPlanEX, loadActivePlanEX, savePlanEX, updatePlanEX, type PlanEXEntry } from './memory/plan-ex.js';
@@ -505,6 +504,7 @@ async function executeSingleStep(
   step: TaskStep,
   state: ExecutionState,
   llmHandler: LLMHandler,
+  milestoneSpanCtx?: SpanContext,
 ): Promise<string | null> {
   if (Date.now() - state.startTime > TOTAL_TIMEOUT_MS) {
     return 'Total execution timeout (5 minutes)';
@@ -607,12 +607,23 @@ async function executeSingleStep(
     }
   }
 
+  const stepSpanId = randomUUID();
+  const stepSpanStart = Date.now();
+  const stepLabel = `Step: ${step.skill || step.id}`;
+  transparency.emit({
+    type: 'span_start',
+    data: { spanId: stepSpanId, parentSpanId: milestoneSpanCtx?.spanId, label: stepLabel, ts: stepSpanStart },
+  });
   transparency.emit({ type: 'step_start', data: { step } });
 
   const stepStart = performance.now();
   const skillResult = await runWithRetry(step.skill, resolvedInput, llmHandler);
   const stepMs = Math.round(performance.now() - stepStart);
   transparency.emit({ type: 'step_result', data: { step, result: skillResult, ms: stepMs } });
+  transparency.emit({
+    type: 'span_end',
+    data: { spanId: stepSpanId, durationMs: Date.now() - stepSpanStart, status: skillResult.success ? 'ok' : 'error' },
+  });
 
   try {
     const artifactHash = skillResult.success
@@ -698,7 +709,12 @@ export async function executePlan(
   plan: TaskPlan,
   llmHandler: LLMHandler,
   workingMemory?: WorkingMemory,
+  parentCtx?: SpanContext,
+  signal?: AbortSignal,
 ): Promise<ExecutionResult> {
+  if (!parentCtx) transparency.emit({ type: 'orphan_span', data: { label: 'Executor: run plan' } });
+  const effectiveRequestId = parentCtx?.requestId ?? getCurrentRequestId() ?? 'unknown';
+  return withSpan('Executor: run plan', parentCtx, effectiveRequestId, async (executorCtx) => {
   const wm = workingMemory ?? null;
   let milestones = getPlanMilestones(plan);
   const state: ExecutionState = {
@@ -743,7 +759,22 @@ export async function executePlan(
   }
 
   for (let milestoneIndex = 0; milestoneIndex < milestones.length; milestoneIndex++) {
+    if (signal?.aborted) throw new DOMException('Aborted by user', 'AbortError');
     const milestone = milestones[milestoneIndex];
+    const milestoneSpanId = randomUUID();
+    const milestoneSpanStart = Date.now();
+    let milestoneSpanStatus: 'ok' | 'error' = 'ok';
+    transparency.emit({
+      type: 'span_start',
+      data: { spanId: milestoneSpanId, parentSpanId: executorCtx.spanId, label: `Milestone: ${milestone.title}`, ts: milestoneSpanStart },
+    });
+    const milestoneCtx: SpanContext = {
+      spanId: milestoneSpanId,
+      parentSpanId: executorCtx.spanId,
+      requestId: executorCtx.requestId,
+      startedAt: milestoneSpanStart,
+    };
+    try {
     transparency.emit({
       type: 'milestone_start',
       data: { id: milestone.id, title: milestone.title, index: milestoneIndex + 1, total: milestones.length },
@@ -756,13 +787,15 @@ export async function executePlan(
     let milestoneRevised = false;
     let milestoneAbortReason: string | undefined;
     for (const step of milestone.steps) {
-      let abortReason = await executeSingleStep(plan, step, state, llmHandler);
+      if (signal?.aborted) throw new DOMException('Aborted by user', 'AbortError');
+      let abortReason = await executeSingleStep(plan, step, state, llmHandler, milestoneCtx);
 
       // FIX 4: Adaptive loop — RETRY → REVISE → ESCALATE instead of immediate abort
       // Exception: hard-abort conditions (HIGH_RISK_LOW_CONFIDENCE, timeouts) bypass the loop
       const isHardAbort = abortReason === 'HIGH_RISK_LOW_CONFIDENCE' || (abortReason?.includes('timeout') ?? false);
       if (abortReason && isHardAbort) {
         milestoneEscalated = true;
+        milestoneSpanStatus = 'error';
         milestoneAbortReason = abortReason;
         milestoneResults.push({
           milestoneId: milestone.id,
@@ -830,7 +863,7 @@ export async function executePlan(
           }
 
           // Re-run the step
-          abortReason = await executeSingleStep(plan, step, state, llmHandler);
+          abortReason = await executeSingleStep(plan, step, state, llmHandler, milestoneCtx);
 
           if (!abortReason) continue; // Retry succeeded — proceed to next step
           // Retry also failed — fall through to check remaining options
@@ -884,6 +917,7 @@ export async function executePlan(
         if (response === 'ESCALATE' || abortReason) {
           // ESCALATE: mark planEx as paused, return with escalated flag
           milestoneEscalated = true;
+          milestoneSpanStatus = 'error';
           milestoneAbortReason = abortReason ?? lastFailed?.error ?? 'Escalated after too many failures';
 
           const milestoneResult: MilestoneExecutionResult = {
@@ -1012,6 +1046,12 @@ export async function executePlan(
     } else {
       transparency.emit({ type: 'milestone_revision_skipped', data: { milestoneId: milestone.id, reason: 'no_failures' } });
     }
+    } finally {
+      transparency.emit({
+        type: 'span_end',
+        data: { spanId: milestoneSpanId, durationMs: Date.now() - milestoneSpanStart, status: milestoneSpanStatus },
+      });
+    }
   }
 
   // Remove active loop from MEMORY.md — plan reached terminal state.
@@ -1073,6 +1113,7 @@ export async function executePlan(
     linkedCodes: collectLinkedCodes(state.completed),
     taskCompleteEnqueued: true,
   };
+  }); // end withSpan
 }
 
 // --- Execution Verification (Priority 5) ---
@@ -1085,9 +1126,9 @@ export function buildGroundTruthSnapshot(completed: CompletedStep[]): { text: st
 
   for (const step of completed) {
     if (step.skill === 'file_writer' || step.skill === 'generate_and_save_file') {
-      // Extract path from output "Written to X" or "Generated and saved to X"
-      const pathMatch = step.output.match(/(?:Written to|Generated and saved to|Appended to)\s+(.+)/i);
-      const filePath = pathMatch?.[1]?.trim();
+      // Extract path from output "Written to X", "Generated and saved X", or "Appended to X"
+      const pathMatch = step.output.match(/(?:Written to|Generated and saved(?: to)?|Appended to)\s+([^\s(]+)/i);
+      const filePath = pathMatch?.[2]?.trim();
       if (filePath) {
         const resolved = path.resolve(workspaceRoot, filePath);
         try {

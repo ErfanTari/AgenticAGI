@@ -1,0 +1,1277 @@
+Here's a thinking process:
+
+2.  **Structure the HTML Document:**
+   ```html
+   <!DOCTYPE html>
+   <html lang="en">
+   <head>
+       <meta charset="UTF-8">
+       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+       <title>The Golden Crust Bakery</title>
+       <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+       <style>
+           /* CSS goes here */
+       </style>
+   </head>
+   <body>
+       <!-- Navigation -->
+       <!-- Hero -->
+       <!-- Menu/Products -->
+       <!-- Testimonials -->
+       <!-- Contact -->
+       <!-- Footer -->
+       <script>
+           // JS goes here
+       </script>
+   </body>
+   </html>
+   ```
+
+3.  **Develop CSS (Inline):**
+   - Variables for colors
+   - Reset/Box-sizing
+   - Typography setup
+   - Navigation (sticky, responsive, hamburger)
+   - Hero (full-width, parallax gradient, text overlay)
+   - Sections (padding, reveal animation)
+   - Menu Grid (cards, hover effects, prices)
+   - Testimonials (carousel structure, styling)
+   - Contact (hours, address, layout)
+   - Footer
+   - Media queries for responsiveness
+   - Animations (fade-in-up, hover scale)
+
+   *Color Palette:*
+   - Cream: `#FFF8F0`
+   - Deep Brown: `#3C2415`
+   - Golden Amber: `#D4A056`
+   - Sage Green: `#7A8B6F`
+
+   *CSS Details:*
+   - Use CSS custom properties for colors
+   - Smooth scroll behavior
+   - Sticky nav with backdrop blur or solid color
+   - Hamburger menu toggle logic (CSS + JS)
+   - Intersection Observer for scroll reveals
+   - Grid/Flexbox for layout
+   - Carousel logic (JS)
+
+   Let's draft the CSS carefully.
+
+   ```css
+   :root {
+       --cream: #FFF8F0;
+       --brown: #3C2415;
+       --amber: #D4A056;
+       --sage: #7A8B6F;
+       --white: #FFFFFF;
+       --shadow: rgba(60, 36, 21, 0.1);
+   }
+   * { box-sizing: border-box; margin: 0; padding: 0; }
+   html { scroll-behavior: smooth; }
+   body {
+       font-family: 'Lora', serif;
+       background-color: var(--cream);
+       color: var(--brown);
+       line-height: 1.6;
+       overflow-x: hidden;
+   }
+   h1, h2, h3, h4 {
+       font-family: 'Playfair Display', serif;
+       font-weight: 700;
+   }
+   a { text-decoration: none; color: inherit; }
+   ul { list-style: none; }
+   img { max-width: 100%; display: block; }
+
+   /* Navigation */
+   nav {
+       position: sticky;
+       top: 0;
+       z-index: 1000;
+       background: rgba(255, 248, 240, 0.95);
+       backdrop-filter: blur(10px);
+       padding: 1rem 5%;
+       display: flex;
+       justify-content: space-between;
+       align-items: center;
+       box-shadow: 0 2px 10px var(--shadow);
+       transition: all 0.3s ease;
+   }
+   .logo { font-family: 'Playfair Display', serif; font-size: 1.5rem; font-weight: 700; color: var(--brown); }
+   .logo span { color: var(--amber); }
+   .nav-links { display: flex; gap: 2rem; }
+   .nav-links a {
+       font-weight: 500;
+       position: relative;
+       transition: color 0.3s;
+   }
+   .nav-links a::after {
+       content: '';
+       position: absolute;
+       bottom: -4px;
+       left: 0;
+       width: 0;
+       height: 2px;
+       background: var(--amber);
+       transition: width 0.3s;
+   }
+   .nav-links a:hover { color: var(--amber); }
+   .nav-links a:hover::after { width: 100%; }
+   .hamburger { display: none; cursor: pointer; flex-direction: column; gap: 5px; }
+   .hamburger span { width: 25px; height: 3px; background: var(--brown); transition: 0.3s; }
+
+   /* Hero */
+   .hero {
+       height: 100vh;
+       display: flex;
+       align-items: center;
+       justify-content: center;
+       text-align: center;
+       background: linear-gradient(135deg, var(--cream) 0%, #F5E6D3 50%, var(--amber) 100%);
+       background-attachment: fixed;
+       padding: 0 1rem;
+       position: relative;
+       overflow: hidden;
+   }
+   .hero::before {
+       content: '';
+       position: absolute;
+       top: 0; left: 0; right: 0; bottom: 0;
+       background: radial-gradient(circle at 30% 40%, rgba(212, 160, 86, 0.2) 0%, transparent 50%),
+                   radial-gradient(circle at 70% 60%, rgba(122, 139, 111, 0.15) 0%, transparent 50%);
+       pointer-events: none;
+   }
+   .hero-content { z-index: 1; max-width: 800px; }
+   .hero h1 { font-size: 3.5rem; margin-bottom: 1rem; color: var(--brown); }
+   .hero p { font-size: 1.2rem; margin-bottom: 2rem; color: #5A4A3A; }
+   .btn {
+       display: inline-block;
+       padding: 0.8rem 2rem;
+       background: var(--amber);
+       color: var(--white);
+       border-radius: 30px;
+       font-weight: 600;
+       transition: transform 0.3s, box-shadow 0.3s;
+       border: none;
+       cursor: pointer;
+   }
+   .btn:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(212, 160, 86, 0.4); }
+
+   /* Sections */
+   section { padding: 5rem 5%; }
+   .section-title {
+       text-align: center;
+       font-size: 2.5rem;
+       margin-bottom: 3rem;
+       position: relative;
+       display: inline-block;
+       left: 50%;
+       transform: translateX(-50%);
+   }
+   .section-title::after {
+       content: '';
+       display: block;
+       width: 60px;
+       height: 3px;
+       background: var(--sage);
+       margin: 0.5rem auto 0;
+   }
+
+   /* Menu Grid */
+   .menu-grid {
+       display: grid;
+       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+       gap: 2rem;
+       max-width: 1200px;
+       margin: 0 auto;
+   }
+   .menu-card {
+       background: var(--white);
+       border-radius: 12px;
+       overflow: hidden;
+       box-shadow: 0 4px 12px var(--shadow);
+       transition: transform 0.3s ease, box-shadow 0.3s ease;
+       position: relative;
+   }
+   .menu-card:hover { transform: scale(1.03); box-shadow: 0 8px 20px rgba(60, 36, 21, 0.15); }
+   .card-img {
+       height: 200px;
+       background: linear-gradient(45deg, #E8D5C4, #D4A056);
+       display: flex;
+       align-items: center;
+       justify-content: center;
+       font-size: 3rem;
+       color: var(--white);
+   }
+   .card-content { padding: 1.5rem; }
+   .card-content h3 { margin-bottom: 0.5rem; color: var(--brown); }
+   .card-content p { font-size: 0.95rem; color: #6B5B4F; margin-bottom: 1rem; }
+   .price { font-weight: 700; color: var(--amber); font-size: 1.1rem; }
+   .category-tag {
+       position: absolute;
+       top: 1rem;
+       right: 1rem;
+       background: var(--sage);
+       color: var(--white);
+       padding: 0.3rem 0.8rem;
+       border-radius: 20px;
+       font-size: 0.8rem;
+       font-weight: 600;
+   }
+
+   /* Testimonials */
+   .testimonials { background: #F9F3EB; position: relative; overflow: hidden; }
+   .carousel-container {
+       max-width: 800px;
+       margin: 0 auto;
+       position: relative;
+   }
+   .testimonial {
+       text-align: center;
+       padding: 2rem;
+       display: none;
+       animation: fadeIn 0.5s ease;
+   }
+   .testimonial.active { display: block; }
+   .quote { font-size: 1.3rem; font-style: italic; margin-bottom: 1.5rem; color: var(--brown); }
+   .author { font-weight: 600; color: var(--sage); }
+   .carousel-controls {
+       display: flex;
+       justify-content: center;
+       gap: 1rem;
+       margin-top: 2rem;
+   }
+   .dot {
+       width: 12px;
+       height: 12px;
+       border-radius: 50%;
+       background: #D4C4B0;
+       cursor: pointer;
+       transition: background 0.3s;
+   }
+   .dot.active { background: var(--amber); }
+
+   /* Contact */
+   .contact-grid {
+       display: grid;
+       grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+       gap: 3rem;
+       max-width: 1000px;
+       margin: 0 auto;
+   }
+   .contact-info h3 { margin-bottom: 1rem; color: var(--brown); }
+   .contact-info p { margin-bottom: 0.5rem; }
+   .hours-table { width: 100%; border-collapse: collapse; }
+   .hours-table td { padding: 0.5rem 0; border-bottom: 1px solid #E8D5C4; }
+   .hours-table td:last-child { text-align: right; font-weight: 500; }
+
+   /* Footer */
+   footer {
+       background: var(--brown);
+       color: var(--cream);
+       text-align: center;
+       padding: 3rem 1rem;
+   }
+   footer p { opacity: 0.8; margin-top: 1rem; font-size: 0.9rem; }
+
+   /* Animations */
+   .reveal {
+       opacity: 0;
+       transform: translateY(30px);
+       transition: opacity 0.8s ease, transform 0.8s ease;
+   }
+   .reveal.visible { opacity: 1; transform: translateY(0); }
+
+   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+   /* Responsive */
+   @media (max-width: 768px) {
+       .hamburger { display: flex; }
+       .nav-links {
+           position: fixed;
+           top: 70px;
+           left: 0;
+           right: 0;
+           background: var(--cream);
+           flex-direction: column;
+           align-items: center;
+           padding: 2rem 0;
+           box-shadow: 0 5px 10px var(--shadow);
+           transform: translateY(-150%);
+           transition: transform 0.3s ease;
+       }
+       .nav-links.active { transform: translateY(0); }
+       .hero h1 { font-size: 2.5rem; }
+       .section-title { font-size: 2rem; }
+   }
+   ```
+
+4.  **Develop JavaScript (Inline):**
+   - Hamburger menu toggle
+   - Intersection Observer for scroll reveals
+   - Testimonial carousel logic
+   - Smooth scroll for nav links (optional, CSS handles it but JS can enhance)
+   - Sticky nav background change on scroll
+
+   ```javascript
+   document.addEventListener('DOMContentLoaded', () => {
+       // Hamburger Menu
+       const hamburger = document.querySelector('.hamburger');
+       const navLinks = document.querySelector('.nav-links');
+       hamburger.addEventListener('click', () => {
+           navLinks.classList.toggle('active');
+           // Animate hamburger
+           const spans = hamburger.querySelectorAll('span');
+           if (navLinks.classList.contains('active')) {
+               spans[0].style.transform = 'rotate(45deg) translate(5px, 6px)';
+               spans[1].style.opacity = '0';
+               spans[2].style.transform = 'rotate(-45deg) translate(5px, -6px)';
+           } else {
+               spans[0].style.transform = 'none';
+               spans[1].style.opacity = '1';
+               spans[2].style.transform = 'none';
+           }
+       });
+
+       // Close menu on link click
+       document.querySelectorAll('.nav-links a').forEach(link => {
+           link.addEventListener('click', () => {
+               navLinks.classList.remove('active');
+               const spans = hamburger.querySelectorAll('span');
+               spans[0].style.transform = 'none';
+               spans[1].style.opacity = '1';
+               spans[2].style.transform = 'none';
+           });
+       });
+
+       // Scroll Reveal
+       const reveals = document.querySelectorAll('.reveal');
+       const revealObserver = new IntersectionObserver((entries) => {
+           entries.forEach(entry => {
+               if (entry.isIntersecting) {
+                   entry.target.classList.add('visible');
+                   revealObserver.unobserve(entry.target);
+               }
+           });
+       }, { threshold: 0.15 });
+
+       reveals.forEach(el => revealObserver.observe(el));
+
+       // Testimonial Carousel
+       const testimonials = document.querySelectorAll('.testimonial');
+       const dots = document.querySelectorAll('.dot');
+       let currentSlide = 0;
+
+       function showSlide(index) {
+           testimonials.forEach(t => t.classList.remove('active'));
+           dots.forEach(d => d.classList.remove('active'));
+           testimonials[index].classList.add('active');
+           dots[index].classList.add('active');
+           currentSlide = index;
+       }
+
+       dots.forEach((dot, index) => {
+           dot.addEventListener('click', () => showSlide(index));
+       });
+
+       // Auto-advance carousel
+       setInterval(() => {
+           let next = (currentSlide + 1) % testimonials.length;
+           showSlide(next);
+       }, 5000);
+
+       // Sticky Nav Background on Scroll
+       const nav = document.querySelector('nav');
+       window.addEventListener('scroll', () => {
+           if (window.scrollY > 50) {
+               nav.style.background = 'rgba(255, 248, 240, 0.98)';
+               nav.style.boxShadow = '0 4px 12px rgba(60, 36, 21, 0.15)';
+           } else {
+               nav.style.background = 'rgba(255, 248, 240, 0.95)';
+               nav.style.boxShadow = '0 2px 10px rgba(60, 36, 21, 0.1)';
+           }
+       });
+   });
+   ```
+
+5.  **Assemble HTML Structure:**
+   Now I'll put it all together, ensuring all requirements are met. I'll add placeholder SVGs or CSS gradients for images to keep it self-contained without external image dependencies (as requested: "No external dependencies except Google Fonts CDN"). I'll use CSS gradients and emojis/icons for the menu cards to keep it lightweight and visually distinctive.
+
+   Let's draft the full HTML carefully.
+
+   Structure:
+   - `<!DOCTYPE html>`
+   - `<html lang="en">`
+   - `<head>` with meta, title, google fonts link, `<style>`
+   - `<body>`
+     - `<nav>`
+     - `<header class="hero">`
+     - `<section id="menu">`
+     - `<section id="testimonials" class="testimonials">`
+     - `<section id="contact">`
+     - `<footer>`
+     - `<script>`
+   - `</body></html>`
+
+   I'll refine the CSS to ensure it matches the exact color palette and typography requirements. I'll make sure the parallax effect is simulated with `background-attachment: fixed` and a gradient. I'll add the reveal classes to sections and cards.
+
+   Check requirements:
+   - Warm earthy color palette: `#FFF8F0`, `#3C2415`, `#D4A056`, `#7A8B6F` -> Used in CSS variables
+   - Serif typography: Playfair Display, Lora -> Google Fonts link included
+   - Full-width hero with parallax-style background gradient -> `.hero` with `background-attachment: fixed` and gradient
+   - Sticky navigation with smooth scroll -> `position: sticky`, `scroll-behavior: smooth`
+   - Animated section reveals on scroll -> Intersection Observer + CSS `.reveal`
+   - Products/menu grid with hover effects showing bread, pastries, cakes, coffee items with prices -> Grid layout, hover scale, prices
+   - Testimonials carousel -> JS logic + CSS
+   - Contact section with hours and address -> Grid layout
+   - Footer -> Included
+   - All CSS/JS inline -> Yes
+   - No external dependencies except Google Fonts CDN -> Yes
+   - Responsive with mobile hamburger -> Yes
+   - Subtle CSS animations: fade-in-up, hover scale, smooth transitions -> Yes
+   - MUST start/end correctly -> Yes
+   - Complete, save-ready -> Yes
+
+   I will now generate the complete code. I'll make sure the HTML is well-structured and the CSS/JS is robust. I'll use CSS shapes/gradients for the "images" in the menu cards to avoid broken external links, keeping it fully self-contained. I'll add appropriate ARIA attributes for accessibility where possible.
+
+   One minor adjustment: The prompt says "parallax-style background gradient". I'll use `background-attachment: fixed` on the hero.
+   I'll ensure the carousel has smooth transitions.
+   I'll make sure the hamburger menu works correctly on mobile.
+   I'll double-check the color codes.
+   All good.
+
+   Let's write it out carefully. 
+   Self-Correction/Refinement during thought:
+   - The prompt says "parallax-style background gradient". I'll use `background-attachment: fixed` but note that on mobile it sometimes disables. I'll add a media query to handle it gracefully, or just rely on the gradient itself for the "style".
+   - I'll make sure the menu items have distinct categories: Bread, Pastries, Cakes, Coffee.
+   - I'll add a subtle pattern or texture via CSS if possible, but gradients are fine.
+   - I'll ensure the JS handles the carousel correctly without external libs.
+   - I'll verify all tags are closed.
+   - I'll output ONLY the HTML content.
+
+   Proceeding. 
+   Structure looks solid. I will generate it now. 
+   Output matches the final code block.✅
+   Checking constraints: "Output ONLY the complete file content with no explanation, no markdown fences, no commentary. The output must start with <!DOCTYPE html> and end with </html>."
+   I will strictly follow this. No markdown formatting around the output. Just raw text.
+   Ready. 
+   Generating. 
+   [Output Generation] -> *Proceeds*
+   *(Self-Correction/Verification during drafting)*
+   - I need to make sure the Google Fonts link is correct.
+   - I need to ensure the CSS variables match exactly.
+   - I need to ensure the JS is robust.
+   - I will wrap everything in a single block as requested.
+   - I will carefully check the start and end tags.
+   - All good.
+   Output matches the response. 
+   Proceeds. 
+   [Output Generation] -> *Done.* 
+   *(Note: I will output exactly the raw HTML string as requested, without any markdown code blocks, to strictly comply with "no markdown fences".)*
+   Actually, the prompt says "no markdown fences", so I will just output the raw text starting with `<!DOCTYPE html>` and ending with `</html>`.
+   Let's produce it. 
+   [Done]
+</think>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Golden Crust Bakery</title>
+    <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --cream: #FFF8F0;
+            --brown: #3C2415;
+            --amber: #D4A056;
+            --sage: #7A8B6F;
+            --white: #FFFFFF;
+            --shadow: rgba(60, 36, 21, 0.1);
+            --text-muted: #5A4A3A;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Lora', serif;
+            background-color: var(--cream);
+            color: var(--brown);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: 'Playfair Display', serif;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+            transition: color 0.3s ease;
+        }
+
+        ul {
+            list-style: none;
+        }
+
+        img {
+            max-width: 100%;
+            display: block;
+        }
+
+        /* Navigation */
+        nav {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: rgba(255, 248, 240, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem 5%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px var(--shadow);
+            transition: all 0.3s ease;
+        }
+
+        .logo {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--brown);
+            letter-spacing: -0.5px;
+        }
+
+        .logo span {
+            color: var(--amber);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2.5rem;
+        }
+
+        .nav-links a {
+            font-weight: 500;
+            font-size: 0.95rem;
+            position: relative;
+            padding: 0.5rem 0;
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--amber);
+            transition: width 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--amber);
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        .hamburger {
+            display: none;
+            cursor: pointer;
+            flex-direction: column;
+            gap: 5px;
+            z-index: 1001;
+        }
+
+        .hamburger span {
+            width: 26px;
+            height: 3px;
+            background: var(--brown);
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+
+        /* Hero Section */
+        .hero {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            background: linear-gradient(135deg, var(--cream) 0%, #F5E6D3 40%, var(--amber) 100%);
+            background-attachment: fixed;
+            padding: 0 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(circle at 20% 30%, rgba(212, 160, 86, 0.25) 0%, transparent 45%),
+                        radial-gradient(circle at 80% 70%, rgba(122, 139, 111, 0.2) 0%, transparent 45%);
+            pointer-events: none;
+        }
+
+        .hero-content {
+            z-index: 1;
+            max-width: 850px;
+            animation: fadeInUp 1s ease forwards;
+        }
+
+        .hero h1 {
+            font-size: 3.8rem;
+            margin-bottom: 1.2rem;
+            color: var(--brown);
+            text-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            margin-bottom: 2.5rem;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 1rem 2.5rem;
+            background: var(--amber);
+            color: var(--white);
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(212, 160, 86, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(212, 160, 86, 0.45);
+            background: #C4924A;
+        }
+
+        /* Sections */
+        section {
+            padding: 6rem 5%;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.8rem;
+            margin-bottom: 3.5rem;
+            position: relative;
+            display: inline-block;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .section-title::after {
+            content: '';
+            display: block;
+            width: 70px;
+            height: 4px;
+            background: var(--sage);
+            margin: 0.8rem auto 0;
+            border-radius: 2px;
+        }
+
+        /* Menu Grid */
+        .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2.5rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .menu-card {
+            background: var(--white);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 6px 16px var(--shadow);
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.4s ease;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .menu-card:hover {
+            transform: scale(1.04) translateY(-5px);
+            box-shadow: 0 12px 24px rgba(60, 36, 21, 0.18);
+        }
+
+        .card-img {
+            height: 220px;
+            background: linear-gradient(135deg, #E8D5C4 0%, #D4A056 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            color: var(--white);
+            position: relative;
+        }
+
+        .card-img::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 40px;
+            background: linear-gradient(to top, var(--white), transparent);
+        }
+
+        .card-content {
+            padding: 1.5rem;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-content h3 {
+            margin-bottom: 0.6rem;
+            color: var(--brown);
+            font-size: 1.4rem;
+        }
+
+        .card-content p {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            margin-bottom: 1.2rem;
+            flex-grow: 1;
+        }
+
+        .price {
+            font-weight: 700;
+            color: var(--amber);
+            font-size: 1.2rem;
+            margin-top: auto;
+        }
+
+        .category-tag {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: var(--sage);
+            color: var(--white);
+            padding: 0.4rem 0.9rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+
+        /* Testimonials */
+        .testimonials {
+            background: #F9F3EB;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .carousel-container {
+            max-width: 850px;
+            margin: 0 auto;
+            position: relative;
+            min-height: 250px;
+        }
+
+        .testimonial {
+            text-align: center;
+            padding: 2rem 1rem;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .testimonial.active {
+            display: block;
+            opacity: 1;
+        }
+
+        .quote {
+            font-size: 1.4rem;
+            font-style: italic;
+            margin-bottom: 1.8rem;
+            color: var(--brown);
+            line-height: 1.5;
+        }
+
+        .author {
+            font-weight: 600;
+            color: var(--sage);
+            font-size: 1.1rem;
+        }
+
+        .carousel-controls {
+            display: flex;
+            justify-content: center;
+            gap: 0.8rem;
+            margin-top: 2.5rem;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #D4C4B0;
+            cursor: pointer;
+            transition: background 0.3s, transform 0.3s;
+        }
+
+        .dot:hover {
+            transform: scale(1.2);
+        }
+
+        .dot.active {
+            background: var(--amber);
+        }
+
+        /* Contact */
+        .contact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 3.5rem;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .contact-info h3 {
+            margin-bottom: 1.2rem;
+            color: var(--brown);
+            font-size: 1.6rem;
+        }
+
+        .contact-info p {
+            margin-bottom: 0.8rem;
+            font-size: 1.05rem;
+        }
+
+        .hours-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .hours-table td {
+            padding: 0.7rem 0;
+            border-bottom: 1px solid #E8D5C4;
+            font-size: 1rem;
+        }
+
+        .hours-table td:last-child {
+            text-align: right;
+            font-weight: 600;
+            color: var(--brown);
+        }
+
+        .contact-form input, .contact-form textarea {
+            width: 100%;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border: 2px solid #E8D5C4;
+            border-radius: 8px;
+            font-family: 'Lora', serif;
+            font-size: 1rem;
+            background: var(--white);
+            transition: border-color 0.3s;
+        }
+
+        .contact-form input:focus, .contact-form textarea:focus {
+            outline: none;
+            border-color: var(--amber);
+        }
+
+        .contact-form button {
+            width: 100%;
+            padding: 1rem;
+            background: var(--brown);
+            color: var(--cream);
+            border: none;
+            border-radius: 8px;
+            font-family: 'Playfair Display', serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .contact-form button:hover {
+            background: var(--amber);
+        }
+
+        /* Footer */
+        footer {
+            background: var(--brown);
+            color: var(--cream);
+            text-align: center;
+            padding: 4rem 1.5rem;
+        }
+
+        footer .footer-logo {
+            font-family: 'Playfair Display', serif;
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        footer .footer-logo span {
+            color: var(--amber);
+        }
+
+        footer p {
+            opacity: 0.8;
+            margin-top: 1rem;
+            font-size: 0.95rem;
+        }
+
+        footer .socials {
+            margin: 1.5rem 0;
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+        }
+
+        footer .socials a {
+            color: var(--cream);
+            font-size: 1.2rem;
+            transition: color 0.3s;
+        }
+
+        footer .socials a:hover {
+            color: var(--amber);
+        }
+
+        /* Animations */
+        .reveal {
+            opacity: 0;
+            transform: translateY(40px);
+            transition: opacity 0.9s ease, transform 0.9s ease;
+        }
+
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hamburger {
+                display: flex;
+            }
+
+            .nav-links {
+                position: fixed;
+                top: 70px;
+                left: 0;
+                right: 0;
+                background: var(--cream);
+                flex-direction: column;
+                align-items: center;
+                padding: 2.5rem 0;
+                box-shadow: 0 8px 16px var(--shadow);
+                transform: translateY(-150%);
+                transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                gap: 1.5rem;
+            }
+
+            .nav-links.active {
+                transform: translateY(0);
+            }
+
+            .hero h1 {
+                font-size: 2.6rem;
+            }
+
+            .hero p {
+                font-size: 1.1rem;
+            }
+
+            .section-title {
+                font-size: 2.2rem;
+            }
+
+            .menu-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .contact-grid {
+                grid-template-columns: 1fr;
+                gap: 2.5rem;
+            }
+
+            .quote {
+                font-size: 1.2rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero h1 { font-size: 2.2rem; }
+            .btn { padding: 0.8rem 2rem; font-size: 0.95rem; }
+            section { padding: 4rem 4%; }
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="logo">The Golden <span>Crust</span></div>
+        <div class="hamburger" aria-label="Toggle navigation">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="#home">Home</a></li>
+            <li><a href="#menu">Menu</a></li>
+            <li><a href="#testimonials">Reviews</a></li>
+            <li><a href="#contact">Contact</a></li>
+        </ul>
+    </nav>
+
+    <header id="home" class="hero">
+        <div class="hero-content">
+            <h1>Baked with Love, Served with Warmth</h1>
+            <p>Experience the art of traditional baking. From sourdough loaves to delicate pastries, every bite tells a story of craftsmanship and quality ingredients.</p>
+            <a href="#menu" class="btn">Explore Our Menu</a>
+        </div>
+    </header>
+
+    <section id="menu">
+        <h2 class="section-title reveal">Our Artisan Selection</h2>
+        <div class="menu-grid">
+            <div class="menu-card reveal">
+                <div class="card-img">🍞</div>
+                <span class="category-tag">Bread</span>
+                <div class="card-content">
+                    <h3>Classic Sourdough</h3>
+                    <p>72-hour fermented dough with a crispy crust and tangy, airy interior.</p>
+                    <div class="price">$8.50</div>
+                </div>
+            </div>
+            <div class="menu-card reveal">
+                <div class="card-img">🥐</div>
+                <span class="category-tag">Pastry</span>
+                <div class="card-content">
+                    <h3>Butter Croissant</h3>
+                    <p>Flaky, golden layers of French-style pastry baked fresh every morning.</p>
+                    <div class="price">$4.25</div>
+                </div>
+            </div>
+            <div class="menu-card reveal">
+                <div class="card-img">🍰</div>
+                <span class="category-tag">Cake</span>
+                <div class="card-content">
+                    <h3>Velvet Berry Layer</h3>
+                    <p>Light sponge cake layered with fresh cream and seasonal berries.</p>
+                    <div class="price">$6.00 / slice</div>
+                </div>
+            </div>
+            <div class="menu-card reveal">
+                <div class="card-img">☕</div>
+                <span class="category-tag">Coffee</span>
+                <div class="card-content">
+                    <h3>Artisan Pour Over</h3>
+                    <p>Single-origin beans brewed to perfection with notes of chocolate and citrus.</p>
+                    <div class="price">$5.50</div>
+                </div>
+            </div>
+            <div class="menu-card reveal">
+                <div class="card-img">🥖</div>
+                <span class="category-tag">Bread</span>
+                <div class="card-content">
+                    <h3>Herb Focaccia</h3>
+                    <p>Soft, olive oil-infused bread topped with rosemary, thyme, and sea salt.</p>
+                    <div class="price">$7.00</div>
+                </div>
+            </div>
+            <div class="menu-card reveal">
+                <div class="card-img">🍪</div>
+                <span class="category-tag">Pastry</span>
+                <div class="card-content">
+                    <h3>Sea Salt Choco Chunk</h3>
+                    <p>Thick, chewy cookies with rich dark chocolate and flaky Maldon salt.</p>
+                    <div class="price">$3.75</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="testimonials" class="testimonials">
+        <h2 class="section-title reveal">What Our Neighbors Say</h2>
+        <div class="carousel-container reveal">
+            <div class="testimonial active">
+                <p class="quote">"The Golden Crust has become our Sunday morning tradition. The sourdough is absolutely divine, and the staff feels like family."</p>
+                <div class="author">— Eleanor R.</div>
+            </div>
+            <div class="testimonial">
+                <p class="quote">"I've tried bakeries across the city, but nothing compares to their butter croissants. Flaky, rich, and perfectly baked every time."</p>
+                <div class="author">— Marcus T.</div>
+            </div>
+            <div class="testimonial">
+                <p class="quote">"A hidden gem! The ambiance is cozy, the coffee is expertly brewed, and their seasonal cakes are works of art."</p>
+                <div class="author">— Sarah L.</div>
+            </div>
+            <div class="carousel-controls">
+                <div class="dot active" data-index="0"></div>
+                <div class="dot" data-index="1"></div>
+                <div class="dot" data-index="2"></div>
+            </div>
+        </div>
+    </section>
+
+    <section id="contact">
+        <h2 class="section-title reveal">Visit Us</h2>
+        <div class="contact-grid reveal">
+            <div class="contact-info">
+                <h3>Hours & Location</h3>
+                <p>📍 142 Maple Avenue, Oakwood District</p>
+                <p>📞 (555) 123-4567</p>
+                <p>✉️ hello@goldencrustbakery.com</p>
+                <table class="hours-table">
+                    <tr><td>Monday - Friday</td><td>7:00 AM - 6:00 PM</td></tr>
+                    <tr><td>Saturday</td><td>8:00 AM - 7:00 PM</td></tr>
+                    <tr><td>Sunday</td><td>8:00 AM - 4:00 PM</td></tr>
+                </table>
+            </div>
+            <div class="contact-form">
+                <h3>Send a Message</h3>
+                <form onsubmit="event.preventDefault(); alert('Thank you for your message! We will get back to you shortly.');">
+                    <input type="text" placeholder="Your Name" required>
+                    <input type="email" placeholder="Your Email" required>
+                    <textarea rows="4" placeholder="Your Message" required></textarea>
+                    <button type="submit">Send Message</button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="footer-logo">The Golden <span>Crust</span></div>
+        <div class="socials">
+            <a href="#" aria-label="Instagram">📷</a>
+            <a href="#" aria-label="Facebook">📘</a>
+            <a href="#" aria-label="Twitter">🐦</a>
+        </div>
+        <p>&copy; 2024 The Golden Crust Bakery. All rights reserved.</p>
+        <p>Crafted with passion in Oakwood.</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Hamburger Menu Toggle
+            const hamburger = document.querySelector('.hamburger');
+            const navLinks = document.querySelector('.nav-links');
+            
+            hamburger.addEventListener('click', () => {
+                navLinks.classList.toggle('active');
+                const spans = hamburger.querySelectorAll('span');
+                if (navLinks.classList.contains('active')) {
+                    spans[0].style.transform = 'rotate(45deg) translate(5px, 6px)';
+                    spans[1].style.opacity = '0';
+                    spans[2].style.transform = 'rotate(-45deg) translate(5px, -6px)';
+                } else {
+                    spans[0].style.transform = 'none';
+                    spans[1].style.opacity = '1';
+                    spans[2].style.transform = 'none';
+                }
+            });
+
+            // Close mobile menu on link click
+            document.querySelectorAll('.nav-links a').forEach(link => {
+                link.addEventListener('click', () => {
+                    navLinks.classList.remove('active');
+                    const spans = hamburger.querySelectorAll('span');
+                    spans[0].style.transform = 'none';
+                    spans[1].style.opacity = '1';
+                    spans[2].style.transform = 'none';
+                });
+            });
+
+            // Scroll Reveal Animation
+            const reveals = document.querySelectorAll('.reveal');
+            const revealObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                        revealObserver.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.15, rootMargin: '0px 0px -50px 0px' });
+
+            reveals.forEach(el => revealObserver.observe(el));
+
+            // Testimonial Carousel
+            const testimonials = document.querySelectorAll('.testimonial');
+            const dots = document.querySelectorAll('.dot');
+            let currentSlide = 0;
+            let autoSlideInterval;
+
+            function showSlide(index) {
+                testimonials.forEach(t => t.classList.remove('active'));
+                dots.forEach(d => d.classList.remove('active'));
+                testimonials[index].classList.add('active');
+                dots[index].classList.add('active');
+                currentSlide = index;
+                resetAutoSlide();
+            }
+
+            dots.forEach((dot, index) => {
+                dot.addEventListener('click', () => showSlide(index));
+            });
+
+            function autoSlide() {
+                let next = (currentSlide + 1) % testimonials.length;
+                showSlide(next);
+            }
+
+            function resetAutoSlide() {
+                clearInterval(autoSlideInterval);
+                autoSlideInterval = setInterval(autoSlide, 5000);
+            }
+
+            resetAutoSlide();
+
+            // Sticky Nav Background Enhancement
+            const nav = document.querySelector('nav');
+            let lastScroll = 0;
+
+            window.addEventListener('scroll', () => {
+                const currentScroll = window.pageYOffset;
+                if (currentScroll > 80) {
+                    nav.style.background = 'rgba(255, 248, 240, 0.98)';
+                    nav.style.boxShadow = '0 4px 12px rgba(60, 36, 21, 0.15)';
+                } else {
+                    nav.style.background = 'rgba(255, 248, 240, 0.95)';
+                    nav.style.boxShadow = '0 2px 10px rgba(60, 36, 21, 0.1)';
+                }
+                lastScroll = currentScroll;
+            });
+        });
+    </script>
+</body>
+</html>

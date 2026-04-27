@@ -73,12 +73,12 @@ describe('Context Diet: prompt-budget', () => {
       expect(built.tokenEstimate).toBeLessThan(2000);
     });
 
-    it('sources include skill_list and query-loop.md', () => {
+    it('sources include skill_list and query-loop-base.md', () => {
       setMemoryMode('disabled');
       const built = buildQueryLoopSystemPrompt({ goal: 'test', pointerIndex: '', activeLoops: '' });
       const names = built.sources.map(s => s.name);
       expect(names).toContain('skill_list');
-      expect(names).toContain('query-loop.md');
+      expect(names).toContain('query-loop-base.md');
     });
   });
 

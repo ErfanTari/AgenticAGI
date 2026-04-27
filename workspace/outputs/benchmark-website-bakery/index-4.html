@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Hearthstone Bakery | Handcrafted Happiness</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Lato:wght@300;400&display=swap" rel="stylesheet">
+    <style>
+        /* --- Variables & Reset --- */
+        :root {
+            --color-primary: #8B4513; /* Deep Brown/Terracotta */
+            --color-secondary: #D2B48C; /* Tan/Creamy neutral */
+            --color-background: #FAF0E6; /* Linen White/Cream */
+            --color-text: #333333; /* Dark Charcoal */
+            --font-heading: 'Playfair Display', serif;
+            --font-body: 'Lato', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-body);
+            line-height: 1.6;
+            color: var(--color-text);
+            background-color: var(--color-background);
+            scroll-behavior: smooth;
+        }
+
+        /* --- Typography --- */
+        h1, h2, h3 {
+            font-family: var(--font-heading);
+            color: var(--color-primary);
+            text-align: center;
+            margin-bottom: 0.5em;
+        }
+
+        h1 { font-size: clamp(2rem, 6vw, 4rem); letter-spacing: 1px; }
+        h2 { font-size: clamp(1.8rem, 5vw, 3rem); padding-top: 20px; }
+        h3 { font-size: 1.5rem; margin-top: 0; }
+
+        p {
+            margin-bottom: 1em;
+            text-align: center;
+        }
+
+        /* --- Layout & Structure --- */
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 0;
+        }
+
+        section {
+            padding: 60px 0;
+            border-bottom: 1px solid rgba(139, 69, 19, 0.1);
+        }
+
+        /* --- Header & Navigation --- */
+        header {
+            background-color: var(--color-background);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+        }
+
+        .logo {
+            font-family: var(--font-heading);
+            font-size: 1.8rem;
+            color: var(--color-primary);
+            text-decoration: none;
+        }
+
+        .nav-links {
+            list-style: none;
+            display: flex;
+        }
+
+        .nav-links li a {
+            text-decoration: none;
+            color: var(--color-text);
+            padding: 10px 15px;
+            display: block;
+            transition: color 0.3s ease;
+        }
+
+        .nav-links li a:hover {
+            color: var(--color-primary);
+        }
+
+        /* Mobile Menu Toggle */
+        .menu-toggle {
+            display: none;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        /* --- Hero Section --- */
+        #hero {
+            background: url('placeholder-bakery-interior.jpg') center/cover no-repeat; /* Placeholder Image */
+            height: 80vh;
+            display: flex;
+            align-items: center;
+            text-align: center;
+            color: white;
+            position: relative;
+        }
+
+        #hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.3); /* Dark overlay for text readability */
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 10;
+        }
+
+        .hero-content h1 {
+            color: white;
+            font-size: clamp(3rem, 8vw, 5.5rem);
+            margin-bottom: 0.2em;
+        }
+
+        .hero-content p {
+            color: var(--color-secondary);
+            max-width: 600px;
+            margin: 1em auto 2.5em auto;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background-color: var(--color-primary);
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+            letter-spacing: 1px;
+            transition: background-color 0.3s ease, transform 0.1s;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            background-color: #A0522D; /* Slightly lighter brown */
+            transform: translateY(-2px);
+        }
+
+        /* --- About Section --- */
+        #about {
+            background-color: var(--color-background);
+            text-align: center;
+        }
+
+        #about .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .about-content {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        /* --- Menu Section --- */
+        #menu {
+            background-color: var(--color-secondary);
+            padding: 80px 0;
+        }
+
+        .menu-grid {
+            display: grid;
+            gap: 30px;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            margin-top: 40px;
+        }
+
+        .menu-card {
+            background-color: white;
+            padding: 30px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s ease;
+        }
+
+        .menu-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .menu-card h3 {
+            color: var(--color-primary);
+            border-bottom: 2px solid rgba(139, 69, 19, 0.2);
+            padding-bottom: 10px;
+        }
+
+        /* --- Contact Section --- */
+        #contact {
+            background-color: var(--color-background);
+        }
+
+        .contact-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            align-items: center;
+        }
+
+        .contact-info, .hours {
+            text-align: center;
+            max-width: 500px;
+        }
+
+        .hours ul {
+            list-style: none;
+            padding: 0;
+            text-align: left;
+        }
+
+        .hours li {
+            padding: 8px 0;
+            border-bottom: 1px dotted rgba(0, 0, 0, 0.2);
+        }
+
+        /* Map Placeholder Styling */
+        .map-placeholder {
+            width: 100%;
+            height: 300px;
+            background-color: #ccc; /* Placeholder color */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            font-style: italic;
+        }
+
+        /* --- Footer --- */
+        footer {
+            background-color: var(--color-primary);
+            color: white;
+            padding: 30px 0;
+            font-size: 0.9rem;
+        }
+
+        footer .container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .footer-nav {
+            text-align: center;
+        }
+
+        .footer-nav a {
+            color: var(--color-secondary);
+            text-decoration: none;
+            margin: 0 10px;
+        }
+
+        /* --- Responsiveness (Mobile First Adjustments) --- */
+        @media (max-width: 768px) {
+            /* Navigation */
+            .nav-links {
+                display: none;
+                flex-direction: column;
+                width: 100%;
+                background-color: var(--color-background);
+                position: absolute;
+                top: 65px; /* Height of header */
+                left: 0;
+                padding: 10px 0;
+            }
+
+            .nav-links.active {
+                display: flex;
+            }
+
+            .nav-links li a {
+                padding: 15px;
+                text-align: center;
+            }
+
+            .menu-toggle {
+                display: block;
+            }
+
+            /* Section Padding */
+            section {
+                padding: 40px 0;
+            }
+
+            /* Contact Layout */
+            .contact-grid {
+                flex-direction: column;
+                gap: 30px;
+            }
+        }
+
+        /* --- JS Controlled Classes (Mobile Menu) --- */
+        .nav-links {
+            display: flex; /* Default desktop view */
+        }
+
+        /* Mobile View Adjustments for Nav Links when toggled */
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none; /* Hidden by default on mobile */
+            }
+            .nav-links.active {
+                display: flex; /* Shown when active */
+            }
+        }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="container">
+            <nav id="main-nav">
+                <a href="#" class="logo">The Hearthstone Bakery</a>
+                <ul class="nav-links" id="navLinks">
+                    <li><a href="#menu">Menu</a></li>
+                    <li><a href="#about">Our Story</a></li>
+                    <li><a href="#contact">Visit Us</a></li>
+                </ul>
+                <div class="menu-toggle" id="menuToggle">&#9776;</div> <!-- Hamburger Icon -->
+            </nav>
+        </div>
+    </header>
+
+    <!-- 1. HERO SECTION -->
+    <section id="hero">
+        <div class="container hero-content">
+            <h1>Handcrafted Happiness, Baked Daily.</h1>
+            <p>Where tradition meets the freshest ingredients. We bake slow, we knead with love, and we serve warmth in every loaf and pastry.</p>
+            <a href="#menu" class="btn">View Our Offerings</a>
+        </div>
+    </section>
+
+    <!-- 2. ABOUT US -->
+    <section id="about">
+        <div class="container about-content">
+            <h2>Our Story: The Art of Slow Baking</h2>
+            <p>At The Hearthstone, we believe that the best things take time. Our philosophy is rooted in honoring old-world baking traditions—using naturally leavened starters, locally sourced grains, and seasonal fruits.</p>
+            <p>We are more than just a bakery; we are a community hub. Every loaf of sourdough, every flaky croissant, is born from a commitment to quality and the simple joy of honest ingredients. Welcome to our table.</p>
+        </div>
+    </section>
+
+    <!-- 3. MENU/OFFERINGS -->
+    <section id="menu">
+        <div class="container">
+            <h2>Our Daily Offerings</h2>
+            <p>A curated selection of breads, sweets, and seasonal delights.</p>
+
+            <div class="menu-grid">
+                <!-- Artisan Breads -->
+                <div class="menu-card">
+                    <h3>🍞 Artisan Loaves</h3>
+                    <p>Our signature collection, slow-fermented for maximum flavor and crust perfection.</p>
+                    <ul>
+                        <li>Rustic Country Sourdough - €5.00</li>
+                        <li>Rosemary Olive Loaf - €6.50</li>
+                        <li>Multigrain Hearth Bread - €7.00</li>
+                    </ul>
+                </div>
+
+                <!-- Sweet Pastries -->
+                <div class="menu-card">
+                    <h3>🥐 Sweet Delights</h3>
+                    <p>Flaky, buttery perfection. Made fresh every morning to accompany your coffee.</p>
+                    <ul>
+                        <li>Classic Butter Croissant - €3.50</li>
+                        <li>Seasonal Fruit Tartlets - €4.25</li>
+                        <li>Pain au Chocolat - €3.75</li>
+                    </ul>
+                </div>
+
+                <!-- Seasonal Specials -->
+                <div class="menu-card">
+                    <h3>✨ Seasonal Specials</h3>
+                    <p>Our rotating menu celebrates the bounty of local farms and markets.</p>
+                    <ul>
+                        <li>Autumn Spice Babka - €8.00</li>
+                        <li>Berry Galette (Available Summer) - €7.50</li>
+                        <li>Daily Bread Basket Add-ons - Inquiry</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 4. VISIT US / CONTACT -->
+    <section id="contact">
+        <div class="container contact-grid">
+            <div>
+                <h2>Visit Our Hearth</h2>
+                <p>We invite you to join us and experience the warmth of true artisan baking. Come smell the difference quality makes!</p>
+                <div class="contact-info">
+                    <h3>Contact & Location</h3>
+                    <p>123 Grain Street, Baker's Quarter</p>
+                    <p>hello@hearthstonebakery.com</p>
+                    <p>(555) BAKERY</p>
+                </div>
+            </div>
+
+            <!-- Operating Hours -->
+            <div class="hours">
+                <h3>Our Hours</h3>
+                <ul>
+                    <li>Mon - Sat: 7:00 AM – 3:00 PM</li>
+                    <li>Sunday: 8:00 AM – 1:00 PM (Brunch Service)</li>
+                    <li>Holiday Hours Vary - Check Website</li>
+                </ul>
+            </div>
+
+            <!-- Map Placeholder -->
+            <div class="map-placeholder">
+                [Interactive Map Embed Placeholder]
+            </div>
+        </div>
+    </section>
+
+    <!-- 5. FOOTER -->
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 The Hearthstone Bakery. All rights reserved.</p>
+            <div class="footer-nav">
+                <a href="#menu">Menu</a> | 
+                <a href="#about">Our Story</a> | 
+                <a href="#">Privacy Policy</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript for Mobile Menu Toggle -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const menuToggle = document.getElementById('menuToggle');
+            const navLinks = document.getElementById('navLinks');
+
+            // Toggle mobile menu visibility
+            menuToggle.addEventListener('click', () => {
+                navLinks.classList.toggle('active');
+            });
+
+            // Close menu when a link is clicked (useful for single-page navigation)
+            const links = document.querySelectorAll('.nav-links a');
+            links.forEach(link => {
+                link.addEventListener('click', () => {
+                    if (navLinks.classList.contains('active')) {
+                        navLinks.classList.remove('active');
+                    }
+                });
+            });
+        });
+    </script>
+
+</body>
+</html>

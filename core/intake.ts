@@ -8,7 +8,7 @@ import type { LLMHandler, Message, UserConstraint, UserConstraintType } from './
 import type { IndexEntry } from './memory/types.js';
 import type Database from 'better-sqlite3';
 import { sessionCache } from './memory/session-cache.js';
-import { transparency } from './transparency.js';
+import { transparency, withSpan, getCurrentRequestId } from './transparency.js';
 import { extractFirstJsonObject } from './structured.js';
 import { intakeJsonSchema } from './schemas.js';
 import { stripThinkingTags } from './llm.js';
@@ -134,7 +134,11 @@ export async function runIntake(
   message: string,
   db: Database.Database,
   llm: LLMHandler,
+  parentCtx?: import('./transparency.js').SpanContext,
 ): Promise<IntakeResult> {
+  if (!parentCtx) transparency.emit({ type: 'orphan_span', data: { label: 'Intake: extract signals' } });
+  const effectiveRequestId = parentCtx?.requestId ?? getCurrentRequestId() ?? 'unknown';
+  return withSpan('Intake: extract signals', parentCtx, effectiveRequestId, async () => {
   // Call LLM for classification
   const classifyMessages: Message[] = [
     { role: 'system', content: getIntakeSystemPrompt() },
@@ -334,4 +338,5 @@ export async function runIntake(
     projectCode,
     constraints,
   };
+  }); // end withSpan
 }

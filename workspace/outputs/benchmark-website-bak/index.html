@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Golden Crust Bakery - Artisan Neighborhood Bakery</title>
+    <!-- Google Fonts CDN -->
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* CSS Variables for Color Palette */
+        :root {
+            --color-cream-light: #FDF8F0;
+            --color-cream-dark: #F5EFE6;
+            --color-brown-dark: #6F4E37;
+            --color-brown-medium: #A07C5B;
+            --color-gold-classic: #D4AF37;
+            --color-gold-bright: #E6B800;
+            --color-green-sage: #8B9A6B;
+            --color-green-light-sage: #AEC19A;
+            --color-terracotta-classic: #C76E5B;
+            --color-terracotta-light: #E08A77;
+            --color-text-dark: var(--color-brown-dark);
+            --color-text-light: var(--color-cream-light);
+            --font-heading: 'Playfair Display', serif;
+            --font-body: 'Lato', sans-serif;
+        }
+
+        /* Global Resets and Box Sizing */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-body);
+            line-height: 1.6;
+            color: var(--color-text-dark);
+            background-color: var(--color-cream-light);
+            overflow-x: hidden; /* Prevent horizontal scroll */
+        }
+
+        /* Typography */
+        h1, h2, h3, h4, h5, h6 {
+            font-family: var(--font-heading);
+            color: var(--color-brown-dark);
+            margin-bottom: 0.8em;
+            line-height: 1.2;
+        }
+
+        h1 { font-size: 3.5em; }
+        h2 { font-size: 2.5em; }
+        h3 { font-size: 1.8em; }
+        h4 { font-size: 1.4em; }
+
+        p {
+            margin-bottom: 1em;
+        }
+
+        a {
+            color: var(--color-gold-classic);
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        a:hover {
+            color: var(--color-terracotta-classic);
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-block;
+            background-color: var(--color-gold-classic);
+            color: var(--color-cream-light);
+            padding: 0.9em 2em;
+            border-radius: 5px;
+            font-family: var(--font-body);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn:hover {
+            background-color: var(--color-terracotta-classic);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Section Styling */
+        section {
+            padding: 80px 5%;
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .section-title {
+            text-align: center;
+            margin-bottom: 60px;
+            position: relative;
+            padding-bottom: 20px;
+        }
+
+        .section-title::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            bottom: 0;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 3px;
+            background-color: var(--color-gold-classic);
+            border-radius: 2px;
+        }
+
+        /* Header & Navigation */
+        header {
+            background-color: var(--color-brown-dark);
+            padding: 15px 5%;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .logo {
+            font-family: var(--font-heading);
+            font-size: 2em;
+            color: var(--color-gold-bright);
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+        }
+
+        .nav-menu {
+            list-style: none;
+            display: flex;
+        }
+
+        .nav-menu li {
+            margin-left: 30px;
+        }
+
+        .nav-menu a {
+            color: var(--color-cream-light);
+            font-weight: 400;
+            font-size: 1.1em;
+            padding: 5px 0;
+            position: relative;
+            transition: color 0.3s ease;
+        }
+
+        .nav-menu a::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            width: 0;
+            height: 2px;
+            background-color: var(--color-gold-bright);
+            transition: width 0.3s ease;
+        }
+
+        .nav-menu a:hover {
+            color: var(--color-gold-bright);
+        }
+
+        .nav-menu a:hover::after {
+            width: 100%;
+        }
+
+        /* Mobile Navigation Toggle */
+        .nav-toggle {
+            display: none;
+            flex-direction: column;
+            cursor: pointer;
+            padding: 10px;
+        }
+
+        .nav-toggle span {
+            height: 3px;
+            width: 25px;
+            background-color: var(--color-cream-light);
+            margin-bottom: 4px;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('https://images.unsplash.com/photo-1586043105702-869275151525?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D') no-repeat center center/cover;
+            color: var(--color-text-light);
+            text-align: center;
+            padding: 150px 5%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 70vh;
+            position: relative;
+        }
+
+        .hero-content {
+            max-width: 800px;
+            animation: fadeIn 1.5s ease-out;
+        }
+
+        .hero h1 {
+            font-size: 4.5em;
+            margin-bottom: 20px;
+            color: var(--color-gold-bright);
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.4);
+        }
+
+        .hero p {
+            font-size: 1.4em;
+            margin-bottom: 40px;
+            color: var(--color-cream-light);
+            font-weight: 300;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* About Us Section */
+        .about-content {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 40px;
+            align-items: center;
+        }
+
+        .about-text {
+            flex: 2;
+            min-width: 300px;
+        }
+
+        .about-image {
+            flex: 1;
+            min-width: 250px;
+            text-align: center;
+        }
+
+        .about-image img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            transition: transform 0.3s ease;
+        }
+
+        .about-image img:hover {
+            transform: scale(1.02);
+        }
+
+        /* Menu Section */
+        .menu-categories {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .menu-category-button {
+            background-color: var(--color-cream-dark);
+            color: var(--color-brown-dark);
+            border: 1px solid var(--color-brown-medium);
+            padding: 10px 20px;
+            margin: 0 10px 10px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-family: var(--font-body);
+            font-weight: 700;
+            transition: all 0.3s ease;
+        }
+
+        .menu-category-button:hover,
+        .menu-category-button.active {
+            background-color: var(--color-terracotta-classic);
+            color: var(--color-cream-light);
+            border-color: var(--color-terracotta-classic);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+        }
+
+        .menu-item {
+            background-color: var(--color-cream-dark);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .menu-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+        }
+
+        .menu-item-image {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-bottom: 1px solid var(--color-cream-light);
+        }
+
+        .menu-item-details {
+            padding: 20px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .menu-item-details h3 {
+            color: var(--color-brown-dark);
+            margin-bottom: 10px;
+        }
+
+        .menu-item-details p {
+            font-size: 0.95em;
+            color: var(--color-brown-medium);
+            margin-bottom: 15px;
+            flex-grow: 1;
+        }
+
+        .menu-item-price {
+            font-family: var(--font-heading);
+            font-size: 1.5em;
+            font-weight: 700;
+            color: var(--color-gold-classic);
+            text-align: right;
+        }
+
+        /* Testimonials Section */
+        .testimonials {
+            background-color: var(--color-green-light-sage);
+            color: var(--color-text-dark);
+            padding: 80px 5%;
+        }
+
+        .testimonials .section-title {
+            color: var(--color-brown-dark);
+        }
+
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+
+        .testimonial-card {
+            background-color: var(--color-cream-light);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .testimonial-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+        }
+
+        .testimonial-card p {
+            font-style: italic;
+            margin-bottom: 20px;
+            color: var(--color-brown-medium);
+        }
+
+        .testimonial-author {
+            font-weight: 700;
+            color: var(--color-brown-dark);
+            margin-bottom: 10px;
+        }
+
+        .testimonial-stars {
+            color: var(--color-gold-bright);
+            font-size: 1.2em;
+        }
+
+        /* Contact Section */
+        .contact-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 40px;
+            justify-content: center;
+        }
+
+        .contact-info, .contact-map {
+            flex: 1;
+            min-width: 300px;
+            background-color: var(--color-cream-dark);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        .contact-info h3, .contact-map h3 {
+            color: var(--color-terracotta-classic);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .contact-info ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .contact-info li {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            font-size: 1.1em;
+            color: var(--color-brown-dark);
+        }
+
+        .contact-info li strong {
+            min-width: 80px;
+            color: var(--color-brown-medium);
+        }
+
+        .contact-info li a {
+            color: var(--color-brown-dark);
+        }
+
+        .contact-info li a:hover {
+            color: var(--color-terracotta-classic);
+        }
+
+        .contact-map iframe {
+            width: 100%;
+            height: 300px;
+            border: 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Footer */
+        footer {
+            background-color: var(--color-brown-dark);
+            color: var(--color-cream-light);
+            text-align: center;
+            padding: 40px 5%;
+            font-size: 0.9em;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .social-links {
+            margin-top: 20px;
+            margin-bottom: 15px;
+        }
+
+        .social-links a {
+            color: var(--color-cream-light);
+            font-size: 1.5em;
+            margin: 0 15px;
+            transition: color 0.3s ease, transform 0.3s ease;
+            display: inline-block;
+        }
+
+        .social-links a:hover {
+            color: var(--color-gold-bright);
+            transform: translateY(-3px);
+        }
+
+        /* Decorative Elements (CSS-based) */
+        .star {
+            color: var(--color-gold-bright);
+            margin: 0 2px;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 992px) {
+            h1 { font-size: 3.5em; }
+            h2 { font-size: 2em; }
+            .hero { padding: 100px 5%; }
+            .hero h1 { font-size: 3.5em; }
+            .hero p { font-size: 1.2em; }
+            .about-content { flex-direction: column; text-align: center; }
+            .about-image { order: -1; margin-bottom: 30px; }
+            .about-image img { max-width: 80%; }
+        }
+
+        @media (max-width: 768px) {
+            .nav-menu {
+                display: none;
+                flex-direction: column;
+                width: 100%;
+                background-color: var(--color-brown-dark);
+                position: absolute;
+                top: 70px; /* Adjust based on header height */
+                left: 0;
+                padding: 20px 0;
+                box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+            }
+
+            .nav-menu.active {
+                display: flex;
+            }
+
+            .nav-menu li {
+                margin: 10px 0;
+                text-align: center;
+            }
+
+            .nav-menu a {
+                padding: 10px 0;
+                display: block;
+                color: var(--color-cream-light);
+            }
+
+            .nav-toggle {
+                display: flex;
+            }
+
+            .hero { padding: 80px 5%; }
+            .hero h1 { font-size: 2.8em; }
+            .hero p { font-size: 1em; }
+            section { padding: 60px 5%; }
+            .section-title { margin-bottom: 40px; }
+            .menu-grid, .testimonials-grid, .contact-grid {
+                grid-template-columns: 1fr;
+            }
+            .contact-info, .contact-map {
+                min-width: unset;
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 480px) {
+            h1 { font-size: 2.5em; }
+            h2 { font-size: 1.8em; }
+            .hero h1 { font-size: 2.2em; }
+            .hero p { font-size: 0.9em; }
+            .logo { font-size: 1.5em; }
+            .btn { padding: 0.7em 1.5em; font-size: 0.9em; }
+            .menu-category-button { padding: 8px 15px; font-size: 0.9em; margin: 0 5px 10px; }
+            .about-image img { max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="navbar">
+            <a href="#" class="logo">The Golden Crust</a>
+            <div class="nav-toggle" id="navToggle">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <ul class="nav-menu" id="navMenu">
+                <li><a href="#home">Home</a></li>
+                <li><a href="#about">About</a></li>
+                <li><a href="#menu">Menu</a></li>
+                <li><a href="#testimonials">Testimonials</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+        </div>
+    </header>
+
+    <main>
+        <section id="home" class="hero">
+            <div class="hero-content">
+                <h1>Taste the Tradition, Feel the Warmth</h1>
+                <p>Handcrafted breads, pastries, and cakes baked with love and the finest local ingredients.</p>
+                <a href="#menu" class="btn">Explore Our Menu</a>
+            </div>
+        </section>
+
+        <section id="about" class="about">
+            <h2 class="section-title">Our Story</h2>
+            <div class="about-content">
+                <div class="about-text">
+                    <h3>The Golden Crust Bakery: A Legacy of Flavor</h3>
+                    <p>Nestled in the heart of our vibrant neighborhood, The Golden Crust Bakery has been a cherished institution for over two decades. Our journey began with a simple passion: to bake exceptional bread using time-honored techniques and the purest ingredients. What started as a small family venture has blossomed into a beloved community hub, where the aroma of freshly baked goods fills the air from dawn till dusk.</p>
+                    <p>We believe in the magic of slow fermentation, the richness of organic flours, and the artistry of skilled hands. Every loaf, every pastry, every cake tells a story of dedication, heritage, and a commitment to quality that you can taste in every bite. Come, be a part of our story, and experience the warmth and flavor that only The Golden Crust can offer.</p>
+                </div>
+                <div class="about-image">
+                    <img src="https://images.unsplash.com/photo-1583339029584-257a06654714?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Artisan bread on a wooden table" loading="lazy">
+                </div>
+            </div>
+        </section>
+
+        <section id="menu" class="menu">
+            <h2 class="section-title">Our Delicious Offerings</h2>
+            <div class="menu-categories">
+                <button class="menu-category-button active" data-category="all">All</button>
+                <button class="menu-category-button" data-category="breads">Breads</button>
+                <button class="menu-category-button" data-category="pastries">Pastries</button>
+                <button class="menu-category-button" data-category="cakes">Cakes</button>
+            </div>
+            <div class="menu-grid">
+                <!-- Breads -->
+                <div class="menu-item" data-category="breads">
+                    <img src="https://images.unsplash.com/photo-1595171708518-3564032d1645?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Sourdough Loaf" class="menu-item-image" loading="lazy">
+                    <div class="menu-item-details">
+                        <h3>Artisan Sourdough</h3>
+                        <p>Our signature sourdough, naturally leavened with a perfect tangy crust and airy interior.</p>
+                        <span class="menu-item-price">$6.50</span>
+                    </div>
+                </div>
+                <div class="menu-item" data-category="breads">
+                    <img src="https://images.unsplash.com/photo-1534620808146-fce0a4968795?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Rye Bread" class="menu-item-image" loading="lazy">
+                    <div class="menu-item-details">
+                        <h3>Hearty Rye Bread</h3>
+                        <p>A dense, flavorful rye bread, perfect for sandwiches or with a smear of butter.</p>
+                        <span class="menu-item-price">$7.00</span>
+                    </div>
+                </div>
+                <div class="menu-item" data-category="breads">
+                    <img src="https://images.unsplash.com/photo-1509440159596-02493c32260a?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Baguette" class="menu-item-image" loading="lazy">
+                    <div class="menu-item-details">
+                        <h3>Classic French Baguette</h3>
+                        <p>Crispy on the outside, soft on the inside. The quintessential French bread.</p>
+                        <span class="menu-item-price">$4.00</span>
+                    </div>
+                </div>
+
+                <!-- Pastries -->
+                <div class="menu-item" data-category="pastries">
+                    <img src="https://images.unsplash.com/photo-1567620905765-bfda67774996?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Croissant" class="menu-item-image" loading="lazy">
+                    <div class="menu-item-details">
+                        <h3>Flaky Butter Croissant</h3>
+                        <p>Golden, buttery, and perfectly flaky. A breakfast classic.</p>
+                        <span class="menu-item-price">$3.50</span>
+                    </div>
+                </div>
+                <div class="menu-item" data-category="pastries">
+                    <img src="https://images.unsplash.com/photo-1588195538326-c2b1e180b445?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Pain au Chocolat" class="menu-item-image" loading="lazy">
+                    <div class="menu-item-details">
+                        <h3>Pain au Chocolat</h3>
+                        <p>Rich chocolate wrapped in our delicate, buttery croissant dough.</p>
+                        <span class="menu-item-price">$4.00</span>
+                    </div>
+                </div>
+                <div class="menu-item" data-category="pastries">
+                    <img src="https://images.unsplash.com/photo-1506354666786-959d6d497f0c?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Cinnamon Roll" class="menu-item-image" loading="lazy">
+                    <div class="menu-item-details">
+                        <h3>Gourmet Cinnamon Roll</h3>
+                        <p>Soft, gooey, and generously spiced with cinnamon and a cream cheese glaze.</p>
+                        <span class="menu-item-price">$4.50</span>
+                    </div>
+                </div>
+
+                <!-- Cakes -->
+                <div class="menu-item" data-category="cakes">
+                    <img src="https://images.unsplash.com/photo-1578985545062-6992954d5668?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Chocolate Fudge Cake" class="menu-item-image" loading="lazy">
+                    <div class="menu-item-details">
+                        <h3>Decadent Chocolate Fudge Cake</h3>
+                        <p>Layers of rich chocolate cake with a smooth, velvety fudge frosting.</p>
+                        <span class="menu-item-price">$45.00 (whole) / $6.00 (slice)</span>
+                    </div>
+                </div>
+                <div class="menu-item" data-category="cakes">
+                    <img src="https://images.unsplash.com/photo-1571115177090-e17427909000?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Carrot Cake" class="menu-item-image" loading="lazy">
+                    <div class="menu-item-details">
+                        <h3>Classic Carrot Cake</h3>
+                        <p>Moist carrot cake with cream cheese frosting, walnuts, and a hint of spice.</p>
+                        <span class="menu-item-price">$40.00 (whole) / $5.50 (slice)</span>
+                    </div>
+                </div>
+                <div class="menu-item" data-category="cakes">
+                    <img src="https://images.unsplash.com/photo-1563721345097-0988014529d4?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Lemon Raspberry Cake" class="menu-item-image" loading="lazy">
+                    <div class="menu-item-details">
+                        <h3>Lemon Raspberry Delight</h3>
+                        <p>Light lemon sponge with fresh raspberry filling and a delicate buttercream.</p>
+                        <span class="menu-item-price">$48.00 (whole) / $6.50 (slice)</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="testimonials" class="testimonials">
+            <h2 class="section-title">What Our Customers Say</h2>
+            <div class="testimonials-grid">
+                <div class="testimonial-card">
+                    <div class="testimonial-stars">
+                        <span class="star">&#9733;</span><span class="star">&#9733;</span><span class="star">&#9733;</span><span class="star">&#9733;</span><span class="star">&#9733;</span>
+                    </div>
+                    <p>"The Golden Crust Bakery is a true gem! Their sourdough is simply the best I've ever had – perfectly crusty and full of flavor. I visit almost every day!"</p>
+                    <div class="testimonial-author">- Sarah L.</div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="testimonial-stars">
+                        <span class="star">&#9733;</span><span class="star">&#9733;</span><span class="star">&#9733;</span><span class="star">&#9733;</span><span class="star">&#9733;</span>
+                    </div>
+                    <p>"Their pastries are divine. The pain au chocolat transports me straight to Paris. A must-try for anyone with a sweet tooth!"</p>
+                    <div class="testimonial-author">- Mark T.</div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="testimonial-stars">
+                        <span class="star">&#9733;</span><span class="star">&#9733;</span><span class="star">&#9733;</span><span class="star">&#9733;</span><span class="star">&#9733;</span>
+                    </div>
+                    <p>"I ordered a custom cake for my daughter's birthday, and it was not only stunning but incredibly delicious. Everyone raved about it!"</p>
+                    <div class="testimonial-author">- Emily R.</div>
+                </div>
+            </div>
+        </section>
+
+        <section id="contact" class="contact">
+            <h2 class="section-title">Visit Us</h2>
+            <div class="contact-grid">
+                <div class="contact-info">
+                    <h3>Get in Touch</h3>
+                    <ul>
+                        <li><strong>Address:</strong> 123 Baker Street, Artisanville, AB 12345</li>
+                        <li><strong>Phone:</strong> <a href="tel:+15551234567">(555) 123-4567</a></li>
+                        <li><strong>Email:</strong> <a href="mailto:info@goldencrustbakery.com">info@goldencrustbakery.com</a></li>
+                        <li><strong>Hours:</strong></li>
+                        <li>Monday - Friday: 7:00 AM - 6:00 PM</li>
+                        <li>Saturday: 8:00 AM - 5:00 PM</li>
+                        <li>Sunday: 8:00 AM - 3:00 PM</li>
+                    </ul>
+                </div>
+                <div class="contact-map">
+                    <h3>Find Us Here</h3>
+                    <iframe
+                        src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3153.210459345293!2d-122.41941568468167!3d37.7749294797593!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x80858087f9d0c2b5%3A0x4c2f8b6d8e2d4d6e!2sSan%20Francisco%2C%20CA!5e0!3m2!1sen!2sus!4v1678901234567!5m2!1sen!2sus"
+                        allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade">
+                    </iframe>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="footer-content">
+            <p>&copy; 2023 The Golden Crust Bakery. All rights reserved.</p>
+            <div class="social-links">
+                <a href="#" aria-label="Facebook">Facebook</a> |
+                <a href="#" aria-label="Instagram">Instagram</a> |
+                <a href="#" aria-label="Twitter">Twitter</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Smooth Scrolling for Navigation Links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+
+                // Close mobile menu after clicking a link
+                const navMenu = document.getElementById('navMenu');
+                const navToggle = document.getElementById('navToggle');
+                if (navMenu.classList.contains('active')) {
+                    navMenu.classList.remove('active');
+                    navToggle.classList.remove('active'); // Reset toggle icon
+                }
+            });
+        });
+
+        // Mobile Navigation Toggle
+        const navToggle = document.getElementById('navToggle');
+        const navMenu = document.getElementById('navMenu');
+
+        navToggle.addEventListener('click', () => {
+            navMenu.classList.toggle('active');
+            navToggle.classList.toggle('active'); // Add/remove class to toggle icon for animation
+        });
+
+        // Menu Category Filtering
+        const categoryButtons = document.querySelectorAll('.menu-category-button');
+        const menuItems = document.querySelectorAll('.menu-item');
+
+        categoryButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                // Remove active class from all buttons
+                categoryButtons.forEach(btn => btn.classList.remove('active'));
+                // Add active class to the clicked button
+                button.classList.add('active');
+
+                const category = button.dataset.category;
+
+                menuItems.forEach(item => {
+                    if (category === 'all' || item.dataset.category === category) {
+                        item.style.display = 'flex'; // Show item
+                    } else {
+                        item.style.display = 'none'; // Hide item
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

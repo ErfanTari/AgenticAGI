@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
 import { LLM_CONFIG, LLM_FALLBACK_CONFIG, ANTHROPIC_CLOUD_CONFIG } from '../config/agent.config.js';
-import { transparency } from './transparency.js';
+import { transparency, withSpan, getCurrentRequestId } from './transparency.js';
 import { recordTokens } from './token-counter.js';
 const llmRuntimeStore = new AsyncLocalStorage();
 function getTimeoutForModel(modelName) {
@@ -181,8 +182,10 @@ export function sanitizeFinalOutput(text) {
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
     return cleaned.trim();
 }
-async function callOpenAICompatibleProfile(profile, messages, options) {
+async function callOpenAICompatibleProfile(profile, messages, options, userSignal) {
     const controller = new AbortController();
+    // Propagate user abort into the timeout controller
+    userSignal?.addEventListener('abort', () => controller.abort(userSignal.reason), { once: true });
     const timeoutMs = profile.timeoutMs;
     const timer = setTimeout(() => {
         console.warn('[llm] Still thinking — %s is processing a complex query. Timeout after %ds.', profile.model, timeoutMs / 1000);
@@ -277,7 +280,8 @@ async function callOpenAICompatibleEndpoint(endpoint, model, apiKey, messages, o
             throw new Error(`${label}: ${retryResponse.status} ${retryResponse.statusText}`);
         }
         const retryData = await retryResponse.json();
-        const retryContent = retryData.choices?.[0]?.message?.content;
+        const retryMsg = retryData.choices?.[0]?.message;
+        const retryContent = retryMsg?.content || retryMsg?.reasoning_content || '';
         if (!retryContent) {
             throw new Error(`${label}: empty response content`);
         }
@@ -291,7 +295,11 @@ async function callOpenAICompatibleEndpoint(endpoint, model, apiKey, messages, o
         throw new Error(`${label}: ${response.status} ${response.statusText}`);
     }
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    const msg = data.choices?.[0]?.message;
+    // Qwen3 / some LM Studio models emit thinking in `reasoning_content` and leave
+    // `content` as empty string when the model produced ONLY a thinking block.
+    // Fall back to reasoning_content so we don't throw on a valid (if odd) response.
+    const content = msg?.content || msg?.reasoning_content || '';
     if (!content) {
         throw new Error(`${label}: empty response content`);
     }
@@ -305,7 +313,7 @@ async function callOpenAICompatibleEndpoint(endpoint, model, apiKey, messages, o
  * Call the Anthropic Messages API as fallback.
  * Extracts system messages into the top-level `system` parameter.
  */
-async function callAnthropicProfile(profile, messages, options) {
+async function callAnthropicProfile(profile, messages, options, userSignal) {
     if (!profile.apiKey) {
         throw new Error('Anthropic fallback not configured (missing API key)');
     }
@@ -336,6 +344,7 @@ async function callAnthropicProfile(profile, messages, options) {
             'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify(requestBody),
+        signal: userSignal,
     });
     if (!response.ok) {
         throw new Error(`${profile.label}: ${response.status} ${response.statusText}`);
@@ -362,11 +371,11 @@ async function callAnthropicProfile(profile, messages, options) {
         outputTokens: data.usage?.output_tokens ?? 0,
     };
 }
-async function callProfile(profile, messages, options) {
+async function callProfile(profile, messages, options, signal) {
     if (profile.kind === 'anthropic') {
-        return await callAnthropicProfile(profile, messages, options);
+        return await callAnthropicProfile(profile, messages, options, signal);
     }
-    return await callOpenAICompatibleProfile(profile, messages, options);
+    return await callOpenAICompatibleProfile(profile, messages, options, signal);
 }
 /**
  * Call LLM with automatic fallback.
@@ -377,61 +386,77 @@ async function callProfile(profile, messages, options) {
  * 3. Log which provider handled the request + response time
  * 4. Never crash — callers catch the final throw
  */
-export async function callLLM(messages, options) {
-    // Emit llm_request event (system message + message count)
-    const systemMsg = messages.find(m => m.role === 'system');
-    transparency.emit({
-        type: 'llm_request',
-        data: { system: systemMsg?.content ?? '', messages, schema: options?.responseSchema },
-    });
+function computePrefixHash(messages) {
+    const sys = messages.find(m => m.role === 'system')?.content ?? '';
+    const firstUser = messages.find(m => m.role === 'user')?.content ?? '';
+    const combined = (typeof sys === 'string' ? sys : JSON.stringify(sys))
+        + '\n'
+        + (typeof firstUser === 'string' ? firstUser : JSON.stringify(firstUser));
+    return createHash('sha256').update(combined.slice(0, 1024)).digest('hex').slice(0, 8);
+}
+export async function callLLM(messages, options, signal) {
+    const prefixHash = computePrefixHash(messages);
     const runtime = getRuntimeOverride();
-    let lastError = 'no providers configured';
-    if (runtime.primary) {
-        const start = performance.now();
-        try {
-            const { content: raw, inputTokens: inT, outputTokens: outT } = await callProfile(runtime.primary, messages, options);
-            const elapsed = Math.round(performance.now() - start);
-            console.log('[llm] Provider: %s (%s) — %dms', runtime.primary.label, runtime.primary.model, elapsed);
-            if (inT > 0 || outT > 0)
-                recordTokens(inT, outT);
-            transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
-            const stripped = stripThinkingTags(raw);
-            transparency.emit({ type: 'llm_stripped', data: { stripped } });
-            return stripped;
+    const model = runtime.primary?.model ?? runtime.fallback?.model ?? 'unknown';
+    const requestId = getCurrentRequestId() ?? 'unknown';
+    return withSpan(`LLM: ${model}`, undefined, requestId, async () => {
+        // Emit llm_request event (system message + message count)
+        const systemMsg = messages.find(m => m.role === 'system');
+        transparency.emit({
+            type: 'llm_request',
+            data: { system: systemMsg?.content ?? '', messages, schema: options?.responseSchema, prefixHash },
+        });
+        let lastError = 'no providers configured';
+        if (runtime.primary) {
+            const start = performance.now();
+            try {
+                const { content: raw, inputTokens: inT, outputTokens: outT } = await callProfile(runtime.primary, messages, options, signal);
+                const elapsed = Math.round(performance.now() - start);
+                console.log('[llm] Provider: %s (%s) — %dms', runtime.primary.label, runtime.primary.model, elapsed);
+                if (inT > 0 || outT > 0)
+                    recordTokens(inT, outT);
+                transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
+                const stripped = stripThinkingTags(raw);
+                transparency.emit({ type: 'llm_stripped', data: { stripped } });
+                return stripped;
+            }
+            catch (err) {
+                if (err?.name === 'AbortError')
+                    throw err;
+                const elapsed = Math.round(performance.now() - start);
+                lastError = String(err);
+                console.warn('[llm] %s failed after %dms: %s — trying fallback', runtime.primary.label, elapsed, lastError);
+                transparency.emit({ type: 'error', data: {
+                        source: `llm:${runtime.primary.label}`,
+                        error: `${runtime.primary.model} failed after ${elapsed}ms: ${lastError}`,
+                    } });
+            }
         }
-        catch (err) {
-            const elapsed = Math.round(performance.now() - start);
-            lastError = String(err);
-            console.warn('[llm] %s failed after %dms: %s — trying fallback', runtime.primary.label, elapsed, lastError);
-            // Emit to transparency so the error is visible in the UI panel, not just console
-            transparency.emit({ type: 'error', data: {
-                    source: `llm:${runtime.primary.label}`,
-                    error: `${runtime.primary.model} failed after ${elapsed}ms: ${lastError}`,
-                } });
+        if (runtime.fallback) {
+            const start = performance.now();
+            try {
+                const { content: raw, inputTokens: inT, outputTokens: outT } = await callProfile(runtime.fallback, messages, options, signal);
+                const elapsed = Math.round(performance.now() - start);
+                console.log('[llm] Provider: %s (%s) — %dms', runtime.fallback.label, runtime.fallback.model, elapsed);
+                if (inT > 0 || outT > 0)
+                    recordTokens(inT, outT);
+                transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
+                const stripped = stripThinkingTags(raw);
+                transparency.emit({ type: 'llm_stripped', data: { stripped } });
+                return stripped;
+            }
+            catch (err) {
+                if (err?.name === 'AbortError')
+                    throw err;
+                const elapsed = Math.round(performance.now() - start);
+                lastError = String(err);
+                console.warn('[llm] %s failed after %dms: %s', runtime.fallback.label, elapsed, lastError);
+                transparency.emit({ type: 'error', data: {
+                        source: `llm:${runtime.fallback.label}`,
+                        error: `${runtime.fallback.model} failed after ${elapsed}ms: ${lastError}`,
+                    } });
+            }
         }
-    }
-    if (runtime.fallback) {
-        const start = performance.now();
-        try {
-            const { content: raw, inputTokens: inT, outputTokens: outT } = await callProfile(runtime.fallback, messages, options);
-            const elapsed = Math.round(performance.now() - start);
-            console.log('[llm] Provider: %s (%s) — %dms', runtime.fallback.label, runtime.fallback.model, elapsed);
-            if (inT > 0 || outT > 0)
-                recordTokens(inT, outT);
-            transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
-            const stripped = stripThinkingTags(raw);
-            transparency.emit({ type: 'llm_stripped', data: { stripped } });
-            return stripped;
-        }
-        catch (err) {
-            const elapsed = Math.round(performance.now() - start);
-            lastError = String(err);
-            console.warn('[llm] %s failed after %dms: %s', runtime.fallback.label, elapsed, lastError);
-            transparency.emit({ type: 'error', data: {
-                    source: `llm:${runtime.fallback.label}`,
-                    error: `${runtime.fallback.model} failed after ${elapsed}ms: ${lastError}`,
-                } });
-        }
-    }
-    throw new Error(`All LLM providers unreachable. Last error: ${lastError}`);
+        throw new Error(`All LLM providers unreachable. Last error: ${lastError}`);
+    }); // end withSpan
 }

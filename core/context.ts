@@ -310,6 +310,12 @@ function formatSkills(skills: Skill[]): string {
   return 'Available capabilities: ' + skills.map(s => s.description).join('; ');
 }
 
+/** Returns the stable, never-changing portion of the system prompt.
+ *  Used as the KV cache anchor: identical for every processMessage call. */
+export function buildStablePrelude(): string {
+  return SYSTEM_PROMPT;
+}
+
 export type ContextMode = 'default' | 'agentic_coding';
 
 export async function buildContext(

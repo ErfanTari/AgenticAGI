@@ -15,7 +15,7 @@ import { initDatabase } from '../core/memory/mod.js';
 import { loadActivePlanEX, type PlanEXEntry } from '../core/memory/plan-ex.js';
 import { loadWorkingMemory } from '../core/memory/working-memory.js';
 import { memoryAgent } from '../core/memory/memory-agent.js';
-import { transparency, type TransparencyEvent } from '../core/transparency.js';
+import { transparency, type TransparencyEvent, type TransparencyEventEnvelope } from '../core/transparency.js';
 import { setMemoryMode, getMemoryMode } from '../core/memory-mode.js';
 import type { TaskMilestone, TaskPlan, TaskStep } from '../core/schemas.js';
 import type { Message } from '../core/types.js';
@@ -26,7 +26,9 @@ type ClientMessage =
   | { type: 'set_local_model'; model: string }
   | { type: 'set_cloud_model'; model: string }
   | { type: 'set_memory_mode'; mode: 'enabled' | 'disabled' }
-  | { type: 'ping' };
+  | { type: 'ping' }
+  | { type: 'refresh_models' }
+  | { type: 'stop_chat' };
 
 type ProviderMode = 'local' | 'cloud';
 type CloudModelId = 'gemini' | 'claude' | 'gemma-4-26b' | 'gemma-4-31b';
@@ -74,7 +76,68 @@ type ServerMessage =
   | { type: 'provider_status'; provider: ProviderStatus }
   | { type: 'memory_mode_status'; mode: 'enabled' | 'disabled' }
   | { type: 'error'; message: string }
-  | { type: 'pong' };
+  | { type: 'pong' }
+  | { type: 'models_refreshed'; localModelIds: string[]; envCount: number; lmStudioCount: number }
+  | { type: 'models_refresh_error'; message: string }
+  | { type: 'trace_tree'; requestId: string; root: TraceNode }
+  | { type: 'span_event'; requestId: string; spanId: string; label: string; parentSpanId?: string; durationMs?: number; status?: string }
+  | { type: 'stop_ack'; stopped: boolean; requestId?: string; reason?: string };
+
+interface TraceNode {
+  spanId: string;
+  label: string;
+  parentSpanId?: string;
+  startedAt: number;
+  durationMs?: number;
+  status?: 'ok' | 'error' | 'aborted';
+  children: TraceNode[];
+}
+
+class TraceBuilder {
+  private nodes = new Map<string, TraceNode>();
+  private rootId: string | undefined;
+
+  ingest(event: TransparencyEventEnvelope): void {
+    if (event.type === 'span_start') {
+      const d = event.data as { spanId: string; parentSpanId?: string; label: string; ts: number };
+      const node: TraceNode = {
+        spanId: d.spanId,
+        label: d.label,
+        parentSpanId: d.parentSpanId,
+        startedAt: d.ts,
+        children: [],
+      };
+      this.nodes.set(d.spanId, node);
+      if (!d.parentSpanId) this.rootId = d.spanId;
+    } else if (event.type === 'span_end') {
+      const d = event.data as { spanId: string; durationMs: number; status: 'ok' | 'error' | 'aborted' };
+      const node = this.nodes.get(d.spanId);
+      if (node) {
+        node.durationMs = d.durationMs;
+        node.status = d.status;
+      }
+    }
+  }
+
+  buildTree(): TraceNode | undefined {
+    if (!this.rootId) return undefined;
+    for (const node of this.nodes.values()) {
+      if (node.parentSpanId) {
+        const parent = this.nodes.get(node.parentSpanId);
+        if (parent && !parent.children.find(c => c.spanId === node.spanId)) {
+          parent.children.push(node);
+        }
+      }
+    }
+    return this.nodes.get(this.rootId);
+  }
+
+  reset(): void {
+    this.nodes.clear();
+    this.rootId = undefined;
+  }
+}
+
 
 interface ClientConnection {
   socket: Duplex;
@@ -82,6 +145,8 @@ interface ClientConnection {
   processing: boolean;
   receiveBuffer: Buffer;
   providerMode: ProviderMode;
+  traceBuilder: TraceBuilder;
+  currentRequestId: string | undefined;
 }
 
 interface ParsedFrame {
@@ -119,6 +184,7 @@ const MAX_PORT = STARTUP_PORT + 9;
 const STARTUP_ACTIVE_PLAN_WINDOW_MS = 5000;
 const ACCEPT_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const clients = new Set<ClientConnection>();
+const activeRequests = new Map<ClientConnection, { controller: AbortController }>();
 const startupTime = Date.now();
 let lastPlanSnapshot: PlanSnapshot | null = null;
 const localPrimaryProfile = getPrimaryLLMProfile();
@@ -439,7 +505,7 @@ function updateMilestoneSnapshot(plan: PlanSnapshot | null, milestoneId: string,
   if (milestone) milestone.status = status;
 }
 
-function handleTransparencyEvent(connection: ClientConnection, event: TransparencyEvent) {
+function handleTransparencyEvent(connection: ClientConnection, event: TransparencyEvent, envelope?: TransparencyEventEnvelope) {
   const ts = Date.now();
   sendJson(connection, {
     type: 'transparency',
@@ -447,6 +513,50 @@ function handleTransparencyEvent(connection: ClientConnection, event: Transparen
     payload: event.data,
     ts,
   });
+
+  // ── Trace v2: feed span events into TraceBuilder ──────────────────────────────
+  if (event.type === 'span_start' || event.type === 'span_end') {
+    const env = envelope ?? (event as TransparencyEventEnvelope);
+    const requestId = env.requestId ?? connection.currentRequestId ?? 'unknown';
+
+    if (event.type === 'span_start') {
+      const d = event.data as { spanId: string; parentSpanId?: string; label: string; ts: number };
+      if (!d.parentSpanId) {
+        // Root span — reset builder for new request
+        connection.traceBuilder.reset();
+        connection.currentRequestId = requestId;
+      }
+      connection.traceBuilder.ingest(env);
+      sendJson(connection, {
+        type: 'span_event',
+        requestId,
+        spanId: d.spanId,
+        label: d.label,
+        parentSpanId: d.parentSpanId,
+      });
+    } else {
+      connection.traceBuilder.ingest(env);
+      const d = event.data as { spanId: string; durationMs: number; status: 'ok' | 'error' | 'aborted' };
+      // Check if this ends the root span
+      const tree = connection.traceBuilder.buildTree();
+      if (tree && tree.spanId === d.spanId && tree.durationMs !== undefined) {
+        sendJson(connection, {
+          type: 'trace_tree',
+          requestId: connection.currentRequestId ?? requestId,
+          root: tree,
+        });
+      }
+      sendJson(connection, {
+        type: 'span_event',
+        requestId,
+        spanId: d.spanId,
+        label: '',
+        durationMs: d.durationMs,
+        status: d.status,
+      });
+    }
+    return;
+  }
 
   if (event.type === 'plan') {
     lastPlanSnapshot = taskPlanToSnapshot(event.data);
@@ -562,6 +672,37 @@ function handleTransparencyEvent(connection: ClientConnection, event: Transparen
   }
 }
 
+async function handleRefreshModels(connection: ClientConnection) {
+  const envModels = (process.env.LOCAL_MODELS ?? '')
+    .split(',')
+    .map(m => m.trim())
+    .filter(Boolean);
+
+  let lmStudioModels: string[] = [];
+  const endpoint = LLM_CONFIG.endpoint;
+  if (endpoint) {
+    try {
+      const baseUrl = new URL(endpoint).origin;
+      const res = await fetch(`${baseUrl}/v1/models`);
+      if (res.ok) {
+        const data = await res.json() as { data?: { id: string }[] };
+        lmStudioModels = (data.data ?? []).map(m => m.id).filter(Boolean);
+      }
+    } catch {
+      // LM Studio not running or unreachable — just skip
+    }
+  }
+
+  const combined = [...new Set([...envModels, ...lmStudioModels])];
+  sendJson(connection, {
+    type: 'models_refreshed',
+    localModelIds: combined,
+    envCount: envModels.length,
+    lmStudioCount: lmStudioModels.length,
+  });
+  console.log(`[ui] Models refreshed: ${envModels.length} env, ${lmStudioModels.length} LM Studio`);
+}
+
 async function handleChat(connection: ClientConnection, text: string) {
   if (connection.processing) {
     sendJson(connection, {
@@ -575,7 +716,9 @@ async function handleChat(connection: ClientConnection, text: string) {
   if (!trimmed) return;
 
   connection.processing = true;
-  const unsubscribe = transparency.on(event => handleTransparencyEvent(connection, event));
+  const controller = new AbortController();
+  activeRequests.set(connection, { controller });
+  const unsubscribe = transparency.on(event => handleTransparencyEvent(connection, event, event as TransparencyEventEnvelope));
 
   try {
     const runtime = getProviderRuntime(connection.providerMode);
@@ -583,7 +726,9 @@ async function handleChat(connection: ClientConnection, text: string) {
       throw new Error('No configured primary model is available for the selected mode.');
     }
 
-    const reply = await withLLMRuntime(runtime, async () => processMessage(trimmed, connection.history));
+    const reply = await withLLMRuntime(runtime, async () =>
+      processMessage(trimmed, connection.history, { signal: controller.signal }),
+    );
     connection.history.push({ role: 'user', content: trimmed });
     connection.history.push({ role: 'assistant', content: reply.reply });
     if (connection.history.length > 12) connection.history.splice(0, 2);
@@ -593,15 +738,31 @@ async function handleChat(connection: ClientConnection, text: string) {
       text: reply.reply,
       intent: reply.intent,
     });
-  } catch (error) {
-    sendJson(connection, {
-      type: 'error',
-      message: error instanceof Error ? error.message : String(error),
-    });
+  } catch (error: unknown) {
+    if ((error as { name?: string })?.name === 'AbortError') {
+      sendJson(connection, { type: 'agent_reply', text: '[stopped]', intent: 'aborted' });
+    } else {
+      sendJson(connection, {
+        type: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   } finally {
     unsubscribe();
+    const current = activeRequests.get(connection);
+    if (current?.controller === controller) activeRequests.delete(connection);
     connection.processing = false;
   }
+}
+
+function handleStopChat(connection: ClientConnection): void {
+  const active = activeRequests.get(connection);
+  if (!active) {
+    sendJson(connection, { type: 'stop_ack', stopped: false, reason: 'no_active_request' });
+    return;
+  }
+  active.controller.abort();
+  sendJson(connection, { type: 'stop_ack', stopped: true });
 }
 
 function handleClientMessage(connection: ClientConnection, raw: string) {
@@ -667,8 +828,18 @@ function handleClientMessage(connection: ClientConnection, raw: string) {
     return;
   }
 
+  if (parsed.type === 'refresh_models') {
+    void handleRefreshModels(connection);
+    return;
+  }
+
   if (parsed.type === 'chat') {
     void handleChat(connection, parsed.text);
+    return;
+  }
+
+  if (parsed.type === 'stop_chat') {
+    handleStopChat(connection);
     return;
   }
 
@@ -724,6 +895,12 @@ function bindSocket(connection: ClientConnection) {
 
   const cleanup = () => {
     clients.delete(connection);
+    // Abort any in-flight request so it doesn't become a zombie
+    const active = activeRequests.get(connection);
+    if (active) {
+      active.controller.abort();
+      activeRequests.delete(connection);
+    }
   };
 
   connection.socket.on('close', cleanup);
@@ -757,6 +934,8 @@ function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buffer) {
     processing: false,
     receiveBuffer: Buffer.alloc(0),
     providerMode: getDefaultProviderMode(),
+    traceBuilder: new TraceBuilder(),
+    currentRequestId: undefined,
   };
 
   clients.add(connection);

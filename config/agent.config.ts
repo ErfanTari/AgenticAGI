@@ -182,7 +182,7 @@ export const TOKEN_BUDGETS = {
  * These are soft warnings — execution is NOT blocked — but regression tests can assert on them.
  */
 export const PROMPT_INPUT_LIMITS = {
-  'query-loop':    2_500,   // was ~3,500 before sprint; target ≤2,500
+  'query-loop':    8_000,   // raised from 2500 — memory context (active loops, pointer index) adds 4-6k in practice
   'planner':      12_000,   // planner.md alone was ~8,000; allow context headroom
   'decomposition': 3_000,
   'intake':        1_500,

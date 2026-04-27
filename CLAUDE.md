@@ -336,13 +336,145 @@ Every agent action emits a `TransparencyEvent` stamped with a `requestId` (UUID 
 
 **Enable:** `TRANSPARENT=true npx tsx chat.ts`
 
-**Key event types:** `plan`, `step_start`, `step_result`, `route`, `llm_request`, `llm_raw`, `memory_write`, `memory_disabled_drop`, `heartbeat_skipped_memory_disabled`, `coding_route_selected`, `context_mode_applied`, `user_constraints_extracted`, `user_input_requested`, `plan_confirmation_pending`, `decomposition_repair`, `prompt_budget`, `prompt_budget_exceeded`, `memory_gate_opened`, `memory_gate_skipped`
+**Key event types:** `plan`, `step_start`, `step_result`, `route`, `llm_request`, `llm_raw`, `memory_write`, `memory_disabled_drop`, `heartbeat_skipped_memory_disabled`, `coding_route_selected`, `context_mode_applied`, `user_constraints_extracted`, `user_input_requested`, `plan_confirmation_pending`, `decomposition_repair`, `prompt_budget`, `prompt_budget_exceeded`, `memory_gate_opened`, `memory_gate_skipped`, `span_start`, `span_end`, `orphan_span`
 
 **UI:** Logs panel → `[Copy Trace]` for formatted text; `[Copy Details]` for full JSON envelopes (up to 2000 buffered in `window.__fullEnvelopes`).
 
 ---
 
-## 14. Prompt Budget System
+## 14. Trace v2 — Hierarchical Span Tree (Sprint A)
+
+Trace v2 adds a hierarchical span tree on top of the existing flat event stream. The flat stream is unchanged; spans are additive.
+
+**Span events (added to `TransparencyEvent` union):**
+- `span_start` — `{ spanId, parentSpanId?, label, ts }`
+- `span_end` — `{ spanId, durationMs, status: 'ok'|'error'|'aborted' }`
+- `orphan_span` — `{ label }` — defensive sentinel when a stage is called without a parent
+
+**`core/transparency.ts` additions:**
+```typescript
+SpanContext          // { spanId, parentSpanId?, requestId, startedAt }
+withSpan(label, parentCtx, requestId, fn)   // async span wrapper
+withSpanSync(label, parentCtx, requestId, fn) // sync variant
+truncate(s, n)      // single-line truncation for span labels
+```
+
+**Pipeline instrumentation:**
+- `processMessage` → root span (no `parentSpanId`); label = `request: <truncated input>`
+- `runIntake` → child span, label `Intake: extract signals`
+- `decomposeMessage` → child span, label `Decomposition: split into units`
+- `routeDecomposedUnits` → child span, label `Route: dispatch units`
+- `runSimplePlan` → child span, label `SimplePlan: run steps`
+- `decomposeTask` → child span, label `Planner: build milestone tree`
+- `executePlan` → child span + per-milestone try/finally spans
+- `executeSingleStep` → manual span around `runWithRetry`; label `Step: <skill>`
+- `runQueryLoop` → child span + per-iteration try/finally spans; label `QueryLoop iter N`
+- `runSkill` → manual span around `skill.execute`; label from `labelForSkill()`
+- `callLLM` → child span; label `LLM: <model>`; data includes `prefixHash` (first 8 hex of SHA-256 of first 1024 chars of system+firstUser)
+
+**`labelForSkill(skillName, input)` in `core/skills/runner.ts`:**
+Deterministic label with first key argument: `path=`, `cmd=`, or `query=`. Falls back to skill name only.
+
+**`TraceBuilder` in `server/ui-server.ts`:**
+Server-side accumulator: ingests `span_start`/`span_end` envelopes and builds a `TraceNode` tree.
+Resets on each new root span (new `processMessage` call).
+Emits `trace_tree` WebSocket message when the root span ends.
+Emits `span_event` WebSocket message for every `span_start`/`span_end`.
+
+**WebSocket messages added:**
+- `{ type: 'span_event', requestId, spanId, label, parentSpanId?, durationMs?, status? }`
+- `{ type: 'trace_tree', requestId, root: TraceNode }`
+
+**Tests:** `tests/sprint-a/` — 28 tests total (with-span: 9, root-span: 5, pipeline-spans: 8, trace-builder: 6). All pass.
+
+---
+
+## 15. Abort / Stop (Sprint C)
+
+Users can stop an in-flight `processMessage` via the UI Stop button or `Esc` key.
+
+**Flow:**
+1. UI sends `{ type: 'stop_chat' }` over WebSocket
+2. Server looks up the active request's `AbortController` (in `activeRequests` map) and calls `.abort()`
+3. Server responds with `{ type: 'stop_ack', stopped: true }`
+4. The signal propagates: `processMessage` → `callLLM` → `fetch()`, plus iteration-boundary checks in `runQueryLoop` / `executePlan` / `runSimplePlan` / `decomposeTask`
+5. `withSpan` (Sprint A) catches `AbortError` and emits `span_end` with `status: 'aborted'`
+6. UI receives `agent_reply { text: '[stopped]', intent: 'aborted' }` and trace tree closes
+
+**`processMessage` signature:**
+```typescript
+processMessage(message, history, options?: { llmHandler?, signal?: AbortSignal })
+```
+Signal is wrapped into the `llmHandler` closure and passed as a separate param to pipeline functions.
+
+**Abort propagation path:**
+- `callLLM` — re-throws AbortError immediately (does not fall back to secondary provider)
+- `callOpenAICompatibleProfile` — user signal merged into timeout AbortController via `addEventListener`
+- `callAnthropicProfile` — signal passed directly to `fetch()`
+- `runQueryLoop` — `signal?.aborted` check at top of every iteration
+- `executePlan` — check before each milestone and each step
+- `runSimplePlan` — check before each step
+- `decomposeTask` — check before the LLM call
+
+**`runSkill()` abort behavior:**
+- Entry check: returns `{ success: false, error: 'aborted' }` immediately if signal already aborted
+- Signal injected into `input.__signal` for skills that support it:
+  - `run_bash` — kills entire process group via `process.kill(-(child.pid), 'SIGKILL')`
+  - `web_fetch`, `web_search` — user signal merged into internal AbortController
+
+**UI button states:**
+- Idle: `Send` (btn-primary)
+- Processing: `■ Stop` (btn-stop, clickable)
+- Stopping: `Stopping…` (btn-stop, disabled) — until `agent_reply` arrives
+- `Esc` while processing (and no panel open) triggers stop
+
+**Server cleanup:** `activeRequests` map cleared on completion, `stop_ack`, or WS disconnect.
+
+**Tests:** `tests/sprint-c/` — 20 tests total (abort-plumbing: 6, server-abort: 5, ui-stop: 7, abort-trace-integration: 2).
+
+---
+
+## 17. LM Studio Prefix Stability + Cache Visibility (Sprint D1)
+
+Goal: maximize KV cache reuse in LM Studio (llama.cpp) by keeping the first N tokens byte-for-byte identical across requests.
+
+**Key changes:**
+
+**`core/context.ts`:**
+- `buildStablePrelude(): string` — exports the `SYSTEM_PROMPT` constant (~500 stable tokens). Identical for every `processMessage` call. Used as cache anchor and for prefix hash computation.
+
+**`core/prompt-budget.ts`:**
+- `buildQueryLoopSystemPrompt()` now uses `query-loop-base.md` (no `{{goal}}` or `{{index_section}}`). System prompt is identical for all requests with the same permission mode.
+- `buildQueryLoopContextBlock(ctx)` — new function assembling goal + memory index as a `<context>` block for the first user message.
+
+**`prompts/query-loop-base.md`:** Stable base template (all instructions, skill list placeholder — no goal/index). `prompts/query-loop.md` retained for reference but no longer used at runtime.
+
+**`core/query-loop.ts`:**
+- `messages[0]` = stable system prompt (base instructions only, never mutated in loop).
+- Goal and memory index injected as `<context>\n...\n</context>` prepended to the initial user message.
+- Comment documents the append-only prefix invariant.
+
+**`core/llm.ts`:**
+- `OpenAICompatibleLLMProfile.providerKind?: 'lmstudio' | 'openai' | 'gemini' | 'other'` — new optional field.
+- `detectProviderKind(endpoint)` — maps localhost/127.0.0.1 → `'lmstudio'`, googleapis → `'gemini'`, etc.
+- `getPrimaryLLMProfile()` sets `providerKind` via `detectProviderKind`.
+- `callOpenAICompatibleEndpoint()` sends `cache_prompt: true` in request body when `providerKind === 'lmstudio'`.
+- `_seenPrefixHashes: Set<string>` — session-scoped seen-set; first occurrence = miss, subsequent = hit.
+- `_resetSeenPrefixHashes()` — exported for test isolation.
+- `llm_cache_metric` event emitted per LM Studio call: `{ prefixHash, hit, requestId, engine, stableTokens }`.
+
+**`core/transparency.ts`:**
+- New event: `llm_cache_metric` — `{ prefixHash: string; hit: boolean; requestId: string; engine: string; stableTokens: number }`.
+
+**KV cache target achieved:**
+- Query-loop: ~900 token stable prefix (base instructions + skill list) — cached across all requests with same permission mode.
+- Conversational path (`buildContext`): `SYSTEM_PROMPT` (~500 tokens) — same content per session.
+
+**Tests:** `tests/sprint-d1/` — 20 tests total (prefix-stability: 7, queryloop-prefix: 4, cache-prompt: 4, cache-metrics: 5). All pass.
+
+---
+
+## 16. Prompt Budget System
 
 Per-engine token accounting and hard guardrails (Context Diet sprint, Batch 4).
 
@@ -408,3 +540,4 @@ Execution is NOT blocked — the event is a regression sentinel for tests.
 | `planner-xml-constraint-routing-complete` | JSON planner via tool_use, constraint extraction, user input skill |
 | `memory-toggle-gemma4-logs-claudemd-complete` | Full memory toggle gating, Gemma 4 models, detailed log export |
 | `context-diet-complete` | Token-efficient execution: one-liner skill list, prompt budget system, signal-gated memory reads, sliding history window, sub-agent primitive, complexity-scaled iteration caps, hard budget guardrails |
+| `sprint-d1-prefix-cache-complete` | LM Studio KV cache prefix stability: stable system prompts, goal/index in user `<context>` block, `cache_prompt:true` in request bodies, `llm_cache_metric` events, session seen-set |

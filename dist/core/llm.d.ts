@@ -55,14 +55,5 @@ export declare function stripThinkingTags(text: string): string;
  * FIX D: Prevents leaked tool syntax and thinking text from appearing to the user.
  */
 export declare function sanitizeFinalOutput(text: string): string;
-/**
- * Call LLM with automatic fallback.
- *
- * Flow:
- * 1. Try primary (Mac Studio) with tiered timeout based on model size
- * 2. If unreachable or times out → fall back to the configured cloud provider
- * 3. Log which provider handled the request + response time
- * 4. Never crash — callers catch the final throw
- */
-export declare function callLLM(messages: Message[], options?: LLMCallOptions): Promise<string>;
+export declare function callLLM(messages: Message[], options?: LLMCallOptions, signal?: AbortSignal): Promise<string>;
 export {};

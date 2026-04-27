@@ -211,6 +211,18 @@ export declare const TOKEN_BUDGETS: {
     readonly WORKING_MEMORY_SUMMARY: 800;
     readonly RELATIONSHIP_INFER: 600;
 };
+/**
+ * Per-engine hard input-token limits for prompt guardrails (Context Diet sprint, Batch 4).
+ * If a built prompt exceeds its limit, a `prompt_budget_exceeded` transparency event fires.
+ * These are soft warnings — execution is NOT blocked — but regression tests can assert on them.
+ */
+export declare const PROMPT_INPUT_LIMITS: {
+    readonly 'query-loop': 8000;
+    readonly planner: 12000;
+    readonly decomposition: 3000;
+    readonly intake: 1500;
+    readonly router: 4000;
+};
 export declare const EMBEDDING_CONFIG: {
     endpoint: string;
     model: string;

@@ -3,7 +3,16 @@
  * produces the expected output/state.
  */
 import fs from 'node:fs';
+import path from 'node:path';
 import type { MCPSkill, SkillResult } from '../types.js';
+
+function resolveWorkspacePath(target: string): string {
+  const WORKSPACE_ROOT = path.resolve(process.cwd(), 'workspace');
+  const normalized = target.replace(/^\.\/+/, '').replace(/^\/?workspace\//, '');
+  const resolved = path.resolve(WORKSPACE_ROOT, normalized);
+  // Security: must stay inside workspace
+  return resolved.startsWith(WORKSPACE_ROOT) ? resolved : path.resolve(process.cwd(), normalized);
+}
 
 const verifyStateSkill: MCPSkill = {
   name: 'verify_state',
@@ -35,11 +44,12 @@ const verifyStateSkill: MCPSkill = {
 
     try {
       if (operation === 'file_write') {
-        if (!fs.existsSync(target)) {
+        const resolvedTarget = resolveWorkspacePath(target);
+        if (!fs.existsSync(resolvedTarget)) {
           return { success: false, output: '', error: `File not found: ${target}` };
         }
         if (expected) {
-          const content = fs.readFileSync(target, 'utf-8');
+          const content = fs.readFileSync(resolvedTarget, 'utf-8');
           const matches = content.includes(expected);
           return {
             success: matches,
@@ -47,7 +57,8 @@ const verifyStateSkill: MCPSkill = {
             error: matches ? undefined : `Expected content not found in ${target}`,
           };
         }
-        return { success: true, output: `File exists: ${target}` };
+        const sizeBytes = fs.statSync(resolvedTarget).size;
+        return { success: true, output: `File exists: ${target} (${sizeBytes} bytes)` };
 
       } else if (operation === 'memory_write') {
         const { getEntryByCode } = await import('../../memory/index.js');

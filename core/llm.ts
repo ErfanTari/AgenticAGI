@@ -1,8 +1,13 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
 import { LLM_CONFIG, LLM_FALLBACK_CONFIG, ANTHROPIC_CLOUD_CONFIG } from '../config/agent.config.js';
 import type { Message } from './types.js';
-import { transparency } from './transparency.js';
+import { transparency, withSpan, getCurrentRequestId } from './transparency.js';
 import { recordTokens } from './token-counter.js';
+
+// Session-scoped set of prefix hashes seen so far — first occurrence = miss, subsequent = hit.
+const _seenPrefixHashes = new Set<string>();
+export function _resetSeenPrefixHashes(): void { _seenPrefixHashes.clear(); }
 
 export type ToolDefinition = {
   name: string;
@@ -23,6 +28,8 @@ type LLMCallOptions = {
 
 export type OpenAICompatibleLLMProfile = {
   kind: 'openai-compatible';
+  /** 'lmstudio' enables cache_prompt:true in request bodies for KV cache reuse. */
+  providerKind?: 'lmstudio' | 'openai' | 'gemini' | 'other';
   label: string;
   endpoint: string;
   model: string;
@@ -63,10 +70,21 @@ function getDefaultApiKey(): string | undefined {
   return process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY;
 }
 
+function detectProviderKind(endpoint: string): OpenAICompatibleLLMProfile['providerKind'] {
+  const lower = endpoint.toLowerCase();
+  if (lower.includes('localhost') || lower.includes('127.0.0.1') || lower.includes('lmstudio')) {
+    return 'lmstudio';
+  }
+  if (lower.includes('generativelanguage.googleapis.com')) return 'gemini';
+  if (lower.includes('openai.com')) return 'openai';
+  return 'other';
+}
+
 export function getPrimaryLLMProfile(): LLMProfile | null {
   if (!LLM_CONFIG.endpoint || !LLM_CONFIG.model) return null;
   return {
     kind: 'openai-compatible',
+    providerKind: detectProviderKind(LLM_CONFIG.endpoint),
     label: 'primary',
     endpoint: LLM_CONFIG.endpoint,
     model: LLM_CONFIG.model,
@@ -277,8 +295,11 @@ async function callOpenAICompatibleProfile(
   profile: OpenAICompatibleLLMProfile,
   messages: Message[],
   options?: LLMCallOptions,
+  userSignal?: AbortSignal,
 ): Promise<LLMCallResult> {
   const controller = new AbortController();
+  // Propagate user abort into the timeout controller
+  userSignal?.addEventListener('abort', () => controller.abort(userSignal.reason), { once: true });
   const timeoutMs = profile.timeoutMs;
   const timer = setTimeout(() => {
     console.warn(
@@ -300,6 +321,7 @@ async function callOpenAICompatibleProfile(
       profile.label,
       profile.temperature,
       profile.maxTokens,
+      profile.providerKind,
     );
   } finally {
     clearTimeout(timer);
@@ -316,6 +338,7 @@ async function callOpenAICompatibleEndpoint(
   label: string,
   temperature: number,
   defaultMaxTokens: number,
+  providerKind?: OpenAICompatibleLLMProfile['providerKind'],
 ): Promise<LLMCallResult> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
@@ -334,6 +357,11 @@ async function callOpenAICompatibleEndpoint(
     max_tokens: effectiveOptions?.maxTokens ?? defaultMaxTokens,
     temperature,
   };
+
+  // LM Studio: enable KV cache reuse by sending cache_prompt:true
+  if (providerKind === 'lmstudio') {
+    requestBody.cache_prompt = true;
+  }
 
   // LM Studio / llama.cpp thinking suppression.
   // Enabled when the call site passes disableThinking:true OR when DISABLE_THINKING=true
@@ -366,6 +394,16 @@ async function callOpenAICompatibleEndpoint(
     } else {
       workingMessages.unshift({ role: 'system', content: schemaInstruction });
     }
+  }
+
+  // Emit cache metric: first call with this prefix hash in session = miss, subsequent = hit.
+  if (providerKind === 'lmstudio') {
+    const prefixHash = computePrefixHash(workingMessages);
+    const hit = _seenPrefixHashes.has(prefixHash);
+    if (!hit) _seenPrefixHashes.add(prefixHash);
+    const requestId = getCurrentRequestId() ?? 'unknown';
+    const stableTokens = Math.round((workingMessages[0]?.content?.length ?? 0) / 4);
+    transparency.emit({ type: 'llm_cache_metric', data: { prefixHash, hit, requestId, engine: label, stableTokens } });
   }
 
   const response = await fetch(endpoint, {
@@ -402,10 +440,11 @@ async function callOpenAICompatibleEndpoint(
       throw new Error(`${label}: ${retryResponse.status} ${retryResponse.statusText}`);
     }
     const retryData = await retryResponse.json() as {
-      choices?: Array<{ message?: { content?: string } }>;
+      choices?: Array<{ message?: { content?: string; reasoning_content?: string } }>;
       usage?: { prompt_tokens?: number; completion_tokens?: number };
     };
-    const retryContent = retryData.choices?.[0]?.message?.content;
+    const retryMsg = retryData.choices?.[0]?.message;
+    const retryContent = retryMsg?.content || retryMsg?.reasoning_content || '';
     if (!retryContent) {
       throw new Error(`${label}: empty response content`);
     }
@@ -421,10 +460,14 @@ async function callOpenAICompatibleEndpoint(
   }
 
   const data = await response.json() as {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{ message?: { content?: string; reasoning_content?: string } }>;
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
-  const content = data.choices?.[0]?.message?.content;
+  const msg = data.choices?.[0]?.message;
+  // Qwen3 / some LM Studio models emit thinking in `reasoning_content` and leave
+  // `content` as empty string when the model produced ONLY a thinking block.
+  // Fall back to reasoning_content so we don't throw on a valid (if odd) response.
+  const content = msg?.content || msg?.reasoning_content || '';
   if (!content) {
     throw new Error(`${label}: empty response content`);
   }
@@ -444,6 +487,7 @@ async function callAnthropicProfile(
   profile: AnthropicLLMProfile,
   messages: Message[],
   options?: LLMCallOptions,
+  userSignal?: AbortSignal,
 ): Promise<LLMCallResult> {
   if (!profile.apiKey) {
     throw new Error('Anthropic fallback not configured (missing API key)');
@@ -479,6 +523,7 @@ async function callAnthropicProfile(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify(requestBody),
+    signal: userSignal,
   });
 
   if (!response.ok) {
@@ -519,12 +564,13 @@ async function callProfile(
   profile: LLMProfile,
   messages: Message[],
   options?: LLMCallOptions,
+  signal?: AbortSignal,
 ): Promise<LLMCallResult> {
   if (profile.kind === 'anthropic') {
-    return await callAnthropicProfile(profile, messages, options);
+    return await callAnthropicProfile(profile, messages, options, signal);
   }
 
-  return await callOpenAICompatibleProfile(profile, messages, options);
+  return await callOpenAICompatibleProfile(profile, messages, options, signal);
 }
 
 /**
@@ -536,25 +582,38 @@ async function callProfile(
  * 3. Log which provider handled the request + response time
  * 4. Never crash — callers catch the final throw
  */
+function computePrefixHash(messages: Message[]): string {
+  const sys = messages.find(m => m.role === 'system')?.content ?? '';
+  const firstUser = messages.find(m => m.role === 'user')?.content ?? '';
+  const combined = (typeof sys === 'string' ? sys : JSON.stringify(sys))
+    + '\n'
+    + (typeof firstUser === 'string' ? firstUser : JSON.stringify(firstUser));
+  return createHash('sha256').update(combined.slice(0, 1024)).digest('hex').slice(0, 8);
+}
+
 export async function callLLM(
   messages: Message[],
   options?: LLMCallOptions,
+  signal?: AbortSignal,
 ): Promise<string> {
+  const prefixHash = computePrefixHash(messages);
+  const runtime = getRuntimeOverride();
+  const model = runtime.primary?.model ?? runtime.fallback?.model ?? 'unknown';
+  const requestId = getCurrentRequestId() ?? 'unknown';
+  return withSpan(`LLM: ${model}`, undefined, requestId, async () => {
   // Emit llm_request event (system message + message count)
   const systemMsg = messages.find(m => m.role === 'system');
   transparency.emit({
     type: 'llm_request',
-    data: { system: systemMsg?.content ?? '', messages, schema: options?.responseSchema },
+    data: { system: systemMsg?.content ?? '', messages, schema: options?.responseSchema, prefixHash },
   });
-
-  const runtime = getRuntimeOverride();
 
   let lastError = 'no providers configured';
 
   if (runtime.primary) {
     const start = performance.now();
     try {
-      const { content: raw, inputTokens: inT, outputTokens: outT } = await callProfile(runtime.primary, messages, options);
+      const { content: raw, inputTokens: inT, outputTokens: outT } = await callProfile(runtime.primary, messages, options, signal);
       const elapsed = Math.round(performance.now() - start);
       console.log('[llm] Provider: %s (%s) — %dms', runtime.primary.label, runtime.primary.model, elapsed);
       if (inT > 0 || outT > 0) recordTokens(inT, outT);
@@ -562,11 +621,11 @@ export async function callLLM(
       const stripped = stripThinkingTags(raw);
       transparency.emit({ type: 'llm_stripped', data: { stripped } });
       return stripped;
-    } catch (err) {
+    } catch (err: unknown) {
+      if ((err as { name?: string })?.name === 'AbortError') throw err;
       const elapsed = Math.round(performance.now() - start);
       lastError = String(err);
       console.warn('[llm] %s failed after %dms: %s — trying fallback', runtime.primary.label, elapsed, lastError);
-      // Emit to transparency so the error is visible in the UI panel, not just console
       transparency.emit({ type: 'error', data: {
         source: `llm:${runtime.primary.label}`,
         error: `${runtime.primary.model} failed after ${elapsed}ms: ${lastError}`,
@@ -577,7 +636,7 @@ export async function callLLM(
   if (runtime.fallback) {
     const start = performance.now();
     try {
-      const { content: raw, inputTokens: inT, outputTokens: outT } = await callProfile(runtime.fallback, messages, options);
+      const { content: raw, inputTokens: inT, outputTokens: outT } = await callProfile(runtime.fallback, messages, options, signal);
       const elapsed = Math.round(performance.now() - start);
       console.log('[llm] Provider: %s (%s) — %dms', runtime.fallback.label, runtime.fallback.model, elapsed);
       if (inT > 0 || outT > 0) recordTokens(inT, outT);
@@ -585,7 +644,8 @@ export async function callLLM(
       const stripped = stripThinkingTags(raw);
       transparency.emit({ type: 'llm_stripped', data: { stripped } });
       return stripped;
-    } catch (err) {
+    } catch (err: unknown) {
+      if ((err as { name?: string })?.name === 'AbortError') throw err;
       const elapsed = Math.round(performance.now() - start);
       lastError = String(err);
       console.warn('[llm] %s failed after %dms: %s', runtime.fallback.label, elapsed, lastError);
@@ -597,4 +657,5 @@ export async function callLLM(
   }
 
   throw new Error(`All LLM providers unreachable. Last error: ${lastError}`);
+  }); // end withSpan
 }

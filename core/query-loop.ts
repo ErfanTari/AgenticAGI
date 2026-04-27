@@ -17,15 +17,15 @@
  *  - Circuit breaker: 3 consecutive identical failures per skillName:inputHash trips the breaker
  */
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { LLMHandler, Message } from './types.js';
 import type { WorkingMemory } from './memory/working-memory.js';
 import { runWithRetry } from './react.js';
 import { stripThinkingTags } from './llm.js';
-import { transparency } from './transparency.js';
+import { transparency, withSpan, getCurrentRequestId, type SpanContext } from './transparency.js';
 import { loadPointerIndex, loadActiveLoopsSection } from './memory/pointer-index.js';
 import { TOKEN_BUDGETS } from '../config/agent.config.js';
-import { buildQueryLoopSystemPrompt, emitPromptBudget } from './prompt-budget.js';
+import { buildQueryLoopSystemPrompt, buildQueryLoopContextBlock, emitPromptBudget } from './prompt-budget.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -229,11 +229,15 @@ function getRepeatedGeneratedFileError(toolCall: ToolCall, filesWritten: string[
   const pathValue = typeof toolCall.input.path === 'string' ? toolCall.input.path.trim() : '';
   if (!pathValue || !filesWritten.includes(pathValue)) return null;
 
+  // Allow overwrite: true to bypass dedup guard (e.g. fixing a broken previously-generated file)
+  if (toolCall.input.overwrite === true) return null;
+
   return [
     `File "${pathValue}" was already generated earlier in this task.`,
     'Do not call generate_and_save_file again for the same path.',
     'If the file already satisfies the goal, respond with a plain-text completion summary and NO JSON action block.',
-    'If you need to modify the existing file, use patch_file instead.',
+    'If the previously generated file is broken/incomplete, call generate_and_save_file with overwrite: true to regenerate it.',
+    'If you need to make small edits to the existing file, use patch_file instead.',
   ].join(' ');
 }
 
@@ -379,7 +383,12 @@ export async function runQueryLoop(
   history?: Message[],
   lastArtifactContext?: ArtifactContext,
   opts?: QueryLoopOptions,
+  parentCtx?: SpanContext,
+  signal?: AbortSignal,
 ): Promise<QueryLoopResult> {
+  if (!parentCtx) transparency.emit({ type: 'orphan_span', data: { label: 'QueryLoop' } });
+  const effectiveRequestId = parentCtx?.requestId ?? getCurrentRequestId() ?? 'unknown';
+  return withSpan('QueryLoop', parentCtx, effectiveRequestId, async (loopCtx) => {
   const effectiveMaxIterations = opts?.maxIterationsOverride ?? MAX_ITERATIONS;
 
   // Load MEMORY.md zones:
@@ -388,8 +397,12 @@ export async function runQueryLoop(
   const rawPointerIndex = loadPointerIndex();
   const activeLoops = loadActiveLoopsSection();
   const pointerIndex = filterPointerIndex(rawPointerIndex, goal);
+  // System prompt is stable (base instructions + skill list, no goal/index).
+  // Goal and memory index go into the first user message as a <context> block so the
+  // stable system prefix is never invalidated across requests (KV cache reuse).
   const builtPrompt = buildQueryLoopSystemPrompt({ goal, pointerIndex, activeLoops });
   const systemPrompt = builtPrompt.text;
+  const contextBlock = buildQueryLoopContextBlock({ goal, pointerIndex, activeLoops });
   emitPromptBudget(transparency, builtPrompt, 'query-loop');
   const loopMaxTokens = resolveLoopMaxTokens(goal);
 
@@ -412,28 +425,33 @@ export async function runQueryLoop(
     ))
     .slice(-2);
 
-  // Fix 3/5: Build initial user message — in edit mode inject artifact context + skip-read instruction
+  // Build initial user message: context block (goal + memory index) + task-specific content.
+  // The context block is prepended here so the system message (index 0) stays stable.
   function buildInitialUserContent(): string {
     const initialGoalBlock = goalBlock(1, []);
-    if (taskMode === 'edit' && lastArtifactContext) {
-      return [
-        '## LAST ARTIFACT CONTEXT',
-        `FILES_WRITTEN: ${lastArtifactContext.path}`,
-        `ARTIFACT_TYPE: ${lastArtifactContext.format}`,
-        `ORIGINAL_DESCRIPTION: ${lastArtifactContext.description.slice(0, 400)}`,
-        '',
-        '## EDIT MODE INSTRUCTIONS',
-        `The user wants to modify the file above. Do NOT call file_reader.`,
-        `Use generate_and_save_file with path="${lastArtifactContext.path}" and an improved description`,
-        `that incorporates the requested change: "${goal}"`,
-        '',
-        initialGoalBlock,
-      ].join('\n');
-    }
-    return initialGoalBlock;
+    const taskContent = (() => {
+      if (taskMode === 'edit' && lastArtifactContext) {
+        return [
+          '## LAST ARTIFACT CONTEXT',
+          `FILES_WRITTEN: ${lastArtifactContext.path}`,
+          `ARTIFACT_TYPE: ${lastArtifactContext.format}`,
+          `ORIGINAL_DESCRIPTION: ${lastArtifactContext.description.slice(0, 400)}`,
+          '',
+          '## EDIT MODE INSTRUCTIONS',
+          `The user wants to modify the file above. Do NOT call file_reader.`,
+          `Use generate_and_save_file with path="${lastArtifactContext.path}" and an improved description`,
+          `that incorporates the requested change: "${goal}"`,
+          '',
+          initialGoalBlock,
+        ].join('\n');
+      }
+      return initialGoalBlock;
+    })();
+    return `<context>\n${contextBlock}\n</context>\n\n${taskContent}`;
   }
 
-  // Messages accumulate tool results across iterations
+  // messages[0] is the stable system prompt (never mutated during the loop).
+  // Tool results are appended after baseMessageCount — prefix is append-only.
   const messages: Message[] = [
     { role: 'system', content: systemPrompt },
     ...priorTurns,
@@ -465,6 +483,18 @@ export async function runQueryLoop(
   transparency.emit({ type: 'query_loop_start', data: { goal } });
 
   for (let iteration = 1; iteration <= effectiveMaxIterations; iteration++) {
+    if (signal?.aborted) {
+      transparency.emit({ type: 'query_loop_aborted', data: { iteration } });
+      throw new DOMException('Aborted by user', 'AbortError');
+    }
+    const iterSpanId = randomUUID();
+    const iterSpanStart = Date.now();
+    transparency.emit({
+      type: 'span_start',
+      data: { spanId: iterSpanId, parentSpanId: loopCtx.spanId, label: `QueryLoop iter ${iteration}`, ts: iterSpanStart },
+    });
+    let iterSpanStatus: 'ok' | 'error' = 'ok';
+    try {
     // Collapse old history to keep context lean
     if (iteration > HISTORY_KEEP_PAIRS + 1) {
       collapseOldHistory(messages, baseMessageCount);
@@ -702,28 +732,10 @@ export async function runQueryLoop(
 
     const repeatedGeneratedFileError = getRepeatedGeneratedFileError(toolCall, filesWritten);
     if (repeatedGeneratedFileError) {
-      circuitFailures.set(ck, ckFailures + 1);
-      consecutiveFailures++;
-      recentFailures.push(`${toolCall.action}: ${repeatedGeneratedFileError}`);
-      while (recentFailures.length > FAILURE_RESET_THRESHOLD) {
-        recentFailures.shift();
-      }
-
-      const prevFailures = skillFailureCounts.get(toolCall.action) ?? 0;
-      skillFailureCounts.set(toolCall.action, prevFailures + 1);
-
-      messages.push({ role: 'assistant', content: stripThinkingTags(reply).trim() });
-      messages.push({
-        role: 'user',
-        content: [
-          `SKILL ERROR [${toolCall.action}]: ${repeatedGeneratedFileError}`,
-          'STRATEGY CHANGE REQUIRED: either finish with a plain-text summary or use patch_file for modifications.',
-          '',
-          goalBlock(iteration + 1, filesWritten),
-        ].join('\n'),
-      });
-      transparency.emit({ type: 'query_loop_skill_result', data: { skill: toolCall.action, success: false, error: repeatedGeneratedFileError } });
-      continue;
+      // Auto-overwrite instead of blocking: set overwrite: true and fall through to execution.
+      // This prevents wasting an iteration on an error the model can't resolve without regenerating.
+      toolCall.input = { ...toolCall.input, overwrite: true };
+      transparency.emit({ type: 'query_loop_skill_result', data: { skill: toolCall.action, success: true, error: 'dedup: auto-overwrite applied' } });
     }
 
     // Execute the skill
@@ -741,14 +753,18 @@ export async function runQueryLoop(
       consecutiveFailures = 0;
       recentFailures.length = 0;
 
-      // Track files written so they appear in the goal block
-      if (toolCall.action === 'file_writer' || toolCall.action === 'generate_and_save_file') {
+      // Track files written so they appear in the goal block.
+      // file_writer: only track if content is non-empty (empty = placeholder, not a real write).
+      // generate_and_save_file: always track (drives dedup guard).
+      if (toolCall.action === 'generate_and_save_file') {
+        const path = typeof toolCall.input.path === 'string' ? toolCall.input.path : null;
+        if (path && !filesWritten.includes(path)) filesWritten.push(path);
+      } else if (toolCall.action === 'file_writer') {
         const path = typeof toolCall.input.path === 'string' ? toolCall.input.path
           : typeof toolCall.input.filename === 'string' ? toolCall.input.filename
           : null;
-        if (path && !filesWritten.includes(path)) {
-          filesWritten.push(path);
-        }
+        const content = typeof toolCall.input.content === 'string' ? toolCall.input.content : '';
+        if (path && content.trim() && !filesWritten.includes(path)) filesWritten.push(path);
       }
 
       transparency.emit({ type: 'query_loop_skill_result', data: { skill: toolCall.action, success: true } });
@@ -892,6 +908,12 @@ export async function runQueryLoop(
         ].join('\n'),
       });
     }
+    } finally {
+      transparency.emit({
+        type: 'span_end',
+        data: { spanId: iterSpanId, durationMs: Date.now() - iterSpanStart, status: iterSpanStatus },
+      });
+    }
   }
 
   // Exhausted max iterations
@@ -903,4 +925,5 @@ export async function runQueryLoop(
     stoppedBecause: 'max_iterations',
     artifactContext: sessionArtifact ?? undefined,
   };
+  }); // end withSpan
 }

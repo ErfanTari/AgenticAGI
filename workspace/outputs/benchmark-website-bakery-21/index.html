@@ -1,0 +1,1114 @@
+Here's a thinking process:
+
+2.  **Structure the HTML Document:**
+   - `<!DOCTYPE html>`
+   - `<html lang="en">`
+   - `<head>`: meta tags, title, Google Fonts link, `<style>` block
+   - `<body>`: 
+     - `<nav>` (sticky)
+     - `<header>` (hero)
+     - `<section id="story">` (Our Story)
+     - `<section id="menu">` (Featured Menu)
+     - `<section id="specials">` (Daily Specials)
+     - `<section id="testimonials">` (Testimonials)
+     - `<section id="visit">` (Visit Us)
+     - `<footer>`
+     - `<script>` block
+   - `</html>`
+
+3.  **Draft - CSS (Mental Refinement):**
+   - Reset/Box-sizing
+   - Variables for colors
+   - Typography setup
+   - Nav: sticky, flex, responsive, hamburger toggle styles
+   - Hero: 100vh, gradient bg, flex center, wheat SVGs (inline or CSS shapes), buttons
+   - Story: grid/flex 2-col, image placeholder or CSS pattern
+   - Menu: grid 3x2, cards with hover transform/shadow
+   - Specials: dark bg (#2C241B or similar chalkboard), rotating text, countdown timer
+   - Testimonials: grid 3-col, fade-in class for IntersectionObserver
+   - Visit: grid/flex, info cards
+   - Footer: flex, SVG icons
+   - Media queries for responsiveness
+   - Parallax: CSS `background-attachment: fixed` or JS transform
+   - Accessibility: focus states, aria labels, semantic tags
+
+4.  **Draft - HTML Structure (Mental):**
+   ```html
+   <!DOCTYPE html>
+   <html lang="en">
+   <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>Golden Crust Artisan Bakery</title>
+     <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
+     <style>
+       /* CSS here */
+     </style>
+   </head>
+   <body>
+     <nav>...</nav>
+     <header id="home">...</header>
+     <section id="story">...</section>
+     <section id="menu">...</section>
+     <section id="specials">...</section>
+     <section id="testimonials">...</section>
+     <section id="visit">...</section>
+     <footer>...</footer>
+     <script>
+       /* JS here */
+     </script>
+   </body>
+   </html>
+   ```
+
+5.  **Flesh out CSS:**
+   - Use CSS variables for the palette.
+   - Implement sticky nav with backdrop blur.
+   - Hero gradient: `linear-gradient(135deg, #FFF8F0 0%, #F5E6D3 100%)` or similar.
+   - Wheat illustrations: I'll use inline SVGs or CSS shapes. Let's use simple inline SVGs for wheat stalks.
+   - Menu grid: `display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem;`
+   - Cards: `background: white; border-radius: 12px; overflow: hidden; box-shadow: ...; transition: transform 0.3s, box-shadow 0.3s;`
+   - Specials: `background: #2C241B; color: #FFF8F0;` chalkboard texture via CSS `background-image: radial-gradient(...)` or just solid dark with subtle pattern.
+   - Testimonials: `.fade-in { opacity: 0; transform: translateY(30px); transition: opacity 0.6s ease, transform 0.6s ease; } .fade-in.visible { opacity: 1; transform: translateY(0); }`
+   - Parallax: I'll add a subtle JS parallax effect on the hero background or use CSS `background-attachment: fixed` on a section. Let's stick to JS for smoother control, or CSS `background-attachment: fixed` for simplicity. I'll use JS for the hero parallax.
+   - Responsive: media queries for nav, grids.
+
+6.  **Flesh out HTML Content:**
+   - Nav: logo "Golden Crust", links, hamburger button.
+   - Hero: h1, p, two buttons ("View Menu", "Visit Us"), wheat SVGs positioned absolutely.
+   - Story: two columns (text + decorative image/illustration).
+   - Menu: 6 cards with names, prices, descriptions.
+   - Specials: rotating text container, countdown timer.
+   - Testimonials: 3 cards with quotes, names.
+   - Visit: address, hours, phone, email.
+   - Footer: SVG icons for Instagram, Facebook, Twitter/X, Pinterest.
+
+7.  **Flesh out JS:**
+   - Mobile menu toggle
+   - Smooth scroll for nav links
+   - IntersectionObserver for fade-ins
+   - Rotating specials (array of strings, interval)
+   - Countdown timer to 6 PM (or next day if past)
+   - Parallax effect on scroll
+   - All inline in `<script>`
+
+   Let's draft the JS carefully:
+   ```javascript
+   document.addEventListener('DOMContentLoaded', () => {
+     // Mobile Menu
+     const nav = document.querySelector('nav');
+     const hamburger = document.querySelector('.hamburger');
+     const navLinks = document.querySelector('.nav-links');
+     hamburger.addEventListener('click', () => {
+       nav.classList.toggle('active');
+       hamburger.classList.toggle('active');
+     });
+
+     // Smooth Scroll
+     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+       anchor.addEventListener('click', function(e) {
+         e.preventDefault();
+         const target = document.querySelector(this.getAttribute('href'));
+         if(target) {
+           target.scrollIntoView({ behavior: 'smooth' });
+           nav.classList.remove('active');
+         }
+       });
+     });
+
+     // Intersection Observer
+     const observer = new IntersectionObserver((entries) => {
+       entries.forEach(entry => {
+         if(entry.isIntersecting) {
+           entry.target.classList.add('visible');
+         }
+       });
+     }, { threshold: 0.1 });
+     document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+     // Rotating Specials
+     const specials = ['Fresh Rosemary Focaccia', 'Seasonal Berry Danish', 'Gluten-Free Almond Croissant'];
+     const specialEl = document.getElementById('daily-special');
+     let idx = 0;
+     setInterval(() => {
+       idx = (idx + 1) % specials.length;
+       specialEl.style.opacity = 0;
+       setTimeout(() => {
+         specialEl.textContent = specials[idx];
+         specialEl.style.opacity = 1;
+       }, 500);
+     }, 4000);
+
+     // Countdown to 6 PM
+     const countdownEl = document.getElementById('countdown');
+     function updateCountdown() {
+       const now = new Date();
+       const close = new Date();
+       close.setHours(18, 0, 0, 0);
+       if (now > close) close.setDate(close.getDate() + 1);
+       const diff = close - now;
+       const hours = Math.floor(diff / (1000 * 60 * 60));
+       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+       const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+       countdownEl.textContent = `${hours}h ${minutes}m ${seconds}s`;
+     }
+     setInterval(updateCountdown, 1000);
+     updateCountdown();
+
+     // Parallax
+     window.addEventListener('scroll', () => {
+       const scrolled = window.pageYOffset;
+       const hero = document.querySelector('.hero-bg');
+       if(hero) hero.style.transform = `translateY(${scrolled * 0.5}px)`;
+     });
+   });
+   ```
+
+8.  **Refine CSS & HTML Details:**
+   - Need to ensure all requirements are met precisely.
+   - Colors: `#FFF8F0`, `#3C2415`, `#D4A574`, `#6B8F71`, `#C17A57`
+   - Typography: Playfair Display, Lato
+   - Hero gradient: `linear-gradient(160deg, #FFF8F0 0%, #F2E3D1 100%)`
+   - Wheat SVGs: I'll create simple inline SVG paths for wheat stalks.
+   - Chalkboard style: `background-color: #2A2420; background-image: url("data:image/svg+xml,...")` or just a subtle noise pattern via CSS. I'll use a CSS radial gradient to simulate chalkboard texture.
+   - Accessibility: `aria-label`, `role`, `tabindex`, focus styles, contrast checks (colors are fine).
+   - Responsive: flex/grid adjustments, media queries for nav.
+
+   Let's write out the full HTML carefully, ensuring no markdown, just raw text.
+
+   Structure check:
+   - `<!DOCTYPE html>`
+   - `<html lang="en">`
+   - `<head>`...`</head>`
+   - `<body>`...`</body>`
+   - `</html>`
+   - All inline CSS/JS
+   - Google Fonts CDN only external
+   - Semantic tags
+   - All sections present
+   - Interactive features implemented
+
+   I will draft it step-by-step in my mind, then output.
+
+   *Self-Correction/Verification during drafting:*
+   - Need to make sure the wheat illustrations are visible and decorative. I'll use inline SVGs with CSS positioning.
+   - Chalkboard effect: I'll use a dark background with a subtle CSS pattern or just a solid dark color with a chalk-like font for the specials. The prompt says "chalkboard-style dark banner", so I'll style it accordingly.
+   - Countdown to 6 PM: handled.
+   - Rotating specials: handled.
+   - Fade-in on scroll: handled via IntersectionObserver.
+   - Parallax: handled via JS scroll event.
+   - Mobile menu: handled.
+   - Smooth scroll: handled.
+   - Hover effects on menu cards: handled.
+   - All requirements met.
+
+   I will now generate the complete HTML string. I'll be careful to avoid any markdown formatting in the output as requested: "Output ONLY the complete file content with no explanation, no markdown fences, no commentary. The output must start with <!DOCTYPE html> and end with </html>."
+
+   Let's construct it carefully.
+   I'll make sure the CSS is robust and the JS is error-free.
+   I'll add `prefers-reduced-motion` media query for accessibility.
+   I'll ensure the SVG icons in footer are inline.
+   I'll use CSS variables for easy theming.
+   I'll make sure the hero has `background-attachment: fixed` or JS parallax. I'll stick to JS for smoother control across devices.
+   I'll add `loading="lazy"` to images if any, but I'll use CSS/SVG for visuals to keep it single-file without external images.
+   All good.
+
+   Proceeding to generate. 
+   Structure:
+   ```html
+   <!DOCTYPE html>
+   <html lang="en">
+   <head>
+   ...
+   </head>
+   <body>
+   ...
+   </body>
+   </html>
+   ```
+   I will write it out completely now. 
+   *Self-Correction/Note during thought*: The prompt says "decorative wheat illustrations". I'll create simple SVG paths for wheat and place them in the hero. I'll also add a subtle pattern to the chalkboard section. I'll ensure all CSS is properly scoped and responsive. I'll make sure the JS handles edge cases gracefully.
+
+   Let's generate. 
+   Output matches the final response. 
+   Checking constraints: "Output ONLY the complete file content with no explanation, no markdown fences, no commentary. The output must start with <!DOCTYPE html> and end with </html>." -> I will strictly follow this. No backticks, no markdown. Just raw HTML.
+   I will carefully format the HTML without using markdown code blocks.
+   Ready. 
+   Generating. 
+   [Output Generation] -> *Proceeds*
+   *(Note: I will manually ensure the output contains absolutely no markdown formatting, as requested.)*
+   All set. 
+   Output matches the response. 
+   [Done.] 
+   *Self-Correction/Verification during output generation prep*: 
+   I need to make sure the HTML is valid and complete. I'll double-check the color codes, fonts, sections, and JS logic. Everything looks solid. I will produce the raw text now. 
+   *Output Generation* (simulated in mind, now writing out)
+   `<!DOCTYPE html>...` etc.
+   All constraints met. Proceeds. 
+   [Output Generation] -> *Proceeds*
+</think>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Golden Crust Artisan Bakery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+--bg-cream: #FFF8F0;
+--text-espresso: #3C2415;
+--accent-wheat: #D4A574;
+--highlight-sage: #6B8F71;
+--cta-terracotta: #C17A57;
+--cta-terracotta-hover: #A86545;
+--chalkboard-dark: #2A2420;
+--chalkboard-text: #F5E6D3;
+--card-bg: #FFFFFF;
+--shadow-soft: 0 8px 24px rgba(60, 36, 21, 0.08);
+--shadow-hover: 0 12px 32px rgba(60, 36, 21, 0.15);
+--transition-smooth: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+*, *::before, *::after {
+box-sizing: border-box;
+margin: 0;
+padding: 0;
+}
+
+html {
+scroll-behavior: smooth;
+}
+
+body {
+font-family: 'Lato', sans-serif;
+background-color: var(--bg-cream);
+color: var(--text-espresso);
+line-height: 1.6;
+overflow-x: hidden;
+}
+
+h1, h2, h3, h4 {
+font-family: 'Playfair Display', serif;
+font-weight: 700;
+line-height: 1.2;
+}
+
+a {
+text-decoration: none;
+color: inherit;
+transition: var(--transition-smooth);
+}
+
+img, svg {
+max-width: 100%;
+display: block;
+}
+
+.container {
+width: 90%;
+max-width: 1200px;
+margin: 0 auto;
+padding: 0 1rem;
+}
+
+/* Navigation */
+nav {
+position: sticky;
+top: 0;
+z-index: 1000;
+background: rgba(255, 248, 240, 0.95);
+backdrop-filter: blur(10px);
+border-bottom: 1px solid rgba(60, 36, 21, 0.1);
+padding: 1rem 0;
+}
+
+.nav-container {
+display: flex;
+justify-content: space-between;
+align-items: center;
+}
+
+.logo {
+font-family: 'Playfair Display', serif;
+font-size: 1.5rem;
+font-weight: 700;
+color: var(--text-espresso);
+display: flex;
+align-items: center;
+gap: 0.5rem;
+}
+
+.logo svg {
+width: 28px;
+height: 28px;
+fill: var(--accent-wheat);
+}
+
+.nav-links {
+display: flex;
+gap: 2rem;
+list-style: none;
+}
+
+.nav-links a {
+font-weight: 600;
+font-size: 0.95rem;
+position: relative;
+}
+
+.nav-links a::after {
+content: '';
+position: absolute;
+bottom: -4px;
+left: 0;
+width: 0;
+height: 2px;
+background: var(--cta-terracotta);
+transition: width 0.3s ease;
+}
+
+.nav-links a:hover::after,
+.nav-links a:focus::after {
+width: 100%;
+}
+
+.hamburger {
+display: none;
+flex-direction: column;
+gap: 5px;
+cursor: pointer;
+background: none;
+border: none;
+padding: 0.5rem;
+}
+
+.hamburger span {
+width: 24px;
+height: 2px;
+background: var(--text-espresso);
+transition: var(--transition-smooth);
+}
+
+/* Hero */
+.hero {
+position: relative;
+min-height: 100vh;
+display: flex;
+align-items: center;
+justify-content: center;
+text-align: center;
+background: linear-gradient(160deg, var(--bg-cream) 0%, #F2E3D1 100%);
+overflow: hidden;
+padding: 6rem 1rem;
+}
+
+.hero-bg {
+position: absolute;
+top: 0;
+left: 0;
+width: 100%;
+height: 120%;
+background: radial-gradient(circle at 20% 30%, rgba(212, 165, 116, 0.15) 0%, transparent 40%),
+radial-gradient(circle at 80% 70%, rgba(107, 143, 113, 0.1) 0%, transparent 40%);
+z-index: 0;
+will-change: transform;
+}
+
+.hero-content {
+position: relative;
+z-index: 1;
+max-width: 800px;
+}
+
+.hero h1 {
+font-size: clamp(2.5rem, 6vw, 4.5rem);
+margin-bottom: 1.5rem;
+color: var(--text-espresso);
+}
+
+.hero p {
+font-size: clamp(1rem, 2.5vw, 1.25rem);
+margin-bottom: 2.5rem;
+color: rgba(60, 36, 21, 0.85);
+max-width: 600px;
+margin-left: auto;
+margin-right: auto;
+}
+
+.btn-group {
+display: flex;
+gap: 1rem;
+justify-content: center;
+flex-wrap: wrap;
+}
+
+.btn {
+padding: 0.9rem 2rem;
+border-radius: 50px;
+font-weight: 700;
+font-size: 1rem;
+cursor: pointer;
+transition: var(--transition-smooth);
+border: 2px solid transparent;
+}
+
+.btn-primary {
+background: var(--cta-terracotta);
+color: white;
+}
+
+.btn-primary:hover, .btn-primary:focus {
+background: var(--cta-terracotta-hover);
+transform: translateY(-2px);
+box-shadow: 0 6px 16px rgba(193, 122, 87, 0.4);
+}
+
+.btn-secondary {
+background: transparent;
+color: var(--text-espresso);
+border: 2px solid var(--text-espresso);
+}
+
+.btn-secondary:hover, .btn-secondary:focus {
+background: var(--text-espresso);
+color: var(--bg-cream);
+transform: translateY(-2px);
+}
+
+.wheat-decor {
+position: absolute;
+opacity: 0.15;
+z-index: 0;
+pointer-events: none;
+}
+
+.wheat-left {
+top: 15%;
+left: 5%;
+width: 180px;
+transform: rotate(-15deg);
+}
+
+.wheat-right {
+bottom: 10%;
+right: 5%;
+width: 200px;
+transform: rotate(15deg) scaleX(-1);
+}
+
+/* Sections General */
+section {
+padding: 5rem 0;
+}
+
+.section-title {
+text-align: center;
+font-size: clamp(2rem, 4vw, 3rem);
+margin-bottom: 3rem;
+position: relative;
+display: inline-block;
+left: 50%;
+transform: translateX(-50%);
+}
+
+.section-title::after {
+content: '';
+display: block;
+width: 60px;
+height: 4px;
+background: var(--accent-wheat);
+margin: 0.8rem auto 0;
+border-radius: 2px;
+}
+
+/* Our Story */
+.story-grid {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 4rem;
+align-items: center;
+}
+
+.story-text p {
+margin-bottom: 1.5rem;
+font-size: 1.1rem;
+}
+
+.story-visual {
+background: var(--accent-wheat);
+height: 400px;
+border-radius: 16px;
+display: flex;
+align-items: center;
+justify-content: center;
+position: relative;
+overflow: hidden;
+}
+
+.story-visual::before {
+content: '';
+position: absolute;
+width: 150%;
+height: 150%;
+background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px);
+animation: rotate 60s linear infinite;
+}
+
+@keyframes rotate {
+from { transform: rotate(0deg); }
+to { transform: rotate(360deg); }
+}
+
+/* Menu */
+.menu-grid {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+gap: 2rem;
+}
+
+.menu-card {
+background: var(--card-bg);
+border-radius: 16px;
+overflow: hidden;
+box-shadow: var(--shadow-soft);
+transition: var(--transition-smooth);
+position: relative;
+}
+
+.menu-card:hover {
+transform: translateY(-8px);
+box-shadow: var(--shadow-hover);
+}
+
+.card-img {
+height: 200px;
+background: linear-gradient(135deg, #F5E6D3 0%, #E8D5C0 100%);
+display: flex;
+align-items: center;
+justify-content: center;
+font-size: 3rem;
+}
+
+.card-content {
+padding: 1.5rem;
+}
+
+.card-content h3 {
+font-size: 1.4rem;
+margin-bottom: 0.5rem;
+}
+
+.price {
+font-weight: 700;
+color: var(--cta-terracotta);
+font-size: 1.2rem;
+margin-bottom: 0.8rem;
+display: block;
+}
+
+.card-content p {
+font-size: 0.95rem;
+color: rgba(60, 36, 21, 0.8);
+}
+
+/* Daily Specials */
+.specials-banner {
+background-color: var(--chalkboard-dark);
+color: var(--chalkboard-text);
+padding: 4rem 0;
+text-align: center;
+position: relative;
+overflow: hidden;
+}
+
+.specials-banner::before {
+content: '';
+position: absolute;
+top: 0; left: 0; right: 0; bottom: 0;
+background-image: radial-gradient(circle at 20% 30%, rgba(255,255,255,0.03) 1px, transparent 1px),
+radial-gradient(circle at 80% 70%, rgba(255,255,255,0.03) 1px, transparent 1px);
+background-size: 40px 40px;
+opacity: 0.5;
+pointer-events: none;
+}
+
+.specials-content {
+position: relative;
+z-index: 1;
+}
+
+.specials-content h2 {
+font-size: 2.5rem;
+margin-bottom: 1rem;
+color: #F5E6D3;
+}
+
+.specials-text {
+font-size: 1.5rem;
+font-family: 'Courier New', monospace;
+min-height: 2rem;
+margin-bottom: 2rem;
+transition: opacity 0.5s ease;
+}
+
+.countdown {
+font-size: 1.2rem;
+background: rgba(255, 255, 255, 0.1);
+display: inline-block;
+padding: 0.5rem 1.5rem;
+border-radius: 50px;
+margin-top: 1rem;
+}
+
+/* Testimonials */
+.testimonials-grid {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+gap: 2rem;
+}
+
+.testimonial-card {
+background: white;
+padding: 2rem;
+border-radius: 16px;
+box-shadow: var(--shadow-soft);
+border-left: 4px solid var(--highlight-sage);
+}
+
+.testimonial-card p {
+font-style: italic;
+margin-bottom: 1.5rem;
+font-size: 1.05rem;
+}
+
+.testimonial-author {
+font-weight: 700;
+color: var(--text-espresso);
+}
+
+/* Visit Us */
+.visit-grid {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+gap: 2rem;
+text-align: center;
+}
+
+.visit-card {
+background: white;
+padding: 2rem;
+border-radius: 16px;
+box-shadow: var(--shadow-soft);
+}
+
+.visit-card h3 {
+margin-bottom: 1rem;
+color: var(--cta-terracotta);
+}
+
+.visit-card p {
+margin-bottom: 0.5rem;
+}
+
+/* Footer */
+footer {
+background: var(--text-espresso);
+color: var(--bg-cream);
+padding: 3rem 0;
+text-align: center;
+}
+
+.footer-content {
+display: flex;
+flex-direction: column;
+align-items: center;
+gap: 1.5rem;
+}
+
+.social-icons {
+display: flex;
+gap: 1.5rem;
+}
+
+.social-icons a {
+width: 40px;
+height: 40px;
+border-radius: 50%;
+background: rgba(255, 255, 255, 0.1);
+display: flex;
+align-items: center;
+justify-content: center;
+transition: var(--transition-smooth);
+}
+
+.social-icons a:hover {
+background: var(--cta-terracotta);
+transform: translateY(-3px);
+}
+
+.social-icons svg {
+width: 20px;
+height: 20px;
+fill: currentColor;
+}
+
+.footer-text {
+font-size: 0.9rem;
+opacity: 0.8;
+}
+
+/* Fade In Animation */
+.fade-in {
+opacity: 0;
+transform: translateY(30px);
+transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.fade-in.visible {
+opacity: 1;
+transform: translateY(0);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+.hamburger {
+display: flex;
+}
+
+.nav-links {
+position: fixed;
+top: 70px;
+right: -100%;
+width: 70%;
+height: calc(100vh - 70px);
+background: var(--bg-cream);
+flex-direction: column;
+padding: 2rem;
+box-shadow: -5px 0 15px rgba(0,0,0,0.1);
+transition: right 0.3s ease;
+}
+
+.nav-links.active {
+right: 0;
+}
+
+.hamburger.active span:nth-child(1) {
+transform: rotate(45deg) translate(5px, 6px);
+}
+
+.hamburger.active span:nth-child(2) {
+opacity: 0;
+}
+
+.hamburger.active span:nth-child(3) {
+transform: rotate(-45deg) translate(5px, -6px);
+}
+
+.story-grid {
+grid-template-columns: 1fr;
+}
+
+.story-visual {
+height: 300px;
+order: -1;
+}
+
+.wheat-decor {
+display: none;
+}
+}
+
+@media (prefers-reduced-motion: reduce) {
+.fade-in {
+opacity: 1;
+transform: none;
+transition: none;
+}
+.hero-bg, .story-visual::before {
+animation: none;
+will-change: auto;
+}
+}
+</style>
+</head>
+<body>
+
+<nav>
+<div class="container nav-container">
+<a href="#home" class="logo">
+<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+Golden Crust
+</a>
+<button class="hamburger" aria-label="Toggle navigation menu" aria-expanded="false">
+<span></span><span></span><span></span>
+</button>
+<ul class="nav-links">
+<li><a href="#home">Home</a></li>
+<li><a href="#story">Our Story</a></li>
+<li><a href="#menu">Menu</a></li>
+<li><a href="#testimonials">Testimonials</a></li>
+<li><a href="#visit">Visit Us</a></li>
+</ul>
+</div>
+</nav>
+
+<header id="home" class="hero">
+<div class="hero-bg"></div>
+<svg class="wheat-decor wheat-left" viewBox="0 0 100 200" fill="currentColor"><path d="M50 180c-10-20-20-40-20-60s10-40 20-60c10 20 20 40 20 60s-10 40-20 60zm-15-40c-5-10-10-20-10-30s5-20 10-30c5 10 10 20 10 30s-5 20-10 30zm30 0c5-10 10-20 10-30s-5-20-10-30c-5 10-10 20-10 30s5 20 10 30zm-15-50c-8-15-15-30-15-45s7-30 15-45c8 15 15 30 15 45s-7 30-15 45zm30 0c8-15 15-30 15-45s-7-30-15-45c-8 15-15 30-15 45s7 30 15 45z"/></svg>
+<svg class="wheat-decor wheat-right" viewBox="0 0 100 200" fill="currentColor"><path d="M50 180c-10-20-20-40-20-60s10-40 20-60c10 20 20 40 20 60s-10 40-20 60zm-15-40c-5-10-10-20-10-30s5-20 10-30c5 10 10 20 10 30s-5 20-10 30zm30 0c5-10 10-20 10-30s-5-20-10-30c-5 10-10 20-10 30s5 20 10 30zm-15-50c-8-15-15-30-15-45s7-30 15-45c8 15 15 30 15 45s-7 30-15 45zm30 0c8-15 15-30 15-45s-7-30-15-45c-8 15-15 30-15 45s7 30 15 45z"/></svg>
+<div class="hero-content">
+<h1>Baked with Love, Served with Soul</h1>
+<p>Handcrafted artisan breads, pastries, and cakes since 1987. Every bite tells a story of tradition, quality, and neighborhood warmth.</p>
+<div class="btn-group">
+<a href="#menu" class="btn btn-primary">View Menu</a>
+<a href="#visit" class="btn btn-secondary">Visit Us</a>
+</div>
+</div>
+</header>
+
+<section id="story" class="container">
+<h2 class="section-title">Our Story</h2>
+<div class="story-grid fade-in">
+<div class="story-text">
+<p>Founded in 1987 by the Rossi family, Golden Crust began as a small corner shop with a simple mission: to bring authentic, slow-fermented bread back to the neighborhood. What started as a passion project quickly became a community staple.</p>
+<p>We source locally milled flour, organic eggs, and seasonal fruits. Our sourdough starters are over 35 years old, passed down through generations. Every morning, our bakers arrive before dawn to ensure freshness, flavor, and that unmistakable golden crust you crave.</p>
+<p>Today, we continue to honor those roots while embracing sustainable practices and community support. From your first croissant to your wedding cake, we bake with heart.</p>
+</div>
+<div class="story-visual">
+<svg width="120" height="120" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+</div>
+</div>
+</section>
+
+<section id="menu" class="container">
+<h2 class="section-title">Featured Menu</h2>
+<div class="menu-grid">
+<div class="menu-card fade-in">
+<div class="card-img">🍞</div>
+<div class="card-content">
+<h3>Sourdough Loaf</h3>
+<span class="price">$8.00</span>
+<p>48-hour fermented, crusty exterior with a soft, tangy crumb. Perfect for toast or sandwiches.</p>
+</div>
+</div>
+<div class="menu-card fade-in">
+<div class="card-img">🥐</div>
+<div class="card-content">
+<h3>Croissants</h3>
+<span class="price">$4.50</span>
+<p>Buttery, flaky layers made with French-style butter. Baked fresh every morning.</p>
+</div>
+</div>
+<div class="menu-card fade-in">
+<div class="card-img">🥖</div>
+<div class="card-content">
+<h3>Baguettes</h3>
+<span class="price">$5.00</span>
+<p>Classic French technique, crisp shell, airy interior. Ideal for charcuterie or olive oil dipping.</p>
+</div>
+</div>
+<div class="menu-card fade-in">
+<div class="card-img">🌀</div>
+<div class="card-content">
+<h3>Cinnamon Rolls</h3>
+<span class="price">$6.00</span>
+<p>Warm, gooey, and topped with cream cheese glaze. A weekend favorite since day one.</p>
+</div>
+</div>
+<div class="menu-card fade-in">
+<div class="card-img">🍓</div>
+<div class="card-content">
+<h3>Fruit Tarts</h3>
+<span class="price">$7.00</span>
+<p>Buttery pastry shell filled with vanilla custard and topped with seasonal fresh fruits.</p>
+</div>
+</div>
+<div class="menu-card fade-in">
+<div class="card-img">🎂</div>
+<div class="card-content">
+<h3>Custom Cakes</h3>
+<span class="price">Call for Price</span>
+<p>Weddings, birthdays, or celebrations. We craft personalized designs with premium ingredients.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section id="specials" class="specials-banner">
+<div class="container specials-content">
+<h2>Daily Specials</h2>
+<div class="specials-text" id="daily-special">Fresh Rosemary Focaccia</div>
+<p>Available while supplies last. Stop by early!</p>
+<div class="countdown" id="countdown">Loading...</div>
+</div>
+</section>
+
+<section id="testimonials" class="container">
+<h2 class="section-title">What Neighbors Say</h2>
+<div class="testimonials-grid">
+<div class="testimonial-card fade-in">
+<p>"The sourdough here changed my life. I've tried bakeries across the city, but nothing compares to the depth of flavor and texture. Truly artisan."</p>
+<div class="testimonial-author">— Elena R.</div>
+</div>
+<div class="testimonial-card fade-in">
+<p>"We ordered a custom wedding cake and it was absolutely stunning. The team was so attentive, and the taste was divine. Highly recommend!"</p>
+<div class="testimonial-author">— Marcus & Sarah T.</div>
+</div>
+<div class="testimonial-card fade-in">
+<p>"My morning ritual starts here. The croissants are perfectly flaky, and the staff remembers my order. It feels like a true neighborhood gem."</p>
+<div class="testimonial-author">— David L.</div>
+</div>
+</div>
+</section>
+
+<section id="visit" class="container">
+<h2 class="section-title">Visit Us</h2>
+<div class="visit-grid fade-in">
+<div class="visit-card">
+<h3>Address</h3>
+<p>124 Maplewood Avenue</p>
+<p>Springfield, IL 62704</p>
+</div>
+<div class="visit-card">
+<h3>Hours</h3>
+<p>Mon - Fri: 7:00 AM - 6:00 PM</p>
+<p>Sat - Sun: 8:00 AM - 5:00 PM</p>
+</div>
+<div class="visit-card">
+<h3>Contact</h3>
+<p>Phone: (555) 123-4567</p>
+<p>Email: hello@goldencrustbakery.com</p>
+</div>
+</div>
+</section>
+
+<footer>
+<div class="container footer-content">
+<div class="social-icons">
+<a href="#" aria-label="Instagram"><svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg></a>
+<a href="#" aria-label="Facebook"><svg viewBox="0 0 24 24"><path d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808c-3.596 0-5.192 1.583-5.192 4.615v3.385z"/></svg></a>
+<a href="#" aria-label="Twitter"><svg viewBox="0 0 24 24"><path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/></svg></a>
+<a href="#" aria-label="Pinterest"><svg viewBox="0 0 24 24"><path d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.162-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 01.083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.631-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12.017 24c6.624 0 11.99-5.367 11.99-11.988C24.007 5.367 18.641 0 12.017 0z"/></svg></a>
+</div>
+<p class="footer-text">&copy; 2024 Golden Crust Artisan Bakery. All rights reserved.</p>
+</div>
+</footer>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // Mobile Menu Toggle
+  const hamburger = document.querySelector('.hamburger');
+  const navLinks = document.querySelector('.nav-links');
+  
+  hamburger.addEventListener('click', () => {
+    const isExpanded = hamburger.getAttribute('aria-expanded') === 'true';
+    hamburger.setAttribute('aria-expanded', !isExpanded);
+    navLinks.classList.toggle('active');
+    hamburger.classList.toggle('active');
+  });
+
+  // Close mobile menu on link click
+  document.querySelectorAll('.nav-links a').forEach(link => {
+    link.addEventListener('click', () => {
+      navLinks.classList.remove('active');
+      hamburger.classList.remove('active');
+      hamburger.setAttribute('aria-expanded', 'false');
+    });
+  });
+
+  // Smooth Scroll for anchor links
+  document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function(e) {
+      e.preventDefault();
+      const targetId = this.getAttribute('href');
+      const target = document.querySelector(targetId);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+
+  // Intersection Observer for Fade-ins
+  const observerOptions = {
+    threshold: 0.15,
+    rootMargin: '0px 0px -50px 0px'
+  };
+  
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, observerOptions);
+
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+  // Rotating Specials
+  const specials = [
+    'Fresh Rosemary Focaccia',
+    'Seasonal Berry Danish',
+    'Gluten-Free Almond Croissant',
+    'Warm Cinnamon Pretzel Bites',
+    'Avocado & Egg Breakfast Sandwich'
+  ];
+  const specialEl = document.getElementById('daily-special');
+  let specialIndex = 0;
+
+  setInterval(() => {
+    specialEl.style.opacity = '0';
+    setTimeout(() => {
+      specialIndex = (specialIndex + 1) % specials.length;
+      specialEl.textContent = specials[specialIndex];
+      specialEl.style.opacity = '1';
+    }, 500);
+  }, 4000);
+
+  // Countdown to 6 PM Close
+  const countdownEl = document.getElementById('countdown');
+  
+  function updateCountdown() {
+    const now = new Date();
+    const close = new Date();
+    close.setHours(18, 0, 0, 0);
+    
+    if (now > close) {
+      close.setDate(close.getDate() + 1);
+    }
+    
+    const diff = close - now;
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    countdownEl.textContent = `Closes in: ${hours}h ${minutes}m ${seconds}s`;
+  }
+  
+  updateCountdown();
+  setInterval(updateCountdown, 1000);
+
+  // Subtle Parallax Effect
+  const heroBg = document.querySelector('.hero-bg');
+  let ticking = false;
+  
+  window.addEventListener('scroll', () => {
+    if (!ticking) {
+      window.requestAnimationFrame(() => {
+        const scrolled = window.pageYOffset;
+        if (heroBg && scrolled < window.innerHeight) {
+          heroBg.style.transform = `translateY(${scrolled * 0.4}px)`;
+        }
+        ticking = false;
+      });
+      ticking = true;
+    }
+  });
+});
+</script>
+</body>
+</html>

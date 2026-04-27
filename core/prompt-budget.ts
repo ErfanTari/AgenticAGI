@@ -54,32 +54,46 @@ export interface BuiltPrompt {
 
 // ─── buildPrompt ──────────────────────────────────────────────────────────────
 
+/**
+ * Build the stable base system prompt for the query loop.
+ * Uses query-loop-base.md (no goal/index — those go in the context block).
+ * Identical across all requests with the same permission mode → KV cache hit.
+ */
 export function buildQueryLoopSystemPrompt(ctx: QueryLoopPromptContext): BuiltPrompt {
   const memoryEnabled = getMemoryMode() === 'enabled';
   const skillList = getSkillOneLinerList(getActivePermissionMode(), { memoryEnabled });
 
-  const activeLoopsSection = memoryEnabled && ctx.activeLoops.trim()
-    ? `\n\n## Your current task state\n${ctx.activeLoops.trim()}\n\nUse this to know where you are. Do NOT re-read all memory entries to orient yourself — this section is your anchor.`
-    : '';
-
-  const indexSection = memoryEnabled && ctx.pointerIndex.trim()
-    ? `\n\n## Known Entries (MEMORY.md)\n${ctx.pointerIndex.trim()}`
-    : '';
-
-  const text = promptLoader.load('query-loop', {
-    skill_list: skillList,
-    goal: ctx.goal,
-    index_section: activeLoopsSection + indexSection,
-  });
+  // Use base template (stable — no goal/index placeholders)
+  const text = promptLoader.load('query-loop-base', { skill_list: skillList });
 
   const sources: PromptSource[] = [
-    { name: 'query-loop.md', tokenEstimate: estimateTokens(text) - estimateTokens(skillList) },
+    { name: 'query-loop-base.md', tokenEstimate: estimateTokens(text) - estimateTokens(skillList) },
     { name: 'skill_list', tokenEstimate: estimateTokens(skillList) },
   ];
-  if (activeLoopsSection) sources.push({ name: 'active_loops', tokenEstimate: estimateTokens(activeLoopsSection) });
-  if (indexSection) sources.push({ name: 'pointer_index', tokenEstimate: estimateTokens(indexSection) });
+
+  // Unused but kept for BuiltPrompt compat — context block built separately
+  void ctx;
 
   return { text, tokenEstimate: estimateTokens(text), sources, promptId: 'query-loop' };
+}
+
+/**
+ * Build the variable context block for the query loop (goal + memory index).
+ * Injected as the first user message so the stable system prefix is never invalidated.
+ */
+export function buildQueryLoopContextBlock(ctx: QueryLoopPromptContext): string {
+  const memoryEnabled = getMemoryMode() === 'enabled';
+  const parts: string[] = [`## Current goal\n${ctx.goal}`];
+
+  if (memoryEnabled && ctx.activeLoops.trim()) {
+    parts.push(`## Your current task state\n${ctx.activeLoops.trim()}\n\nUse this to know where you are. Do NOT re-read all memory entries to orient yourself — this section is your anchor.`);
+  }
+
+  if (memoryEnabled && ctx.pointerIndex.trim()) {
+    parts.push(`## Known Entries (MEMORY.md)\n${ctx.pointerIndex.trim()}`);
+  }
+
+  return parts.join('\n\n');
 }
 
 export function buildPlannerSystemPrompt(ctx: PlannerPromptContext): BuiltPrompt {

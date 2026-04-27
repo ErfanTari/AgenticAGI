@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Golden Crust Artisan Bakery - Baked with Love, Served with Soul</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* CSS Variables */
+        :root {
+            --cream: #FFF8F0;
+            --espresso: #3C2415;
+            --golden-wheat: #D4A574;
+            --sage-green: #6B8F71;
+            --terracotta: #C17A57;
+            --chalkboard-dark: #2C1810;
+            --dark-footer: #22150D; /* Slightly darker than chalkboard for footer */
+        }
+
+        /* Base Styles */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Lato', sans-serif;
+            color: var(--espresso);
+            background-color: var(--cream);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Playfair Display', serif;
+            color: var(--espresso);
+            margin-bottom: 0.5em;
+        }
+
+        h1 { font-size: 3.5em; }
+        h2 { font-size: 2.5em; }
+        h3 { font-size: 1.8em; }
+
+        a {
+            text-decoration: none;
+            color: var(--terracotta);
+            transition: color 0.3s ease;
+        }
+
+        a:hover {
+            color: #A86A4F; /* Slightly darker terracotta */
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .section-padding {
+            padding: 80px 20px;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-block;
+            background-color: var(--terracotta);
+            color: var(--cream);
+            padding: 12px 25px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: background-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .btn:hover {
+            background-color: #A86A4F; /* Darker terracotta */
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-secondary {
+            background-color: transparent;
+            border: 2px solid var(--terracotta);
+            color: var(--terracotta);
+            padding: 10px 23px;
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--terracotta);
+            color: var(--cream);
+        }
+
+        /* Navigation Bar */
+        .header {
+            background-color: var(--cream);
+            padding: 15px 0;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            left: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .nav-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+        }
+
+        .logo {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.8em;
+            font-weight: 700;
+            color: var(--espresso);
+            white-space: nowrap;
+        }
+
+        .nav-links {
+            list-style: none;
+            display: flex;
+            gap: 30px;
+        }
+
+        .nav-links a {
+            color: var(--espresso);
+            font-weight: 600;
+            position: relative;
+            padding-bottom: 5px;
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            width: 0;
+            height: 2px;
+            background-color: var(--golden-wheat);
+            transition: width 0.3s ease;
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        /* Hamburger Menu */
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            cursor: pointer;
+            padding: 10px;
+            z-index: 1001;
+        }
+
+        .hamburger span {
+            height: 3px;
+            width: 25px;
+            background-color: var(--espresso);
+            margin-bottom: 5px;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+
+        .hamburger.active span:nth-child(1) {
+            transform: rotate(45deg) translate(5px, 5px);
+        }
+
+        .hamburger.active span:nth-child(2) {
+            opacity: 0;
+        }
+
+        .hamburger.active span:nth-child(3) {
+            transform: rotate(-45deg) translate(5px, -5px);
+        }
+
+        .mobile-menu {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 70%;
+            height: 100%;
+            background-color: var(--espresso);
+            transform: translateX(100%);
+            transition: transform 0.4s ease-in-out;
+            padding-top: 80px;
+            box-shadow: -5px 0 15px rgba(0, 0, 0, 0.2);
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 25px;
+        }
+
+        .mobile-menu.active {
+            transform: translateX(0);
+        }
+
+        .mobile-menu a {
+            color: var(--cream);
+            font-size: 1.5em;
+            font-weight: 600;
+            padding: 10px 0;
+            display: block;
+            width: 100%;
+            text-align: center;
+        }
+
+        .mobile-menu a:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: var(--golden-wheat);
+        }
+
+        /* Hero Section */
+        .hero-section {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            background: linear-gradient(135deg, var(--cream) 0%, var(--golden-wheat) 100%);
+            background-size: 200% 200%; /* For parallax effect */
+            color: var(--espresso);
+            padding-top: 80px; /* Account for fixed header */
+            position: relative;
+            overflow: hidden; /* For floating elements */
+        }
+
+        .hero-section h1 {
+            font-size: clamp(2.5em, 7vw, 4.5em);
+            margin-bottom: 0.3em;
+            line-height: 1.1;
+            color: var(--espresso);
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.05);
+        }
+
+        .hero-section p {
+            font-size: clamp(1em, 2.5vw, 1.3em);
+            max-width: 800px;
+            margin-bottom: 2em;
+            color: var(--espresso);
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* Floating decorative elements (CSS art) */
+        .floating-element {
+            position: absolute;
+            opacity: 0.3;
+            animation: float 10s ease-in-out infinite;
+        }
+
+        .floating-element.wheat-left {
+            width: 80px;
+            height: 120px;
+            background-color: var(--sage-green);
+            border-radius: 50%;
+            top: 15%;
+            left: 5%;
+            transform: rotate(-20deg);
+            animation-delay: 1s;
+        }
+        .floating-element.wheat-right {
+            width: 100px;
+            height: 150px;
+            background-color: var(--golden-wheat);
+            border-radius: 50%;
+            bottom: 10%;
+            right: 8%;
+            transform: rotate(30deg);
+            animation-delay: 3s;
+        }
+        .floating-element.crumb-top {
+            width: 40px;
+            height: 40px;
+            background-color: var(--terracotta);
+            border-radius: 50%;
+            top: 5%;
+            right: 20%;
+            animation-delay: 0.5s;
+        }
+        .floating-element.crumb-bottom {
+            width: 60px;
+            height: 60px;
+            background-color: var(--sage-green);
+            border-radius: 50%;
+            bottom: 20%;
+            left: 15%;
+            animation-delay: 2.5s;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(5deg); }
+            100% { transform: translateY(0px) rotate(0deg); }
+        }
+
+
+        /* Our Story Section */
+        .our-story-section {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 40px;
+        }
+
+        .story-content, .story-illustration {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .story-illustration {
+            background-color: var(--golden-wheat);
+            border-radius: 10px;
+            min-height: 300px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .story-illustration::before,
+        .story-illustration::after {
+            content: '';
+            position: absolute;
+            background-color: var(--sage-green);
+            border-radius: 50%;
+            opacity: 0.6;
+        }
+        .story-illustration::before {
+            width: 150px;
+            height: 150px;
+            top: -50px;
+            left: -50px;
+            transform: rotate(45deg);
+        }
+        .story-illustration::after {
+            width: 200px;
+            height: 200px;
+            bottom: -70px;
+            right: -70px;
+            transform: rotate(-30deg);
+        }
+        .story-illustration .wheat-icon {
+            font-size: 8em;
+            color: var(--cream);
+            z-index: 1;
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+
+        /* Featured Menu Section */
+        .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .menu-card {
+            background-color: white;
+            border-radius: 10px;
+            padding: 25px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .menu-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 12px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .menu-card .emoji {
+            font-size: 3em;
+            margin-bottom: 15px;
+            line-height: 1;
+        }
+
+        .menu-card h3 {
+            color: var(--terracotta);
+            margin-bottom: 10px;
+            font-size: 1.5em;
+        }
+
+        .menu-card p {
+            font-size: 0.95em;
+            color: #555;
+            margin-bottom: 15px;
+            flex-grow: 1;
+        }
+
+        .menu-card .price {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.4em;
+            font-weight: 700;
+            color: var(--espresso);
+        }
+
+        /* Daily Specials Section */
+        .daily-specials-section {
+            background-color: var(--chalkboard-dark);
+            color: var(--cream);
+            text-align: center;
+            padding: 60px 20px;
+            border-radius: 10px;
+            margin: 80px auto;
+            max-width: 1000px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+
+        .daily-specials-section h2 {
+            color: var(--golden-wheat);
+            font-size: 2.5em;
+            margin-bottom: 20px;
+        }
+
+        .daily-specials-section p {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.8em;
+            margin-bottom: 25px;
+            line-height: 1.3;
+        }
+
+        .daily-specials-section .countdown {
+            font-family: 'Lato', sans-serif;
+            font-size: 1.4em;
+            font-weight: 700;
+            color: var(--cream);
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 5px;
+            display: inline-block;
+        }
+
+        /* Testimonials Section */
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .testimonial-card {
+            background-color: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .testimonial-card .quote {
+            font-style: italic;
+            margin-bottom: 20px;
+            color: #555;
+            font-size: 1.1em;
+            line-height: 1.5;
+        }
+
+        .testimonial-card .author {
+            font-weight: bold;
+            color: var(--espresso);
+            margin-bottom: 5px;
+        }
+
+        .testimonial-card .stars {
+            color: var(--golden-wheat);
+            font-size: 1.2em;
+        }
+
+        /* Visit Us / Contact Section */
+        .visit-contact-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 40px;
+            align-items: flex-start;
+        }
+
+        .contact-info, .map-placeholder {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .contact-info h3 {
+            color: var(--terracotta);
+            margin-bottom: 20px;
+        }
+
+        .contact-info p {
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .contact-info strong {
+            color: var(--espresso);
+        }
+
+        .contact-info ul {
+            list-style: none;
+            margin-top: 20px;
+        }
+
+        .contact-info ul li {
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+        }
+
+        .contact-info ul li strong {
+            min-width: 80px;
+            display: inline-block;
+        }
+
+        .map-placeholder {
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            height: 350px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .map-placeholder .map-pin-icon {
+            width: 60px;
+            height: 60px;
+            color: var(--terracotta);
+            filter: drop-shadow(0 2px 5px rgba(0,0,0,0.3));
+            animation: bounce 1.5s infinite ease-in-out;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+
+        /* Footer */
+        .footer {
+            background-color: var(--dark-footer);
+            color: var(--cream);
+            padding: 40px 20px;
+            text-align: center;
+            margin-top: 80px;
+        }
+
+        .footer .logo {
+            color: var(--golden-wheat);
+            font-size: 2em;
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .social-links {
+            margin-bottom: 20px;
+        }
+
+        .social-links a {
+            display: inline-block;
+            margin: 0 15px;
+            color: var(--cream);
+            transition: transform 0.3s ease, color 0.3s ease;
+        }
+
+        .social-links a:hover {
+            transform: translateY(-3px);
+            color: var(--golden-wheat);
+        }
+
+        .social-links svg {
+            width: 28px;
+            height: 28px;
+            vertical-align: middle;
+        }
+
+        .footer p {
+            font-size: 0.9em;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        /* Scroll-triggered fade-in animation */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+            will-change: opacity, transform;
+        }
+
+        .fade-in.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+
+            .hamburger {
+                display: flex;
+            }
+
+            .hero-section {
+                padding-left: 20px;
+                padding-right: 20px;
+            }
+
+            .hero-section h1 {
+                font-size: 3em;
+            }
+
+            .hero-section p {
+                font-size: 1em;
+            }
+
+            .hero-buttons {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .btn {
+                width: 100%;
+                max-width: 300px;
+            }
+
+            .our-story-section, .visit-contact-section {
+                flex-direction: column;
+            }
+
+            .story-illustration, .map-placeholder {
+                min-height: 250px;
+                width: 100%;
+            }
+
+            .story-illustration .wheat-icon {
+                font-size: 6em;
+            }
+
+            .daily-specials-section {
+                padding: 40px 15px;
+            }
+
+            .daily-specials-section h2 {
+                font-size: 2em;
+            }
+
+            .daily-specials-section p {
+                font-size: 1.4em;
+            }
+
+            .section-padding {
+                padding: 60px 20px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            h1 { font-size: 2.5em; }
+            h2 { font-size: 2em; }
+            h3 { font-size: 1.5em; }
+
+            .logo {
+                font-size: 1.5em;
+            }
+
+            .mobile-menu {
+                width: 100%;
+            }
+
+            .hero-section h1 {
+                font-size: 2.5em;
+            }
+
+            .hero-section p {
+                font-size: 0.9em;
+            }
+
+            .daily-specials-section p {
+                font-size: 1.2em;
+            }
+
+            .daily-specials-section .countdown {
+                font-size: 1.1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="nav-container">
+            <a href="#home" class="logo">Golden Crust</a>
+            <nav>
+                <ul class="nav-links">
+                    <li><a href="#home">Home</a></li>
+                    <li><a href="#our-story">Our Story</a></li>
+                    <li><a href="#menu">Menu</a></li>
+                    <li><a href="#testimonials">Testimonials</a></li>
+                    <li><a href="#visit-us">Visit Us</a></li>
+                </ul>
+                <div class="hamburger" id="hamburger" aria-label="Toggle navigation menu">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </nav>
+        </div>
+        <div class="mobile-menu" id="mobile-menu">
+            <a href="#home">Home</a>
+            <a href="#our-story">Our Story</a>
+            <a href="#menu">Menu</a>
+            <a href="#testimonials">Testimonials</a>
+            <a href="#visit-us">Visit Us</a>
+        </div>
+    </header>
+
+    <main>
+        <!-- Hero Section -->
+        <section id="home" class="hero-section">
+            <div class="floating-element wheat-left"></div>
+            <div class="floating-element wheat-right"></div>
+            <div class="floating-element crumb-top"></div>
+            <div class="floating-element crumb-bottom"></div>
+            <h1>Baked with Love, Served with Soul</h1>
+            <p>Artisan breads, pastries, and confections crafted daily in our neighborhood bakery since 1987.</p>
+            <div class="hero-buttons">
+                <a href="#menu" class="btn">View Our Menu</a>
+                <a href="#visit-us" class="btn btn-secondary">Visit Us Today</a>
+            </div>
+        </section>
+
+        <!-- Our Story Section -->
+        <section id="our-story" class="section-padding container fade-in">
+            <div class="our-story-section">
+                <div class="story-illustration">
+                    <span class="wheat-icon" role="img" aria-label="Decorative wheat stalks">🌾</span>
+                </div>
+                <div class="story-content">
+                    <h2>Our Story: A Legacy of Flavor</h2>
+                    <p>Since 1987, Golden Crust Artisan Bakery has been a cherished cornerstone of our neighborhood, built on a foundation of family tradition and a passion for exceptional baking. Our journey began with a simple dream: to create breads and pastries that not only nourish the body but also warm the soul.</p>
+                    <p>We believe in the power of quality ingredients, time-honored techniques, and a touch of artisanal magic. Every loaf, every pastry, and every confection is crafted by hand, using the finest local flours, fresh butter, and natural leavening. It's a commitment to excellence that you can taste in every bite, a testament to the love and dedication poured into our craft for over three decades.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Featured Menu Section -->
+        <section id="menu" class="section-padding container fade-in">
+            <h2 style="text-align: center; margin-bottom: 40px;">Our Signature Creations</h2>
+            <div class="menu-grid">
+                <div class="menu-card">
+                    <span class="emoji" role="img" aria-label="Bread emoji">🍞</span>
+                    <h3>Sourdough Loaf</h3>
+                    <p>Our signature crusty, chewy sourdough, naturally fermented for a rich, tangy flavor.</p>
+                    <span class="price">$8.00</span>
+                </div>
+                <div class="menu-card">
+                    <span class="emoji" role="img" aria-label="Croissant emoji">🥐</span>
+                    <h3>Butter Croissants</h3>
+                    <p>Flaky, buttery, and perfectly golden. A classic French pastry, made fresh daily.</p>
+                    <span class="price">$4.50</span>
+                </div>
+                <div class="menu-card">
+                    <span class="emoji" role="img" aria-label="Baguette emoji">🥖</span>
+                    <h3>Artisan Baguettes</h3>
+                    <p>Crisp on the outside, soft and airy within. Ideal for sandwiches or dipping.</p>
+                    <span class="price">$5.00</span>
+                </div>
+                <div class="menu-card">
+                    <span class="emoji" role="img" aria-label="Cinnamon roll emoji">🥨</span>
+                    <h3>Cinnamon Rolls</h3>
+                    <p>Soft, gooey, and generously swirled with cinnamon and topped with cream cheese glaze.</p>
+                    <span class="price">$6.00</span>
+                </div>
+                <div class="menu-card">
+                    <span class="emoji" role="img" aria-label="Tart emoji">🥧</span>
+                    <h3>Seasonal Fruit Tarts</h3>
+                    <p>Delicate shortcrust pastry filled with crème pâtissière and fresh seasonal fruits.</p>
+                    <span class="price">$7.00</span>
+                </div>
+                <div class="menu-card">
+                    <span class="emoji" role="img" aria-label="Cake emoji">🎂</span>
+                    <h3>Custom Cakes</h3>
+                    <p>Celebrate your special moments with a bespoke cake, crafted to your unique vision.</p>
+                    <span class="price">Call for Price</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Daily Specials Section -->
+        <section class="daily-specials-section fade-in">
+            <h2>Daily Delights!</h2>
+            <p id="daily-special-text">Loading today's special...</p>
+            <div class="countdown" id="countdown-timer"></div>
+        </section>
+
+        <!-- Testimonials Section -->
+        <section id="testimonials" class="section-padding container fade-in">
+            <h2 style="text-align: center; margin-bottom: 40px;">What Our Customers Say</h2>
+            <div class="testimonials-grid">
+                <div class="testimonial-card">
+                    <p class="quote">"Golden Crust is my go-to for fresh bread! The sourdough is simply divine, and the staff are always so welcoming. A true neighborhood gem!"</p>
+                    <p class="author">- Sarah L.</p>
+                    <div class="stars" aria-label="5 star rating">★★★★★</div>
+                </div>
+                <div class="testimonial-card">
+                    <p class="quote">"Their croissants transport me straight to Paris! Flaky, buttery perfection every single time. I can't recommend this bakery enough."</p>
+                    <p class="author">- Mark T.</p>
+                    <div class="stars" aria-label="5 star rating">★★★★★</div>
+                </div>
+                <div class="testimonial-card">
+                    <p class="quote">"I ordered a custom cake for my daughter's birthday, and it was not only beautiful but absolutely delicious. Thank you, Golden Crust!"</p>
+                    <p class="author">- Emily R.</p>
+                    <div class="stars" aria-label="5 star rating">★★★★★</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Visit Us / Contact Section -->
+        <section id="visit-us" class="section-padding container fade-in">
+            <h2 style="text-align: center; margin-bottom: 40px;">Visit Our Bakery</h2>
+            <div class="visit-contact-section">
+                <div class="contact-info">
+                    <h3>Hours of Operation</h3>
+                    <ul>
+                        <li><strong>Monday - Saturday:</strong> 7:00 AM - 6:00 PM</li>
+                        <li><strong>Sunday:</strong> Closed</li>
+                    </ul>
+                    <h3 style="margin-top: 30px;">Find Us</h3>
+                    <p><strong>Address:</strong> 142 Maple Street, Oakville, ON L9H 1A2</p>
+                    <p><strong>Phone:</strong> <a href="tel:+15552345678">(555) 234-5678</a></p>
+                    <p><strong>Email:</strong> <a href="mailto:hello@goldencrustbakery.com">hello@goldencrustbakery.com</a></p>
+                </div>
+                <div class="map-placeholder" aria-label="Map showing bakery location">
+                    <svg class="map-pin-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                    </svg>
+                    <p style="position: absolute; bottom: 20px; color: #777; font-size: 0.9em;">Map Placeholder</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <a href="#home" class="logo">Golden Crust Artisan Bakery</a>
+        <div class="social-links">
+            <a href="#" aria-label="Instagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M7.8 2c-2.43 0-4.4 1.97-4.4 4.4v11.2c0 2.43 1.97 4.4 4.4 4.4h8.4c2.43 0 4.4-1.97 4.4-4.4V6.4c0-2.43-1.97-4.4-4.4-4.4H7.8zm.2 2h8c1.32 0 2.4 1.08 2.4 2.4v8c0 1.32-1.08 2.4-2.4 2.4H8c-1.32 0-2.4-1.08-2.4-2.4V6.4c0-1.32 1.08-2.4 2.4-2.4zm8 1.2c-.66 0-1.2.54-1.2 1.2s.54 1.2 1.2 1.2 1.2-.54 1.2-1.2-.54-1.2-1.2-1.2zM12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm0 2c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg></a>
+            <a href="#" aria-label="Facebook"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c5.52 0 10-4.48 10-10S17.52 2 12 2zm3 8h-2V7h-3v3H8v2h2v3h3v-3h2v-2z"/></svg></a>
+            <a href="#" aria-label="Twitter"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M22.46 6c-.77.35-1.6.58-2.46.69.88-.53 1.56-1.37 1.88-2.37-.83.49-1.75.85-2.72 1.05C18.37 4.5 17.26 4 16 4c-2.35 0-4.27 1.92-4.27 4.29 0 .34.04.67.11.98C8.28 9.09 5.4 7.5 3.53 4.79c-.37.64-.58 1.38-.58 2.18 0 1.49.75 2.81 1.91 3.56-.7-.02-1.36-.2-1.93-.53v.03c0 2.08 1.48 3.82 3.44 4.21-.36.1-.74.15-1.13.15-.28 0-.55-.03-.81-.08.55 1.71 2.14 2.95 4.03 2.98-1.48 1.16-3.35 1.85-5.38 1.85-.35 0-.7-.02-1.05-.06 1.92 1.23 4.19 1.95 6.64 1.95 8 0 12.38-6.63 12.38-12.38 0-.2-.01-.4-.02-.6.85-.61 1.58-1.37 2.16-2.24z"/></svg></a>
+        </div>
+        <p>&copy; 2023 Golden Crust Artisan Bakery. All rights reserved. | Crafted with passion in our neighborhood.</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Smooth Scroll for Navigation Links
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href');
+                    const targetElement = document.querySelector(targetId);
+                    if (targetElement) {
+                        const headerOffset = document.querySelector('.header').offsetHeight;
+                        const elementPosition = targetElement.getBoundingClientRect().top + window.pageYOffset;
+                        const offsetPosition = elementPosition - headerOffset;
+
+                        window.scrollTo({
+                            top: offsetPosition,
+                            behavior: "smooth"
+                        });
+
+                        // Close mobile menu if open
+                        const mobileMenu = document.getElementById('mobile-menu');
+                        const hamburger = document.getElementById('hamburger');
+                        if (mobileMenu.classList.contains('active')) {
+                            mobileMenu.classList.remove('active');
+                            hamburger.classList.remove('active');
+                        }
+                    }
+                });
+            });
+
+            // Mobile Hamburger Menu Toggle
+            const hamburger = document.getElementById('hamburger');
+            const mobileMenu = document.getElementById('mobile-menu');
+            hamburger.addEventListener('click', () => {
+                hamburger.classList.toggle('active');
+                mobileMenu.classList.toggle('active');
+            });
+
+            // Scroll-triggered Fade-in Animations (IntersectionObserver)
+            const faders = document.querySelectorAll('.fade-in');
+            const appearOptions = {
+                threshold: 0.3, // When 30% of the element is visible
+                rootMargin: "0px 0px -50px 0px" // Start observing a bit before it enters viewport
+            };
+
+            const appearOnScroll = new IntersectionObserver(function(entries, appearOnScroll) {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) {
+                        return;
+                    } else {
+                        entry.target.classList.add('active');
+                        appearOnScroll.unobserve(entry.target);
+                    }
+                });
+            }, appearOptions);
+
+            faders.forEach(fader => {
+                appearOnScroll.observe(fader);
+            });
+
+            // Rotating Daily Specials Text
+            const dailySpecials = [
+                "Today's Special: Fresh Berry Danish!",
+                "Don't miss our artisanal Chocolate Croissants!",
+                "Warm Apple Fritters, fresh out of the oven!",
+                "Try our savory Spinach & Feta Scones!"
+            ];
+            let currentSpecialIndex = 0;
+            const specialTextElement = document.getElementById('daily-special-text');
+
+            function updateSpecial() {
+                if (specialTextElement) {
+                    specialTextElement.textContent = dailySpecials[currentSpecialIndex];
+                    currentSpecialIndex = (currentSpecialIndex + 1) % dailySpecials.length;
+                }
+            }
+            updateSpecial(); // Initial display
+            setInterval(updateSpecial, 5000); // Change every 5 seconds
+
+            // Countdown Timer until Bakery Closes (6 PM)
+            const countdownElement = document.getElementById('countdown-timer');
+            function updateCountdown() {
+                if (!countdownElement) return;
+
+                const now = new Date();
+                let closingTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 0, 0); // 6 PM today
+
+                // If current time is past 6 PM, set closing time for tomorrow
+                if (now > closingTime) {
+                    closingTime.setDate(closingTime.getDate() + 1);
+                }
+
+                const timeLeft = closingTime - now;
+
+                if (timeLeft <= 0) {
+                    countdownElement.textContent = "We're closed for today! See you tomorrow!";
+                    return;
+                }
+
+                const hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+
+                countdownElement.textContent = `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s until close!`;
+            }
+            updateCountdown();
+            setInterval(updateCountdown, 1000);
+
+            // Subtle Parallax-like Effect on Hero Section Background
+            const heroSection = document.querySelector('.hero-section');
+            if (heroSection) {
+                window.addEventListener('scroll', () => {
+                    const scrollPosition = window.pageYOffset;
+                    // Adjust background position for a subtle parallax effect
+                    heroSection.style.backgroundPositionY = -scrollPosition * 0.1 + 'px';
+                });
+            }
+        });
+    </script>
+</body>
+</html>

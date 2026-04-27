@@ -1,7 +1,7 @@
 import type { Classification, LLMHandler, Message } from './types.js';
 import { TaskPlanSchema, taskPlanJsonSchema, planAssertionJsonSchema, validatePlanIntegrity } from './schemas.js';
 import type { TaskGoal, TaskMilestone, TaskPlan, TaskStep } from './schemas.js';
-import { transparency } from './transparency.js';
+import { transparency, withSpan, getCurrentRequestId } from './transparency.js';
 import { queryEntries } from './memory/index.js';
 import { fetchByCode } from './memory/fetch.js';
 import { MINIMUM_PLANNER_MEMORY_CONFIDENCE } from './memory/unit-search.js';
@@ -1006,7 +1006,12 @@ export async function decomposeTask(
   message: string,
   context: PlannerContext,
   llmHandler: LLMHandler,
+  parentCtx?: import('./transparency.js').SpanContext,
+  signal?: AbortSignal,
 ): Promise<TaskPlan> {
+  if (!parentCtx) transparency.emit({ type: 'orphan_span', data: { label: 'Planner: build milestone tree' } });
+  const effectiveRequestId = parentCtx?.requestId ?? getCurrentRequestId() ?? 'unknown';
+  return withSpan('Planner: build milestone tree', parentCtx, effectiveRequestId, async () => {
   // Phase 15 Conflict 5: use project brain cache when projectCode is available
   let projectBrainContext = '';
   if (context.projectCode) {
@@ -1146,6 +1151,7 @@ export async function decomposeTask(
 
     // Use tool_use content blocks for Anthropic (guaranteed valid JSON);
     // OpenAI-compatible endpoints get responseSchema injected via schema prompt.
+    if (signal?.aborted) throw new DOMException('Aborted by user', 'AbortError');
     const response = await llmHandler(messages, {
       tools: [{ name: 'decompose_task', description: 'Decompose a user request into a structured task plan', input_schema: taskPlanJsonSchema }],
       toolChoice: 'decompose_task',
@@ -1371,6 +1377,7 @@ export async function decomposeTask(
   }
 
   throw new Error('Failed to decompose task after retries');
+  }); // end withSpan
 }
 
 /**

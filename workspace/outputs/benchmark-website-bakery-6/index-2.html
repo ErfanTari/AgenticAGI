@@ -1,0 +1,1248 @@
+Here's a thinking process:
+
+2.  **Structure the HTML Document:**
+   - `<!DOCTYPE html>`
+   - `<html lang="en">`
+   - `<head>`: meta tags, title, Google Fonts link, `<style>` block
+   - `<body>`: All sections in order, `<script>` block at the end
+   - `</html>`
+
+3.  **Draft - CSS (Mental Refinement & Structure):**
+   - Define CSS variables for colors, fonts, spacing.
+   - Reset/normalize basics.
+   - Navbar: fixed, transparent initially, transitions to cream on scroll. Flex layout. Hamburger menu for mobile.
+   - Hero: `min-height: 100vh`, gradient background, centered content, decorative SVGs (wheat/leaves).
+   - Story: 2-column grid. CSS art placeholder for image.
+   - Menu: 3-column grid. Cards with hover lift.
+   - Specials Banner: full width, terracotta bg, carousel text.
+   - Gallery: 2x3 or 3x2 grid. Hover zoom/overlay.
+   - Testimonials: 3-column grid. Cards with left border accent.
+   - Visit Us: 2-column grid. Hours table, contact form.
+   - Footer: dark bg, flex/grid layout.
+   - Utilities: fade-in animation, responsive breakpoints.
+
+   *Color Palette Mapping:*
+   - `--cream: #FDF6EC`
+   - `--brown: #3E2723`
+   - `--amber: #D4A017`
+   - `--sage: #7A8B6E`
+   - `--terracotta: #C67B5C`
+   - `--offwhite: #FAF3E8`
+   - `--text-dark: #2C1810`
+   - `--text-light: #FDF6EC`
+
+   *Fonts:*
+   - `--heading: 'Playfair Display', serif`
+   - `--body: 'Lato', sans-serif`
+
+   *Key CSS Features:*
+   - `scroll-behavior: smooth`
+   - `@media` for mobile
+   - `.fade-in` class with `@keyframes`
+   - `.nav-scrolled` class for JS toggle
+   - `.carousel-item` for specials
+   - Form validation styles
+
+4.  **Draft - HTML Structure (Mental Walkthrough):**
+   ```html
+   <!DOCTYPE html>
+   <html lang="en">
+   <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>The Golden Crust | Artisan Bakery</title>
+     <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
+     <style>
+       /* CSS goes here */
+     </style>
+   </head>
+   <body>
+     <nav id="navbar">...</nav>
+     <header id="hero">...</header>
+     <section id="story">...</section>
+     <section id="menu">...</section>
+     <section id="specials">...</section>
+     <section id="gallery">...</section>
+     <section id="testimonials">...</section>
+     <section id="visit">...</section>
+     <footer>...</footer>
+     <script>
+       /* JS goes here */
+     </script>
+   </body>
+   </html>
+   ```
+
+5.  **Flesh out CSS (Iterative Refinement):**
+   I'll write the CSS carefully, ensuring all requirements are met.
+   - Variables, reset, typography.
+   - Navbar: `position: fixed; width: 100%; z-index: 1000; transition: background 0.3s, box-shadow 0.3s; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center;`
+   - Mobile menu: hidden by default, toggled via JS class.
+   - Hero: `background: linear-gradient(135deg, var(--cream) 0%, #F5E6D3 100%); min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; position: relative; overflow: hidden;`
+   - Decorative SVGs: I'll use inline SVG paths for wheat/leaves with low opacity.
+   - Story: `display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: center;`
+   - Menu: `display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem;`
+   - Specials: `background: var(--terracotta); color: var(--offwhite); padding: 3rem 1rem; text-align: center;`
+   - Gallery: `display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;`
+   - Testimonials: `display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem;`
+   - Visit: `display: grid; grid-template-columns: 1fr 1fr; gap: 3rem;`
+   - Footer: `background: var(--brown); color: var(--cream); padding: 3rem 1rem;`
+   - Animations: `@keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }`
+   - Responsive: `@media (max-width: 768px) { ... }`
+
+   I'll make sure to use CSS custom properties extensively and keep it clean.
+
+6.  **Flesh out HTML Content (Section by Section):**
+   - *Nav:* Logo, links, hamburger button.
+   - *Hero:* Headline, subheadline, CTA, decorative SVGs.
+   - *Story:* Text column, CSS art placeholder (div with gradient/pattern), divider SVG.
+   - *Menu:* 3 cards. Each has icon (SVG), title, list of items with prices.
+   - *Specials:* Carousel container with 3 items, JS will handle rotation.
+   - *Gallery:* 6 cards with emojis/icons, captions, hover overlay.
+   - *Testimonials:* 3 cards with quotes, names, star ratings (CSS).
+   - *Visit:* Hours table, address/contact info, form (name, email, message, submit).
+   - *Footer:* Links, social icons (SVG), copyright.
+
+   I'll write out the HTML carefully, ensuring semantic tags (`<section>`, `<header>`, `<nav>`, `<footer>`, `<main>`, `<h1>`-`<h6>`, `<ul>`, `<li>`, `<form>`, etc.).
+
+7.  **Flesh out JavaScript:**
+   - Smooth scroll for nav links.
+   - Navbar scroll effect: `window.addEventListener('scroll', ...)` toggle class.
+   - Mobile menu toggle: click listener on hamburger, toggle class on menu.
+   - Daily specials carousel: `setInterval` to cycle through items, update text with fade transition.
+   - Form validation: prevent default, check fields, show success/error message.
+   - Scroll-triggered fade-in: `IntersectionObserver` to add `.visible` class to sections.
+   - Hover effects are CSS, but I'll ensure JS handles dynamic classes if needed.
+
+   I'll write the JS concisely and robustly.
+
+8.  **Self-Correction/Verification during drafting:**
+   - *Check requirements:* Color palette matches? Yes. Fonts? Yes. Sections in order? Yes. Interactive features? Yes. Technical details? Yes. Single file? Yes. Starts/ends correctly? Yes.
+   - *Accessibility:* `aria-label`, `role`, `alt` text, focus states, semantic HTML. I'll add `:focus-visible` styles.
+   - *CSS Art Placeholder:* I'll create a visually appealing CSS-only "image" for the story section using gradients and shapes.
+   - *Carousel:* Needs to be smooth. I'll use opacity transitions.
+   - *Form Validation:* Basic check, show feedback.
+   - *Fade-in:* IntersectionObserver is standard and efficient.
+   - *Mobile Menu:* Needs to slide in smoothly. I'll use `transform: translateX(100%)` to `translateX(0)`.
+   - *SVGs:* I'll inline simple SVG paths for wheat, leaf, social icons, stars.
+   - *No external deps:* Only Google Fonts. All else inline.
+   - *Output format:* Strictly the file content, no markdown, no explanation.
+
+   I will carefully construct the code now, ensuring it's complete and production-ready. I'll pay attention to spacing, indentation, and avoiding any markdown formatting in the final output.
+
+   Let's draft it mentally step-by-step to ensure accuracy.
+   *Structure:*
+   ```html
+   <!DOCTYPE html>
+   <html lang="en">
+   <head>
+   ...meta, title, fonts, style...
+   </head>
+   <body>
+   <nav>...</nav>
+   <main>
+     <header id="hero">...</header>
+     <section id="story">...</section>
+     <section id="menu">...</section>
+     <section id="specials">...</section>
+     <section id="gallery">...</section>
+     <section id="testimonials">...</section>
+     <section id="visit">...</section>
+   </main>
+   <footer>...</footer>
+   <script>...</script>
+   </body>
+   </html>
+   ```
+   I'll write out the full CSS and JS carefully. I'll make sure the CSS uses the exact hex codes provided. I'll ensure the JS handles all requested interactions. I'll verify responsive breakpoints. I'll add `:focus-visible` styles for accessibility. I'll use `IntersectionObserver` for fade-ins. I'll implement the carousel with `setInterval`. I'll validate the form.
+
+   One detail: "Decorative wheat/leaf SVG illustrations as subtle background elements" in hero. I'll add absolute positioned SVGs with low opacity.
+   "CSS art placeholder" in story section. I'll use a div with a gradient and some CSS shapes/patterns to simulate an image.
+   "Rotating/animated daily specials text". I'll use JS to cycle through an array of strings, updating the innerHTML with a fade effect.
+   "Contact form validation". I'll check for empty fields and valid email format, then show a success message.
+   "Scroll-triggered fade-in animations". I'll use IntersectionObserver to add a class when elements enter the viewport.
+
+   All requirements are clear. I will now generate the complete HTML file content. I will be meticulous about not including any markdown formatting (like ```html) as per the strict instruction: "Output ONLY the complete file content with no explanation, no markdown fences, no commentary. The output must start with <!DOCTYPE html> and end with </html>."
+
+   Proceeding. 
+   I will carefully construct the code now.
+   *Self-Correction/Refinement during thought:*
+   - I need to make sure the CSS art placeholder looks decent. I'll use a background gradient with a subtle pattern or shape.
+   - The carousel should have smooth transitions. I'll use CSS opacity transitions.
+   - The mobile menu needs to be accessible. I'll add `aria-expanded` and `aria-label`.
+   - I'll ensure all colors match exactly: `#FDF6EC`, `#3E2723`, `#D4A017`, `#7A8B6E`, `#C67B5C`, `#FAF3E8`.
+   - I'll add `:focus-visible` styles for keyboard navigation.
+   - I'll make sure the HTML is fully semantic.
+   - I'll double-check the section order.
+   - I'll ensure the JS is robust and handles edge cases gracefully (though it's a demo).
+   - I'll output exactly as requested.
+
+   Generating now. 
+   *Output Generation matches the final response.* 
+   All constraints met. No extra text. Starts with `<!DOCTYPE html>`, ends with `</html>`. Inline CSS/JS. Single file. Responsive. Accessible. Interactive. Visual design matches prompt. Ready. 
+   Proceeds. 
+   [Output Generation] -> *See response.* 
+   *(Self-Correction/Verification during generation prep)*: 
+   I will carefully check the exact hex codes: `#FDF6EC`, `#3E2723`, `#D4A017`, `#7A8B6E`, `#C67B5C`, `#FAF3E8`. 
+   I will ensure the CSS uses CSS variables for these. 
+   I will ensure the JS handles all 6 interactive features. 
+   I will ensure the HTML structure matches the prompt exactly. 
+   I will output raw text only. 
+   All good. 
+   *Output Generation* (matches the final response)
+   [Done.] 
+   *Output Generation* (proceeds)
+</think>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="The Golden Crust - Artisan bakery serving fresh breads, pastries, and coffee in your neighborhood.">
+    <title>The Golden Crust | Artisan Bakery</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --cream: #FDF6EC;
+            --brown: #3E2723;
+            --amber: #D4A017;
+            --sage: #7A8B6E;
+            --terracotta: #C67B5C;
+            --offwhite: #FAF3E8;
+            --text-dark: #2C1810;
+            --text-light: #FDF6EC;
+            --shadow-soft: 0 4px 12px rgba(62, 39, 35, 0.1);
+            --shadow-hover: 0 8px 20px rgba(62, 39, 35, 0.15);
+            --radius: 12px;
+            --transition: all 0.3s ease;
+        }
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Lato', sans-serif;
+            background-color: var(--cream);
+            color: var(--text-dark);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: 'Playfair Display', serif;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        ul {
+            list-style: none;
+        }
+
+        img, svg {
+            max-width: 100%;
+            display: block;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+
+        .section-padding {
+            padding: 5rem 0;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .fade-in-section {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+            will-change: opacity, visibility;
+        }
+
+        .fade-in-section.is-visible {
+            opacity: 1;
+            transform: none;
+        }
+
+        /* Focus States */
+        :focus-visible {
+            outline: 3px solid var(--amber);
+            outline-offset: 2px;
+        }
+
+        /* Navigation */
+        #navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 1000;
+            padding: 1.2rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: var(--transition);
+            background: transparent;
+        }
+
+        #navbar.scrolled {
+            background-color: var(--cream);
+            box-shadow: var(--shadow-soft);
+            padding: 0.8rem 2rem;
+        }
+
+        .logo {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--brown);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            font-weight: 600;
+            color: var(--brown);
+            position: relative;
+            padding: 0.5rem 0;
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--amber);
+            transition: width 0.3s ease;
+        }
+
+        .nav-links a:hover::after,
+        .nav-links a:focus::after {
+            width: 100%;
+        }
+
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 0.5rem;
+        }
+
+        .hamburger span {
+            width: 25px;
+            height: 3px;
+            background: var(--brown);
+            border-radius: 2px;
+            transition: var(--transition);
+        }
+
+        /* Hero Section */
+        #hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            background: linear-gradient(135deg, var(--cream) 0%, #F5E6D3 100%);
+            position: relative;
+            overflow: hidden;
+            padding: 6rem 1rem 4rem;
+        }
+
+        .hero-content {
+            z-index: 2;
+            max-width: 800px;
+        }
+
+        .hero-content h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+            color: var(--brown);
+        }
+
+        .hero-content p {
+            font-size: 1.25rem;
+            margin-bottom: 2rem;
+            color: #5D4037;
+        }
+
+        .btn-primary {
+            display: inline-block;
+            padding: 1rem 2.5rem;
+            background: var(--amber);
+            color: var(--offwhite);
+            font-weight: 700;
+            border-radius: 50px;
+            box-shadow: var(--shadow-soft);
+            transition: var(--transition);
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .btn-primary:hover {
+            background: #B8860B;
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .hero-decor {
+            position: absolute;
+            opacity: 0.15;
+            pointer-events: none;
+        }
+
+        .hero-decor.top-left { top: -50px; left: -50px; width: 300px; transform: rotate(45deg); }
+        .hero-decor.bottom-right { bottom: -50px; right: -50px; width: 300px; transform: rotate(-135deg); }
+
+        /* Our Story */
+        #story {
+            background: var(--offwhite);
+        }
+
+        .story-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+        }
+
+        .story-text h2 {
+            font-size: 2.5rem;
+            margin-bottom: 1.5rem;
+            color: var(--brown);
+        }
+
+        .story-text p {
+            margin-bottom: 1.5rem;
+            color: #4A3B32;
+        }
+
+        .divider-svg {
+            width: 60px;
+            margin: 1rem auto;
+            fill: var(--amber);
+        }
+
+        .css-art-placeholder {
+            width: 100%;
+            height: 400px;
+            background: linear-gradient(145deg, #E8D5C4 0%, #D4A017 100%);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-soft);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .css-art-placeholder::before {
+            content: '';
+            position: absolute;
+            width: 150%;
+            height: 150%;
+            background: radial-gradient(circle, rgba(255,255,255,0.3) 10%, transparent 10%);
+            background-size: 20px 20px;
+            opacity: 0.4;
+        }
+
+        .css-art-placeholder::after {
+            content: '🥐';
+            font-size: 8rem;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.2));
+        }
+
+        /* Menu Section */
+        #menu {
+            background: var(--cream);
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .section-header h2 {
+            font-size: 2.8rem;
+            color: var(--brown);
+            margin-bottom: 0.5rem;
+        }
+
+        .section-header p {
+            font-size: 1.1rem;
+            color: #6D5A4B;
+        }
+
+        .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+        }
+
+        .menu-card {
+            background: var(--offwhite);
+            padding: 2rem;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-soft);
+            transition: var(--transition);
+            border: 1px solid rgba(212, 160, 23, 0.2);
+        }
+
+        .menu-card:hover {
+            transform: translateY(-8px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .menu-icon {
+            width: 50px;
+            height: 50px;
+            margin-bottom: 1rem;
+            fill: var(--amber);
+        }
+
+        .menu-card h3 {
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+            color: var(--brown);
+        }
+
+        .menu-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px dashed rgba(62, 39, 35, 0.2);
+        }
+
+        .menu-item:last-child {
+            border-bottom: none;
+        }
+
+        .item-name {
+            font-weight: 600;
+        }
+
+        .item-price {
+            color: var(--amber);
+            font-weight: 700;
+        }
+
+        /* Daily Specials */
+        #specials {
+            background: var(--terracotta);
+            color: var(--offwhite);
+            padding: 4rem 1rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #specials h2 {
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .carousel-container {
+            position: relative;
+            max-width: 600px;
+            margin: 0 auto;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .special-item {
+            position: absolute;
+            font-size: 1.5rem;
+            font-weight: 700;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+        }
+
+        .special-item.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* Gallery */
+        #gallery {
+            background: var(--offwhite);
+        }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+
+        .gallery-card {
+            position: relative;
+            height: 250px;
+            border-radius: var(--radius);
+            overflow: hidden;
+            cursor: pointer;
+            box-shadow: var(--shadow-soft);
+        }
+
+        .gallery-bg {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, var(--cream) 0%, #E8D5C4 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            transition: transform 0.4s ease;
+        }
+
+        .gallery-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 1.5rem;
+            background: linear-gradient(to top, rgba(62, 39, 35, 0.8), transparent);
+            color: var(--offwhite);
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+        }
+
+        .gallery-card:hover .gallery-bg {
+            transform: scale(1.1);
+        }
+
+        .gallery-card:hover .gallery-overlay {
+            transform: translateY(0);
+        }
+
+        /* Testimonials */
+        #testimonials {
+            background: var(--cream);
+        }
+
+        .testimonial-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+        }
+
+        .testimonial-card {
+            background: var(--offwhite);
+            padding: 2rem;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-soft);
+            border-left: 5px solid var(--amber);
+            transition: var(--transition);
+        }
+
+        .testimonial-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .quote {
+            font-style: italic;
+            margin-bottom: 1.5rem;
+            color: #5D4037;
+            position: relative;
+            padding-left: 1rem;
+        }
+
+        .quote::before {
+            content: '"';
+            font-family: 'Playfair Display', serif;
+            font-size: 3rem;
+            position: absolute;
+            top: -1.5rem;
+            left: -0.5rem;
+            color: var(--amber);
+            opacity: 0.3;
+        }
+
+        .customer-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .customer-name {
+            font-weight: 700;
+            color: var(--brown);
+        }
+
+        .stars {
+            color: var(--amber);
+            font-size: 1.2rem;
+        }
+
+        /* Visit Us */
+        #visit {
+            background: var(--offwhite);
+        }
+
+        .visit-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+        }
+
+        .hours-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 2rem;
+        }
+
+        .hours-table td {
+            padding: 0.8rem 0;
+            border-bottom: 1px solid rgba(62, 39, 35, 0.1);
+        }
+
+        .hours-table td:first-child {
+            font-weight: 700;
+            color: var(--brown);
+        }
+
+        .contact-info p {
+            margin-bottom: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .contact-form {
+            background: var(--cream);
+            padding: 2rem;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-soft);
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: var(--brown);
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            border: 2px solid #E8D5C4;
+            border-radius: 8px;
+            font-family: 'Lato', sans-serif;
+            font-size: 1rem;
+            transition: var(--transition);
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            border-color: var(--amber);
+            outline: none;
+        }
+
+        .form-message {
+            margin-top: 1rem;
+            padding: 0.8rem;
+            border-radius: 6px;
+            display: none;
+        }
+
+        .form-message.success {
+            display: block;
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+
+        .form-message.error {
+            display: block;
+            background: #FFEBEE;
+            color: #C62828;
+        }
+
+        /* Footer */
+        footer {
+            background: var(--brown);
+            color: var(--cream);
+            padding: 4rem 1rem 2rem;
+        }
+
+        .footer-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .footer-col h4 {
+            font-size: 1.4rem;
+            margin-bottom: 1.5rem;
+            color: var(--amber);
+        }
+
+        .footer-col ul li {
+            margin-bottom: 0.8rem;
+        }
+
+        .footer-col a {
+            transition: color 0.3s;
+        }
+
+        .footer-col a:hover {
+            color: var(--amber);
+        }
+
+        .social-icons {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .social-icon {
+            width: 36px;
+            height: 36px;
+            fill: var(--cream);
+            transition: var(--transition);
+        }
+
+        .social-icon:hover {
+            fill: var(--amber);
+            transform: translateY(-3px);
+        }
+
+        .copyright {
+            text-align: center;
+            padding-top: 2rem;
+            border-top: 1px solid rgba(253, 246, 236, 0.2);
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        /* Responsive */
+        @media (max-width: 992px) {
+            .menu-grid, .testimonial-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .hamburger {
+                display: flex;
+                z-index: 1001;
+            }
+
+            .nav-links {
+                position: fixed;
+                top: 0;
+                right: 0;
+                height: 100vh;
+                width: 70%;
+                background: var(--cream);
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                transform: translateX(100%);
+                transition: transform 0.4s ease;
+                box-shadow: -5px 0 15px rgba(0,0,0,0.1);
+            }
+
+            .nav-links.active {
+                transform: translateX(0);
+            }
+
+            .hero-content h1 {
+                font-size: 2.5rem;
+            }
+
+            .story-grid, .visit-grid, .footer-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .menu-grid, .gallery-grid, .testimonial-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .css-art-placeholder {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav id="navbar" role="navigation" aria-label="Main Navigation">
+        <div class="logo">The Golden Crust</div>
+        <button class="hamburger" aria-label="Toggle navigation menu" aria-expanded="false">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+        <ul class="nav-links">
+            <li><a href="#hero">Home</a></li>
+            <li><a href="#story">Our Story</a></li>
+            <li><a href="#menu">Menu</a></li>
+            <li><a href="#gallery">Gallery</a></li>
+            <li><a href="#visit">Visit Us</a></li>
+        </ul>
+    </nav>
+
+    <main>
+        <section id="hero" class="fade-in-section">
+            <svg class="hero-decor top-left" viewBox="0 0 100 100" aria-hidden="true">
+                <path d="M50 0 C30 20 10 40 20 70 C30 100 70 100 80 70 C90 40 70 20 50 0 Z" fill="#D4A017"/>
+                <path d="M50 10 C35 25 20 40 25 60 C30 80 60 80 70 60 C80 40 65 25 50 10 Z" fill="#FDF6EC"/>
+            </svg>
+            <svg class="hero-decor bottom-right" viewBox="0 0 100 100" aria-hidden="true">
+                <path d="M50 0 C30 20 10 40 20 70 C30 100 70 100 80 70 C90 40 70 20 50 0 Z" fill="#7A8B6E"/>
+                <path d="M50 10 C35 25 20 40 25 60 C30 80 60 80 70 60 C80 40 65 25 50 10 Z" fill="#FDF6EC"/>
+            </svg>
+            <div class="hero-content">
+                <h1>Baked with Love, Served with Joy</h1>
+                <p>Artisan breads, pastries & coffee — made fresh every morning in your neighborhood</p>
+                <a href="#menu" class="btn-primary">View Our Menu</a>
+            </div>
+        </section>
+
+        <section id="story" class="section-padding fade-in-section">
+            <div class="container">
+                <div class="story-grid">
+                    <div class="story-text">
+                        <h2>Our Story</h2>
+                        <p>Founded in 2015, The Golden Crust began as a humble dream to bring traditional European baking techniques to our local community. We believe that great bread starts with great ingredients, which is why we source only organic flour, natural yeasts, and locally grown produce.</p>
+                        <p>Every loaf is hand-shaped, slow-fermented, and baked in our stone hearth ovens. Our commitment to craftsmanship means no shortcuts, just time-honored methods that result in exceptional flavor and texture.</p>
+                        <svg class="divider-svg" viewBox="0 0 100 20" aria-hidden="true">
+                            <path d="M10 10 Q 30 0 50 10 T 90 10" stroke="#D4A017" stroke-width="2" fill="none"/>
+                            <circle cx="50" cy="10" r="3" fill="#D4A017"/>
+                        </svg>
+                    </div>
+                    <div class="css-art-placeholder" role="img" aria-label="Artistic representation of artisan bread baking"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="menu" class="section-padding fade-in-section">
+            <div class="container">
+                <div class="section-header">
+                    <h2>Fresh From the Oven</h2>
+                    <p>A taste of what we offer</p>
+                </div>
+                <div class="menu-grid">
+                    <article class="menu-card">
+                        <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C8 2 4 6 4 10c0 3 2 5 4 6v4h8v-4c2-1 4-3 4-6 0-4-4-8-8-8zm-2 16h4v2h-4v-2zm-4-4h12v2H6v-2z"/></svg>
+                        <h3>Breads</h3>
+                        <div class="menu-item"><span class="item-name">Sourdough Boule</span><span class="item-price">$8.50</span></div>
+                        <div class="menu-item"><span class="item-name">Rosemary Focaccia</span><span class="item-price">$7.00</span></div>
+                        <div class="menu-item"><span class="item-name">Multigrain Loaf</span><span class="item-price">$9.00</span></div>
+                        <div class="menu-item"><span class="item-name">Cinnamon Raisin</span><span class="item-price">$6.50</span></div>
+                    </article>
+                    <article class="menu-card">
+                        <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><circle cx="12" cy="12" r="5"/></svg>
+                        <h3>Pastries</h3>
+                        <div class="menu-item"><span class="item-name">Almond Croissant</span><span class="item-price">$5.00</span></div>
+                        <div class="menu-item"><span class="item-name">Butter Danish</span><span class="item-price">$4.50</span></div>
+                        <div class="menu-item"><span class="item-name">Pain au Chocolat</span><span class="item-price">$4.75</span></div>
+                        <div class="menu-item"><span class="item-name">Seasonal Fruit Tart</span><span class="item-price">$6.00</span></div>
+                    </article>
+                    <article class="menu-card">
+                        <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 21h20v-2H2v2zm18-9V7c0-3.87-3.13-7-7-7S6 3.13 6 7v5l-2 2v1h20v-1l-2-2z"/></svg>
+                        <h3>Coffee & Drinks</h3>
+                        <div class="menu-item"><span class="item-name">Lavender Latte</span><span class="item-price">$6.00</span></div>
+                        <div class="menu-item"><span class="item-name">Cold Brew</span><span class="item-price">$4.50</span></div>
+                        <div class="menu-item"><span class="item-name">Matcha Chai</span><span class="item-price">$5.50</span></div>
+                        <div class="menu-item"><span class="item-name">House Lemonade</span><span class="item-price">$3.75</span></div>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section id="specials" class="fade-in-section">
+            <div class="container">
+                <h2>Today's Special</h2>
+                <div class="carousel-container" aria-live="polite">
+                    <div class="special-item active">Sourdough Boule — $8.50</div>
+                    <div class="special-item">Almond Croissant — $5.00</div>
+                    <div class="special-item">Lavender Latte — $6.00</div>
+                </div>
+            </div>
+        </section>
+
+        <section id="gallery" class="section-padding fade-in-section">
+            <div class="container">
+                <div class="section-header">
+                    <h2>A Peek Inside</h2>
+                </div>
+                <div class="gallery-grid">
+                    <div class="gallery-card">
+                        <div class="gallery-bg">🥖</div>
+                        <div class="gallery-overlay">Morning Baking</div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-bg">☕</div>
+                        <div class="gallery-overlay">Coffee Corner</div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-bg">🥐</div>
+                        <div class="gallery-overlay">Pastry Display</div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-bg">🌾</div>
+                        <div class="gallery-overlay">Organic Ingredients</div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-bg">🍞</div>
+                        <div class="gallery-overlay">Hearth Oven</div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-bg">🧁</div>
+                        <div class="gallery-overlay">Weekend Treats</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="testimonials" class="section-padding fade-in-section">
+            <div class="container">
+                <div class="section-header">
+                    <h2>What Our Neighbors Say</h2>
+                </div>
+                <div class="testimonial-grid">
+                    <article class="testimonial-card">
+                        <p class="quote">The sourdough here is absolutely divine. You can taste the care and tradition in every bite. My family's weekend staple!</p>
+                        <div class="customer-info">
+                            <span class="customer-name">Elena R.</span>
+                            <div class="stars" aria-label="5 out of 5 stars">★★★★★</div>
+                        </div>
+                    </article>
+                    <article class="testimonial-card">
+                        <p class="quote">Best coffee in Willowbrook, hands down. The lavender latte is a game changer. Cozy atmosphere and friendly staff.</p>
+                        <div class="customer-info">
+                            <span class="customer-name">Marcus T.</span>
+                            <div class="stars" aria-label="5 out of 5 stars">★★★★★</div>
+                        </div>
+                    </article>
+                    <article class="testimonial-card">
+                        <p class="quote">I love supporting local bakeries that prioritize quality. The almond croissants are flaky, buttery perfection. Highly recommend!</p>
+                        <div class="customer-info">
+                            <span class="customer-name">Sarah L.</span>
+                            <div class="stars" aria-label="5 out of 5 stars">★★★★★</div>
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section id="visit" class="section-padding fade-in-section">
+            <div class="container">
+                <div class="section-header">
+                    <h2>Visit Us</h2>
+                </div>
+                <div class="visit-grid">
+                    <div class="info-col">
+                        <h3>Opening Hours</h3>
+                        <table class="hours-table">
+                            <tr><td>Monday - Friday</td><td>6:00 AM - 6:00 PM</td></tr>
+                            <tr><td>Saturday</td><td>7:00 AM - 5:00 PM</td></tr>
+                            <tr><td>Sunday</td><td>8:00 AM - 3:00 PM</td></tr>
+                        </table>
+                        <div class="contact-info">
+                            <h3>Find Us</h3>
+                            <p>📍 142 Maple Street, Willowbrook</p>
+                            <p>📞 (555) 123-4567</p>
+                            <p>✉️ hello@goldencrust.com</p>
+                        </div>
+                    </div>
+                    <div class="form-col">
+                        <h3>Send a Message</h3>
+                        <form class="contact-form" id="contactForm" novalidate>
+                            <div class="form-group">
+                                <label for="name">Name</label>
+                                <input type="text" id="name" name="name" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label for="email">Email</label>
+                                <input type="email" id="email" name="email" required aria-required="true">
+                            </div>
+                            <div class="form-group">
+                                <label for="message">Message</label>
+                                <textarea id="message" name="message" rows="4" required aria-required="true"></textarea>
+                            </div>
+                            <button type="submit" class="btn-primary">Send Message</button>
+                            <div class="form-message" id="formMessage"></div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-col">
+                    <h4>The Golden Crust</h4>
+                    <p>Artisan breads & pastries baked with love since 2015. Bringing warmth to your neighborhood, one loaf at a time.</p>
+                </div>
+                <div class="footer-col">
+                    <h4>Quick Links</h4>
+                    <ul>
+                        <li><a href="#hero">Home</a></li>
+                        <li><a href="#story">Our Story</a></li>
+                        <li><a href="#menu">Menu</a></li>
+                        <li><a href="#visit">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h4>Follow Us</h4>
+                    <div class="social-icons">
+                        <a href="#" aria-label="Facebook"><svg class="social-icon" viewBox="0 0 24 24"><path d="M12 2.04C6.5 2.04 2 6.53 2 12.06C2 17.06 5.66 21.21 10.44 21.96V14.96H7.9V12.06H10.44V9.85C10.44 7.34 11.93 5.96 14.15 5.96C15.21 5.96 16.12 6.04 16.12 6.04V8.51H15.01C13.77 8.51 13.38 9.28 13.38 10.07V12.06H16.16L15.72 14.96H13.38V21.96C18.16 21.21 21.82 17.06 21.82 12.06C21.82 6.53 17.32 2.04 12 2.04Z"/></svg></a>
+                        <a href="#" aria-label="Instagram"><svg class="social-icon" viewBox="0 0 24 24"><path d="M7.8 2h8.4C19.4 2 22 4.6 22 7.8v8.4a5.8 5.8 0 0 1-5.8 5.8H7.8C4.6 22 2 19.4 2 16.2V7.8A5.8 5.8 0 0 1 7.8 2m-.2 2A3.6 3.6 0 0 0 4 7.6v8.8C4 18.39 5.61 20 7.6 20h8.8a3.6 3.6 0 0 0 3.6-3.6V7.6C20 5.61 18.39 4 16.4 4H7.6m9.65 1.5a1.25 1.25 0 0 1 1.25 1.25A1.25 1.25 0 0 1 17.25 8 1.25 1.25 0 0 1 16 6.75a1.25 1.25 0 0 1 1.25-1.25M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3Z"/></svg></a>
+                        <a href="#" aria-label="Twitter"><svg class="social-icon" viewBox="0 0 24 24"><path d="M22.46 6c-.77.35-1.6.58-2.46.69.88-.53 1.56-1.37 1.88-2.38-.83.5-1.75.85-2.72 1.05C18.37 4.5 17.26 4 16 4c-2.35 0-4.27 1.92-4.27 4.29 0 .34.04.67.11.98C8.28 9.09 5.11 7.38 3 4.79c-.37.63-.58 1.37-.58 2.15 0 1.49.75 2.81 1.91 3.56-.71 0-1.37-.2-1.95-.5v.03c0 2.08 1.48 3.82 3.44 4.21a4.22 4.22 0 0 1-1.93.07 4.28 4.28 0 0 0 4 2.98 8.521 8.521 0 0 1-5.33 1.84c-.34 0-.68-.02-1.02-.06C3.44 20.29 5.7 21 8.12 21 16 21 20.33 14.46 20.33 8.79c0-.19 0-.37-.01-.56.84-.6 1.56-1.36 2.14-2.23Z"/></svg></a>
+                    </div>
+                </div>
+            </div>
+            <div class="copyright">
+                &copy; <span id="year"></span> The Golden Crust Bakery. All rights reserved.
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Update copyright year
+            document.getElementById('year').textContent = new Date().getFullYear();
+
+            // Navbar scroll effect
+            const navbar = document.getElementById('navbar');
+            const handleScroll = () => {
+                if (window.scrollY > 50) {
+                    navbar.classList.add('scrolled');
+                } else {
+                    navbar.classList.remove('scrolled');
+                }
+            };
+            window.addEventListener('scroll', handleScroll, { passive: true });
+
+            // Mobile menu toggle
+            const hamburger = document.querySelector('.hamburger');
+            const navLinks = document.querySelector('.nav-links');
+            const navItems = document.querySelectorAll('.nav-links a');
+
+            hamburger.addEventListener('click', () => {
+                const isExpanded = hamburger.getAttribute('aria-expanded') === 'true';
+                hamburger.setAttribute('aria-expanded', !isExpanded);
+                navLinks.classList.toggle('active');
+            });
+
+            navItems.forEach(item => {
+                item.addEventListener('click', () => {
+                    navLinks.classList.remove('active');
+                    hamburger.setAttribute('aria-expanded', 'false');
+                });
+            });
+
+            // Daily Specials Carousel
+            const specials = document.querySelectorAll('.special-item');
+            let currentSpecial = 0;
+            const intervalTime = 4000;
+
+            const rotateSpecials = () => {
+                specials[currentSpecial].classList.remove('active');
+                currentSpecial = (currentSpecial + 1) % specials.length;
+                specials[currentSpecial].classList.add('active');
+            };
+
+            setInterval(rotateSpecials, intervalTime);
+
+            // Scroll-triggered fade-in animations
+            const fadeSections = document.querySelectorAll('.fade-in-section');
+            const observerOptions = {
+                threshold: 0.15,
+                rootMargin: '0px 0px -50px 0px'
+            };
+
+            const fadeObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('is-visible');
+                        fadeObserver.unobserve(entry.target);
+                    }
+                });
+            }, observerOptions);
+
+            fadeSections.forEach(section => fadeObserver.observe(section));
+
+            // Contact Form Validation
+            const contactForm = document.getElementById('contactForm');
+            const formMessage = document.getElementById('formMessage');
+
+            contactForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const name = document.getElementById('name').value.trim();
+                const email = document.getElementById('email').value.trim();
+                const message = document.getElementById('message').value.trim();
+
+                formMessage.className = 'form-message';
+                formMessage.style.display = 'none';
+
+                if (!name || !email || !message) {
+                    formMessage.textContent = 'Please fill in all fields.';
+                    formMessage.classList.add('error');
+                    formMessage.style.display = 'block';
+                    return;
+                }
+
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(email)) {
+                    formMessage.textContent = 'Please enter a valid email address.';
+                    formMessage.classList.add('error');
+                    formMessage.style.display = 'block';
+                    return;
+                }
+
+                // Simulate submission
+                formMessage.textContent = 'Thank you! Your message has been sent successfully.';
+                formMessage.classList.add('success');
+                formMessage.style.display = 'block';
+                contactForm.reset();
+
+                setTimeout(() => {
+                    formMessage.style.display = 'none';
+                }, 5000);
+            });
+        });
+    </script>
+</body>
+</html>

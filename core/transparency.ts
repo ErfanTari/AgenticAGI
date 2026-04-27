@@ -26,7 +26,7 @@ export type TransparencyEvent =
       type: 'step_result';
       data: { step: TaskStep; result: SkillResult; ms: number };
     }
-  | { type: 'llm_request'; data: { system: string; messages: Message[]; schema?: Record<string, unknown> } }
+  | { type: 'llm_request'; data: { system: string; messages: Message[]; schema?: Record<string, unknown>; prefixHash?: string } }
   | { type: 'llm_raw'; data: { raw: string; ms: number } }
   | { type: 'llm_stripped'; data: { stripped: string } }
   | { type: 'memory_query'; data: { query: string; nb?: string; results: number } }
@@ -66,6 +66,7 @@ export type TransparencyEvent =
   | { type: 'query_loop_skill_call'; data: { skill: string; input: Record<string, unknown> } }
   | { type: 'query_loop_skill_result'; data: { skill: string; success: boolean; error?: string } }
   | { type: 'query_loop_end'; data: { reason: string; iterations: number } }
+  | { type: 'query_loop_aborted'; data: { iteration: number } }
   // Phase 16 Usability — routing decision
   | { type: 'route'; data: { level: string; reason: string; path: string } }
   // Fix 5 — decomposition repair telemetry
@@ -124,9 +125,23 @@ export type TransparencyEvent =
   | { type: 'prompt_budget_exceeded'; data: { engine: string; promptId: string; totalTokens: number; limitTokens: number; overage: number } }
   // Context Diet sprint — memory gate decisions
   | { type: 'memory_gate_opened'; data: { gate: string; signal: string; reason: string } }
-  | { type: 'memory_gate_skipped'; data: { gate: string; reason: string } };
+  | { type: 'memory_gate_skipped'; data: { gate: string; reason: string } }
+  // Sprint A — Trace v2 span events
+  | { type: 'span_start'; data: { spanId: string; parentSpanId?: string; label: string; ts: number } }
+  | { type: 'span_end'; data: { spanId: string; durationMs: number; status: 'ok' | 'error' | 'aborted' } }
+  | { type: 'orphan_span'; data: { label: string } }
+  // Sprint D1 — KV cache visibility
+  | { type: 'llm_cache_metric'; data: { prefixHash: string; hit: boolean; requestId: string; engine: string; stableTokens: number } };
 
-export type TransparencyEventEnvelope = TransparencyEvent & { requestId?: string };
+export type TransparencyEventEnvelope = TransparencyEvent & {
+  requestId?: string;
+  spanId?: string;
+  parentSpanId?: string;
+  label?: string;
+  durationMs?: number;
+  status?: 'ok' | 'error' | 'aborted';
+  prefixHash?: string;
+};
 
 type TransparencyHandler = (event: TransparencyEventEnvelope) => void;
 
@@ -167,3 +182,87 @@ class TransparencyBus {
 }
 
 export const transparency = new TransparencyBus();
+
+// ─── Span helpers ─────────────────────────────────────────────────────────────
+
+export function truncate(s: string, n: number): string {
+  const flat = s.replace(/\n/g, ' ');
+  return flat.length <= n ? flat : flat.slice(0, n - 1) + '…';
+}
+
+export interface SpanContext {
+  spanId: string;
+  parentSpanId?: string;
+  requestId: string;
+  startedAt: number;
+}
+
+export async function withSpan<T>(
+  label: string,
+  parentCtx: SpanContext | undefined,
+  requestId: string,
+  fn: (ctx: SpanContext) => Promise<T>,
+): Promise<T> {
+  const spanId = randomUUID();
+  const ctx: SpanContext = {
+    spanId,
+    parentSpanId: parentCtx?.spanId,
+    requestId,
+    startedAt: Date.now(),
+  };
+  transparency.emit({
+    type: 'span_start',
+    data: { spanId, parentSpanId: parentCtx?.spanId, label, ts: Date.now() },
+  });
+  const startTime = Date.now();
+  try {
+    const result = await fn(ctx);
+    transparency.emit({
+      type: 'span_end',
+      data: { spanId, durationMs: Date.now() - startTime, status: 'ok' },
+    });
+    return result;
+  } catch (error) {
+    const status = (error as Error).name === 'AbortError' ? 'aborted' : 'error';
+    transparency.emit({
+      type: 'span_end',
+      data: { spanId, durationMs: Date.now() - startTime, status },
+    });
+    throw error;
+  }
+}
+
+export function withSpanSync<T>(
+  label: string,
+  parentCtx: SpanContext | undefined,
+  requestId: string,
+  fn: (ctx: SpanContext) => T,
+): T {
+  const spanId = randomUUID();
+  const ctx: SpanContext = {
+    spanId,
+    parentSpanId: parentCtx?.spanId,
+    requestId,
+    startedAt: Date.now(),
+  };
+  transparency.emit({
+    type: 'span_start',
+    data: { spanId, parentSpanId: parentCtx?.spanId, label, ts: Date.now() },
+  });
+  const startTime = Date.now();
+  try {
+    const result = fn(ctx);
+    transparency.emit({
+      type: 'span_end',
+      data: { spanId, durationMs: Date.now() - startTime, status: 'ok' },
+    });
+    return result;
+  } catch (error) {
+    const status = (error as Error).name === 'AbortError' ? 'aborted' : 'error';
+    transparency.emit({
+      type: 'span_end',
+      data: { spanId, durationMs: Date.now() - startTime, status },
+    });
+    throw error;
+  }
+}

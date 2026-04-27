@@ -90,16 +90,21 @@
       -moz-osx-font-smoothing: grayscale;
     }
 
-    body.thinking-hidden .main-grid {
-      grid-template-columns: 0 minmax(0, 1fr) var(--panel-width-right);
-    }
-
     body.settings-open .settings-overlay {
       opacity: 1;
       pointer-events: auto;
     }
 
     body.settings-open .settings-panel {
+      transform: translateX(0);
+    }
+
+    body.logs-open .logs-overlay {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    body.logs-open .logs-panel {
       transform: translateX(0);
     }
 
@@ -143,6 +148,19 @@
 
     .btn-ghost:hover {
       background: var(--bg-hover);
+    }
+
+    .btn-stop {
+      background: var(--error);
+      color: #ffffff;
+      border-color: var(--error);
+    }
+    .btn-stop:hover {
+      background: var(--error);
+      filter: brightness(0.92);
+    }
+    .btn-stop:disabled {
+      opacity: 0.7;
     }
 
     .btn.active {
@@ -337,27 +355,13 @@
     .main-grid {
       min-height: 0;
       display: grid;
-      grid-template-columns: var(--panel-width-left) minmax(0, 1fr) var(--panel-width-right);
+      grid-template-columns: minmax(0, 1fr) var(--panel-width-right);
     }
 
     .panel {
       min-width: 0;
       min-height: 0;
       background: var(--bg-elevated);
-    }
-
-    .thinking-panel {
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      border-right: 1px solid var(--border);
-      transition: width 160ms ease, opacity 160ms ease, border-color 160ms ease;
-    }
-
-    body.thinking-hidden .thinking-panel {
-      border-right: 0;
-      opacity: 0;
-      pointer-events: none;
     }
 
     .chat-panel {
@@ -379,13 +383,14 @@
       padding: var(--sp-3) var(--sp-4);
       border-bottom: 1px solid var(--border);
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      justify-content: space-between;
-      gap: var(--sp-3);
+      gap: var(--sp-2) var(--sp-3);
       background: var(--bg-elevated);
     }
 
     .panel-title-wrap {
+      flex: 1 1 100%;
       min-width: 0;
     }
 
@@ -401,6 +406,9 @@
       margin-top: 2px;
       font-size: var(--fs-meta);
       color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .panel-actions {
@@ -408,6 +416,7 @@
       align-items: center;
       gap: var(--sp-2);
       flex-shrink: 0;
+      margin-left: auto;
     }
 
     .transparency-panel {
@@ -515,7 +524,6 @@
       border: 1px solid var(--border);
       border-radius: 4px;
       padding: 2px 6px;
-      margin-right: var(--sp-2);
       flex-shrink: 0;
       white-space: nowrap;
     }
@@ -1221,6 +1229,159 @@
       flex-direction: column;
     }
 
+    .logs-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--backdrop);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 140ms ease;
+      z-index: 240;
+    }
+
+    .logs-panel {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 400px;
+      max-width: 100vw;
+      height: 100vh;
+      background: var(--bg);
+      border-right: 1px solid var(--border);
+      box-shadow: var(--shadow-lg);
+      transform: translateX(-100%);
+      transition: transform 160ms ease;
+      z-index: 250;
+      display: flex;
+      flex-direction: column;
+      font-family: var(--font-ui);
+      font-size: var(--fs-meta);
+    }
+
+    .logs-head {
+      padding: var(--sp-3) var(--sp-4);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+      background: var(--bg-elevated);
+      flex-shrink: 0;
+    }
+
+    .logs-head-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-3);
+    }
+
+    .logs-title {
+      font-size: var(--fs-h1);
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .logs-head-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-1);
+    }
+
+    .logs-filter-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-1);
+    }
+
+    .filter-btn {
+      font-family: var(--font-ui);
+      font-size: 10px;
+      padding: 3px 9px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .filter-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text);
+    }
+
+    .filter-btn.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    .filter-btn.active-error {
+      background: var(--error);
+      color: #fff;
+      border-color: var(--error);
+    }
+
+    .filter-btn.active-success {
+      background: var(--success);
+      color: #fff;
+      border-color: var(--success);
+    }
+
+    .filter-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 14px;
+      height: 14px;
+      padding: 0 3px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.25);
+      font-size: 9px;
+      font-weight: 600;
+      line-height: 1;
+    }
+
+    .logs-btn-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 999px;
+      background: var(--error);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 1;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+
+    .logs-btn-badge.hidden { display: none; }
+
+    .logs-body {
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+
+    /* filter visibility rules */
+    .logs-body[data-filter="errors"] .event-row:not([data-cat="error"]),
+    .logs-body[data-filter="errors"] .loop-iteration-header { display: none; }
+
+    .logs-body[data-filter="success"] .event-row:not([data-cat="success"]),
+    .logs-body[data-filter="success"] .loop-iteration-header { display: none; }
+
+    .logs-body[data-filter="iterations"] .event-row:not([data-cat="iteration"]) { display: none; }
+
     .settings-head {
       padding: var(--sp-4);
       border-bottom: 1px solid var(--border);
@@ -1346,11 +1507,7 @@
 
     @media (max-width: 1180px) {
       .main-grid {
-        grid-template-columns: 280px minmax(0, 1fr) 280px;
-      }
-
-      body.thinking-hidden .main-grid {
-        grid-template-columns: 0 minmax(0, 1fr) 280px;
+        grid-template-columns: minmax(0, 1fr) 280px;
       }
 
       .model-selector-group {
@@ -1377,14 +1534,16 @@
         flex-wrap: wrap;
       }
 
-      .main-grid,
-      body.thinking-hidden .main-grid {
+      .main-grid {
         grid-template-columns: minmax(0, 1fr);
       }
 
-      .thinking-panel,
       .plan-panel {
         display: none;
+      }
+
+      .logs-panel {
+        width: 100vw;
       }
     }
   </style>
@@ -1420,49 +1579,13 @@
 
     <div class="header-actions">
       <button id="refreshModelsButton" class="btn btn-ghost" type="button" title="Refresh model list">↻</button>
-      <button id="toggleThinking" class="btn btn-ghost active" type="button" title="Toggle logs">Logs</button>
+      <button id="logsButton" class="btn btn-ghost" type="button" title="Open logs">Logs<span id="logsErrorBadge" class="logs-btn-badge hidden">0</span></button>
       <button id="themeToggleButton" class="btn btn-ghost" type="button" title="Toggle theme">◐</button>
       <button id="settingsButton" class="btn btn-ghost" type="button" title="Settings">⚙</button>
     </div>
   </header>
 
   <div class="main-grid">
-    <aside class="panel thinking-panel transparency-panel">
-      <div class="panel-head">
-        <div class="panel-title-wrap">
-          <div class="panel-title">Transparency</div>
-          <div class="panel-subtle">AI trace first, raw events on demand</div>
-        </div>
-        <div id="tokenCounter" class="token-counter hidden" title="Session token usage">
-          <span id="tokenIn" class="token-val">0</span><span class="token-sep">↑</span><span id="tokenOut" class="token-val">0</span><span class="token-sep">↓</span><span id="tokenCost" class="token-cost">$0.0000</span>
-        </div>
-        <div class="panel-actions">
-          <button id="clear-log-btn" class="btn btn-ghost" type="button">Clear</button>
-          <button id="copy-log-btn" class="btn btn-ghost" type="button">Copy Trace</button>
-          <button id="copy-details-btn" class="btn btn-ghost" type="button" title="Copy full JSON envelopes">Copy Details</button>
-        </div>
-      </div>
-      <div id="thinkingStream" class="thinking-stream">
-        <section id="traceV2Card" class="trace-v2-card hidden">
-          <div class="trace-v2-head">
-            <div class="trace-v2-title">AI Trace</div>
-            <div id="traceV2Run" class="trace-v2-run"></div>
-          </div>
-          <pre id="traceV2Body" class="trace-v2-body"></pre>
-        </section>
-        <section class="raw-log-card">
-          <div class="raw-log-head">
-            <div class="raw-log-meta">
-              <span>Raw Events</span>
-              <span id="rawLogCount" class="raw-log-count">0</span>
-            </div>
-            <button id="rawLogToggle" class="btn btn-ghost raw-log-toggle" type="button">Show Raw</button>
-          </div>
-          <div id="rawLogStream" class="raw-log-stream hidden"></div>
-        </section>
-      </div>
-    </aside>
-
     <main class="panel chat-panel">
       <div id="reconnectBanner" class="banner">Reconnecting...</div>
       <div id="messageList" class="messages"></div>
@@ -1483,7 +1606,7 @@
       </div>
       <form id="composer" class="composer">
         <textarea id="chatInput" placeholder="Message zaraban..." rows="1"></textarea>
-        <button id="sendButton" class="btn btn-primary" type="submit">Send</button>
+        <button id="sendButton" class="btn btn-primary" type="submit" data-mode="send">Send</button>
       </form>
     </main>
 
@@ -1575,20 +1698,48 @@
     </div>
   </aside>
 
+  <div id="logsOverlay" class="logs-overlay"></div>
+  <aside id="logsPanel" class="logs-panel" aria-hidden="true">
+    <div class="logs-head">
+      <div class="logs-head-row">
+        <div class="logs-title">Logs</div>
+        <div class="logs-head-actions">
+          <div id="tokenCounter" class="token-counter hidden" title="Session token usage">
+            <span id="tokenIn" class="token-val">0</span><span class="token-sep">↑</span><span id="tokenOut" class="token-val">0</span><span class="token-sep">↓</span><span id="tokenCost" class="token-cost">$0.0000</span>
+          </div>
+          <button id="clear-log-btn" class="btn btn-ghost" type="button" style="font-size:10px;padding:3px 8px;">Clear</button>
+          <button id="copy-log-btn" class="btn btn-ghost" type="button" style="font-size:10px;padding:3px 8px;">Copy</button>
+          <button id="copy-details-btn" class="btn btn-ghost" type="button" style="font-size:10px;padding:3px 8px;" title="Copy full JSON envelopes">JSON</button>
+          <button id="closeLogsButton" class="btn btn-ghost" type="button" title="Close logs">✕</button>
+        </div>
+      </div>
+      <div class="logs-filter-bar">
+        <button class="filter-btn active" data-filter="all" type="button">All <span class="filter-badge" id="filterCountAll">0</span></button>
+        <button class="filter-btn" data-filter="errors" type="button">Errors <span class="filter-badge" id="filterCountErrors">0</span></button>
+        <button class="filter-btn" data-filter="success" type="button">Success <span class="filter-badge" id="filterCountSuccess">0</span></button>
+        <button class="filter-btn" data-filter="iterations" type="button">Iterations <span class="filter-badge" id="filterCountIter">0</span></button>
+      </div>
+    </div>
+    <div id="logsBody" class="logs-body" data-filter="all">
+    </div>
+  </aside>
+
   <script>
     const BLOCKED_MODEL_IDS = new Set([
       'qwen/qwen3.5-122b-a10b-q4',
+      'text-embedding-nomic-embed-text-v1.5',
+      'whisper-large-v3-turbo',
     ]);
 
     const MODEL_CATALOG = {
       local: [
         {
-          id: 'qwen/qwen3.5-35b-a3b',
-          label: 'Qwen 3.5 35B',
+          id: 'qwen/qwen3.6-35b-a3b',
+          label: 'Qwen 3.6 35B',
           tag: 'balanced',
           tagColor: 'blue',
           size: '~20GB',
-          note: 'Strong general coding'
+          note: 'Latest Qwen MoE — strong coding'
         },
         {
           id: 'google/gemma-4-26b-a4b',
@@ -1599,20 +1750,68 @@
           note: 'Current primary local'
         },
         {
+          id: 'qwen/qwen3.5-35b-a3b',
+          label: 'Qwen 3.5 35B',
+          tag: 'balanced',
+          tagColor: 'blue',
+          size: '~20GB',
+          note: 'Strong general coding'
+        },
+        {
+          id: 'google/gemma-4-31b',
+          label: 'Gemma 4 31B',
+          tag: 'alt',
+          tagColor: 'purple',
+          size: '~32GB',
+          note: 'Larger Gemma variant'
+        },
+        {
+          id: 'google/gemma-4-e4b',
+          label: 'Gemma 4 E4B',
+          tag: 'tiny',
+          tagColor: 'cyan',
+          size: '~4GB',
+          note: 'Ultra-fast lightweight model'
+        },
+        {
+          id: 'google/gemma-3-4b',
+          label: 'Gemma 3 4B',
+          tag: 'tiny',
+          tagColor: 'cyan',
+          size: '~3GB',
+          note: 'Gemma 3 small variant'
+        },
+        {
+          id: 'mlx-community/qwen3.5-35b-a3b',
+          label: 'Qwen 3.5 35B (MLX)',
+          tag: 'mlx',
+          tagColor: 'orange',
+          size: '~20GB',
+          note: 'Apple Silicon optimised'
+        },
+        {
+          id: 'qwen3.5-35b-a3b-uncensored-hauhaucs-aggressive',
+          label: 'Qwen 3.5 35B Uncensored',
+          tag: 'alt',
+          tagColor: 'red',
+          size: '~20GB',
+          note: 'Uncensored fine-tune'
+        },
+        {
+          id: 'qwen/qwen3-vl-8b',
+          label: 'Qwen 3 VL 8B',
+          tag: 'vision',
+          tagColor: 'purple',
+          size: '~8GB',
+          note: 'Vision-language model'
+        },
+        {
           id: 'glm-4.7-flash-mlx',
           label: 'GLM 4.7 Flash',
           tag: 'fast',
           tagColor: 'cyan',
           size: '~unknown',
           note: 'Official GLM local option'
-        },
-        {
-          id: 'gemma-4-31b-it',
-          label: 'Gemma 4 31B',
-          tag: 'alt',
-          tagColor: 'purple',
-          size: '~32GB',
-          note: 'Larger Gemma variant'
         },
       ],
       cloud: [
@@ -1704,6 +1903,7 @@
       socket: null,
       connected: false,
       processing: false,
+      stopping: false,
       provider: null,
       reconnectDelay: 3000,
       reconnectTimer: null,
@@ -1714,23 +1914,20 @@
       typingNode: null,
       transparencyLog: [],
       traceV2: null,
-      rawTransparencyOpen: false,
       themePreference: 'dark',
       modelCatalog: cloneModelCatalog(),
       refreshPending: false,
       refreshStartedAt: 0,
       openPopover: null,
+      logsFilter: 'all',
+      errorCount: 0,
+      successCount: 0,
+      iterationCount: 0,
     };
 
     const elements = {
       body: document.body,
-      thinkingStream: document.getElementById('thinkingStream'),
-      traceV2Card: document.getElementById('traceV2Card'),
-      traceV2Run: document.getElementById('traceV2Run'),
-      traceV2Body: document.getElementById('traceV2Body'),
-      rawLogToggle: document.getElementById('rawLogToggle'),
       rawLogCount: document.getElementById('rawLogCount'),
-      rawLogStream: document.getElementById('rawLogStream'),
       messageList: document.getElementById('messageList'),
       planBody: document.getElementById('planBody'),
       chatInput: document.getElementById('chatInput'),
@@ -1746,9 +1943,18 @@
       modelDropdownTrigger: document.getElementById('modelDropdownTrigger'),
       activeModelName: document.getElementById('activeModelName'),
       refreshModelsButton: document.getElementById('refreshModelsButton'),
-      toggleThinking: document.getElementById('toggleThinking'),
       themeToggleButton: document.getElementById('themeToggleButton'),
       settingsButton: document.getElementById('settingsButton'),
+      logsButton: document.getElementById('logsButton'),
+      logsErrorBadge: document.getElementById('logsErrorBadge'),
+      logsOverlay: document.getElementById('logsOverlay'),
+      logsPanel: document.getElementById('logsPanel'),
+      closeLogsButton: document.getElementById('closeLogsButton'),
+      logsBody: document.getElementById('logsBody'),
+      filterCountAll: document.getElementById('filterCountAll'),
+      filterCountErrors: document.getElementById('filterCountErrors'),
+      filterCountSuccess: document.getElementById('filterCountSuccess'),
+      filterCountIter: document.getElementById('filterCountIter'),
       modelPopoverRoot: document.getElementById('modelPopoverRoot'),
       toastContainer: document.getElementById('toast-container'),
       settingsOverlay: document.getElementById('settingsOverlay'),
@@ -1772,13 +1978,16 @@
     applyTheme(state.themePreference, false);
     renderPlanEmpty();
     syncProviderUi();
-    setTransparencyOpen(Storage.get('transparencyOpen', true), false);
-    setRawTransparencyOpen(Storage.get('rawTransparencyOpen', false), false);
     syncComposer();
     syncStarterSuggestions();
     updateSettingsSummary();
     connect();
     window.setInterval(updateElapsedLabels, 1000);
+
+    // wire up filter buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => setLogsFilter(btn.dataset.filter));
+    });
 
     elements.localProviderButton.addEventListener('click', () => {
       setProviderMode('local');
@@ -1797,8 +2006,16 @@
       refreshModels();
     });
 
-    elements.toggleThinking.addEventListener('click', () => {
-      setTransparencyOpen(elements.body.classList.contains('thinking-hidden'));
+    elements.logsButton.addEventListener('click', () => {
+      setLogsOpen(true);
+    });
+
+    elements.closeLogsButton.addEventListener('click', () => {
+      setLogsOpen(false);
+    });
+
+    elements.logsOverlay.addEventListener('click', () => {
+      setLogsOpen(false);
     });
 
     elements.themeToggleButton.addEventListener('click', () => {
@@ -1839,10 +2056,6 @@
     elements.clearLogButton.addEventListener('click', clearTransparencyLog);
     elements.copyLogButton.addEventListener('click', copyTransparencyLog);
     document.getElementById('copy-details-btn').addEventListener('click', copyDetailedTransparencyLog);
-    elements.rawLogToggle.addEventListener('click', () => {
-      setRawTransparencyOpen(!state.rawTransparencyOpen);
-    });
-
     elements.chatInput.addEventListener('input', () => {
       autoResize();
       syncComposer();
@@ -1857,7 +2070,11 @@
 
     elements.composer.addEventListener('submit', event => {
       event.preventDefault();
-      sendCurrentMessage();
+      if (elements.sendButton.dataset.mode === 'stop') {
+        sendStopMessage();
+      } else {
+        sendCurrentMessage();
+      }
     });
 
     elements.starterSuggestions.querySelectorAll('[data-prompt]').forEach(button => {
@@ -1874,13 +2091,17 @@
       const target = event.target;
       const typingTarget = target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT');
       if (event.key === 'Escape') {
-        closeModelPopover();
-        if (elements.body.classList.contains('settings-open')) {
-          setSettingsOpen(false);
+        const panelOpen = elements.body.classList.contains('settings-open') || elements.body.classList.contains('logs-open') || state.openPopover;
+        if (state.processing && !state.stopping && !panelOpen) {
+          sendStopMessage();
+        } else {
+          closeModelPopover();
+          if (elements.body.classList.contains('settings-open')) setSettingsOpen(false);
+          if (elements.body.classList.contains('logs-open')) setLogsOpen(false);
         }
       }
-      if (!typingTarget && event.key.toLowerCase() === 't' && !event.metaKey && !event.ctrlKey && !event.altKey) {
-        setTransparencyOpen(elements.body.classList.contains('thinking-hidden'));
+      if (!typingTarget && event.key.toLowerCase() === 'l' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        setLogsOpen(!elements.body.classList.contains('logs-open'));
       }
     });
 
@@ -1947,23 +2168,24 @@
       }
     }
 
-    function setTransparencyOpen(open, persist = true) {
-      elements.body.classList.toggle('thinking-hidden', !open);
-      elements.toggleThinking.classList.toggle('active', open);
-      elements.toggleThinking.textContent = open ? 'Logs' : 'Logs';
-      if (persist) {
-        Storage.set('transparencyOpen', open);
-      }
+    function setLogsOpen(open) {
+      elements.body.classList.toggle('logs-open', open);
+      elements.logsPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
     }
 
-    function setRawTransparencyOpen(open, persist = true) {
-      state.rawTransparencyOpen = !!open;
-      elements.rawLogStream.classList.toggle('hidden', !state.rawTransparencyOpen);
-      elements.rawLogToggle.textContent = state.rawTransparencyOpen ? 'Hide Raw' : 'Show Raw';
-      if (persist) {
-        Storage.set('rawTransparencyOpen', state.rawTransparencyOpen);
-      }
+    function setLogsFilter(filter) {
+      state.logsFilter = filter;
+      elements.logsBody.dataset.filter = filter;
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active', 'active-error', 'active-success');
+        if (btn.dataset.filter === filter) {
+          if (filter === 'errors') btn.classList.add('active-error');
+          else if (filter === 'success') btn.classList.add('active-success');
+          else btn.classList.add('active');
+        }
+      });
     }
+
 
     function setSettingsOpen(open) {
       elements.body.classList.toggle('settings-open', open);
@@ -2022,9 +2244,40 @@
     }
 
     function syncComposer() {
-      const disabled = !state.connected || state.processing;
-      elements.chatInput.disabled = disabled;
-      elements.sendButton.disabled = disabled || !elements.chatInput.value.trim();
+      const btn = elements.sendButton;
+      const input = elements.chatInput;
+
+      if (state.stopping) {
+        btn.textContent = 'Stopping…';
+        btn.disabled = true;
+        btn.dataset.mode = 'stop';
+        btn.className = 'btn btn-stop';
+        input.disabled = true;
+        return;
+      }
+
+      if (state.processing) {
+        btn.textContent = '■ Stop';
+        btn.disabled = false;
+        btn.dataset.mode = 'stop';
+        btn.className = 'btn btn-stop';
+        input.disabled = true;
+        return;
+      }
+
+      // idle
+      btn.textContent = 'Send';
+      btn.dataset.mode = 'send';
+      btn.className = 'btn btn-primary';
+      btn.disabled = !state.connected || !input.value.trim();
+      input.disabled = !state.connected;
+    }
+
+    function sendStopMessage() {
+      if (!state.connected || !state.socket || !state.processing) return;
+      state.stopping = true;
+      syncComposer();
+      state.socket.send(JSON.stringify({ type: 'stop_chat' }));
     }
 
     function getProviderMode() {
@@ -2313,8 +2566,18 @@
         if (payload.type === 'agent_reply') {
           hideTyping();
           state.processing = false;
+          state.stopping = false;
           appendMessage('agent', payload.text, { intent: payload.intent });
           syncComposer();
+          return;
+        }
+
+        if (payload.type === 'stop_ack') {
+          if (!payload.stopped) {
+            state.stopping = false;
+            syncComposer();
+          }
+          // If stopped=true, stay in Stopping… until agent_reply arrives
           return;
         }
 
@@ -2502,31 +2765,58 @@
       syncStarterSuggestions();
     }
 
+    function eventCategory(event, payload) {
+      const iconClass = eventIconClass(event, payload);
+      if (iconClass === 'error') return 'error';
+      if (event === 'prompt_budget_exceeded' || event === 'decomposition_repair') return 'error';
+      if (iconClass === 'success') return 'success';
+      if (event === 'memory_write' || event === 'working_memory_created' || event === 'working_memory_updated') return 'success';
+      if (event === 'query_loop_iteration' || event === 'query_loop_start' || event === 'query_loop_end') return 'iteration';
+      return 'other';
+    }
+
+    function updateFilterCounts() {
+      elements.filterCountAll.textContent = String(state.transparencyLog.length);
+      elements.filterCountErrors.textContent = String(state.errorCount);
+      elements.filterCountSuccess.textContent = String(state.successCount);
+      elements.filterCountIter.textContent = String(state.iterationCount);
+      if (state.errorCount > 0) {
+        elements.logsErrorBadge.textContent = String(state.errorCount);
+        elements.logsErrorBadge.classList.remove('hidden');
+      }
+    }
+
     function addTransparencyEvent(event, payload, ts) {
-      const stream = elements.rawLogStream;
-      const nearBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 60;
+      const logsBody = elements.logsBody;
+      const nearBottom = logsBody.scrollHeight - logsBody.scrollTop - logsBody.clientHeight < 60;
 
       state.transparencyLog.push({ event, payload, ts });
-      while (state.transparencyLog.length > 200) {
-        state.transparencyLog.shift();
-      }
-      elements.rawLogCount.textContent = String(state.transparencyLog.length);
+      while (state.transparencyLog.length > 500) state.transparencyLog.shift();
+      if (elements.rawLogCount) elements.rawLogCount.textContent = String(state.transparencyLog.length);
       refreshDerivedTransparencyV2();
 
       if (event === 'token_usage' && payload) {
         const fmt = n => n.toLocaleString();
+        const fmtCost = c => c >= 0.01 ? '$' + c.toFixed(2) : c >= 0.001 ? '$' + c.toFixed(3) : '$' + c.toFixed(4);
         elements.tokenIn.textContent = fmt(payload.inputTokens ?? 0);
         elements.tokenOut.textContent = fmt(payload.outputTokens ?? 0);
-        elements.tokenCost.textContent = '$' + (payload.estimatedCostUSD ?? 0).toFixed(4);
+        elements.tokenCost.textContent = fmtCost(payload.estimatedCostUSD ?? 0);
         elements.tokenCounter.classList.remove('hidden');
       }
 
+      const cat = eventCategory(event, payload);
+      if (cat === 'error') state.errorCount++;
+      else if (cat === 'success') state.successCount++;
+      else if (cat === 'iteration') state.iterationCount++;
+      updateFilterCounts();
+
       if (event === 'query_loop_iteration') {
-        stream.appendChild(createIterationHeader(payload));
+        logsBody.appendChild(createIterationHeader(payload));
       }
 
       const row = document.createElement('article');
       row.className = 'event-row';
+      row.dataset.cat = cat;
 
       const content = document.createElement('div');
       content.className = 'event-content';
@@ -2538,15 +2828,15 @@
       icon.className = 'event-icon ' + eventIconClass(event, payload);
       icon.textContent = EVENT_ICONS[event] || EVENT_ICONS.default;
 
-      const name = document.createElement('div');
-      name.className = 'event-name';
-      name.textContent = event;
+      const nameEl = document.createElement('div');
+      nameEl.className = 'event-name';
+      nameEl.textContent = event;
 
       const time = document.createElement('span');
       time.className = 'event-time';
       time.textContent = formatClock(ts);
 
-      heading.append(icon, name, time);
+      heading.append(icon, nameEl, time);
       content.appendChild(heading);
 
       const previewText = eventPreview(event, payload);
@@ -2557,8 +2847,21 @@
 
       const actions = document.createElement('div');
       actions.className = 'event-actions';
-      maybeAttachPreviewToggle(actions, preview, previewText);
 
+      // copy button — copies the full JSON payload to clipboard
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'event-detail-toggle btn btn-ghost';
+      copyBtn.type = 'button';
+      copyBtn.textContent = 'copy';
+      copyBtn.addEventListener('click', () => {
+        copyTextToClipboard(JSON.stringify({ event, payload, ts }, null, 2)).then(() => {
+          copyBtn.textContent = 'copied';
+          setTimeout(() => { copyBtn.textContent = 'copy'; }, 1200);
+        }).catch(() => {});
+      });
+      actions.appendChild(copyBtn);
+
+      // details button — toggles inline JSON block
       const pre = document.createElement('pre');
       pre.className = 'event-payload hidden';
       pre.textContent = JSON.stringify(payload, null, 2);
@@ -2567,32 +2870,22 @@
       detailToggle.type = 'button';
       detailToggle.textContent = 'details';
       detailToggle.addEventListener('click', () => {
-        const visible = pre.classList.toggle('hidden');
-        detailToggle.textContent = visible ? 'details' : 'hide details';
+        const nowHidden = pre.classList.toggle('hidden');
+        detailToggle.textContent = nowHidden ? 'details' : 'hide';
       });
       actions.appendChild(detailToggle);
-      content.append(actions, pre);
 
+      content.append(actions, pre);
       row.append(content);
 
-      while (stream.children.length > 240) {
-        stream.removeChild(stream.firstChild);
-      }
-      stream.appendChild(row);
+      while (logsBody.children.length > 500) logsBody.removeChild(logsBody.firstChild);
+      logsBody.appendChild(row);
 
-      if (nearBottom) {
-        stream.scrollTop = stream.scrollHeight;
-      }
+      if (nearBottom) logsBody.scrollTop = logsBody.scrollHeight;
     }
 
     function setTransparencyV2(runId, sequence, derived = false) {
       state.traceV2 = { runId, sequence, derived };
-      elements.traceV2Run.textContent = runId || '';
-      elements.traceV2Body.textContent = sequence || '';
-      elements.traceV2Card.classList.toggle('hidden', !sequence);
-      if (!derived) {
-        elements.thinkingStream.scrollTop = 0;
-      }
     }
 
     function deriveTraceRunId(events) {
@@ -2661,17 +2954,45 @@
       return '';
     }
 
+    function filterToCat(filter) {
+      if (filter === 'errors') return 'error';
+      if (filter === 'iterations') return 'iteration';
+      return filter; // 'success' and 'all' match as-is
+    }
+
+    function getFilteredLog() {
+      const filter = state.logsFilter;
+      if (filter === 'all') return state.transparencyLog;
+      const cat = filterToCat(filter);
+      return state.transparencyLog.filter(entry => eventCategory(entry.event, entry.payload) === cat);
+    }
+
+    function getFilteredEnvelopes() {
+      const filter = state.logsFilter;
+      const envelopes = window.__fullEnvelopes || [];
+      if (filter === 'all') return envelopes;
+      const cat = filterToCat(filter);
+      return envelopes.filter(env => eventCategory(env.event, env.payload) === cat);
+    }
+
     function buildTransparencyLogText() {
-      if (state.traceV2 && state.traceV2.sequence) {
-        return [
-          'Zaraban AI Trace',
-          '='.repeat(60),
-          'run: ' + state.traceV2.runId,
-          '',
-          state.traceV2.sequence,
-        ].join('\n');
+      const entries = getFilteredLog();
+      const filter = state.logsFilter;
+      const label = filter === 'all' ? 'AI Trace' : `AI Trace — ${filter} only`;
+      const lines = [
+        `Zaraban ${label}`,
+        '='.repeat(60),
+        filter !== 'all' ? `filter: ${filter}  (${entries.length} events)` : '',
+        '',
+      ];
+      for (const entry of entries) {
+        const preview = eventPreview(entry.event, entry.payload);
+        if (!preview) continue;
+        lines.push(`[${formatClock(entry.ts)}] ${entry.event}`);
+        lines.push(preview);
+        lines.push('');
       }
-      return 'Zaraban AI Trace\n' + '='.repeat(60) + '\n(no compact trace yet)';
+      return lines.filter((l, i) => !(i === 2 && l === '')).join('\n').trim();
     }
 
     function copyTextToClipboard(text) {
@@ -2699,48 +3020,53 @@
 
     function copyTransparencyLog() {
       const text = buildTransparencyLogText();
+      const filter = state.logsFilter;
+      const label = filter === 'all' ? 'Trace copied' : `${filter} trace copied`;
       copyTextToClipboard(text).then(() => {
         elements.copyLogButton.textContent = 'Copied';
-        toast('Trace copied', 'success');
-        setTimeout(() => {
-          elements.copyLogButton.textContent = 'Copy Trace';
-        }, 1500);
-      }).catch(() => {
-        toast('Copy failed', 'error');
-      });
+        toast(label, 'success');
+        setTimeout(() => { elements.copyLogButton.textContent = 'Copy'; }, 1500);
+      }).catch(() => { toast('Copy failed', 'error'); });
     }
 
     function copyDetailedTransparencyLog() {
-      const envelopes = window.__fullEnvelopes || [];
+      const envelopes = getFilteredEnvelopes();
       if (envelopes.length === 0) {
-        toast('No detailed events captured yet', 'info');
+        toast('No events captured yet', 'info');
         return;
       }
-      const text = 'Zaraban Detailed Transparency Log\n' +
-        new Date().toISOString() + '\n' +
-        '='.repeat(60) + '\n\n' +
+      const filter = state.logsFilter;
+      const header = filter === 'all'
+        ? 'Zaraban Detailed Log'
+        : `Zaraban Detailed Log — ${filter} only`;
+      const text = `${header}\n${new Date().toISOString()}\n${'='.repeat(60)}\n\n` +
         JSON.stringify(envelopes, null, 2);
       const btn = document.getElementById('copy-details-btn');
       copyTextToClipboard(text).then(() => {
         if (btn) btn.textContent = 'Copied!';
-        toast(`${envelopes.length} envelopes copied`, 'success');
-        setTimeout(() => { if (btn) btn.textContent = 'Copy Details'; }, 1500);
+        toast(`${envelopes.length} events copied (${filter})`, 'success');
+        setTimeout(() => { if (btn) btn.textContent = 'JSON'; }, 1500);
       }).catch(() => { toast('Copy failed', 'error'); });
     }
 
     function clearTransparencyLog() {
       state.transparencyLog = [];
       state.traceV2 = null;
+      state.errorCount = 0;
+      state.successCount = 0;
+      state.iterationCount = 0;
       window.__fullEnvelopes = [];
-      elements.rawLogStream.innerHTML = '';
-      elements.rawLogCount.textContent = '0';
-      elements.traceV2Body.textContent = '';
-      elements.traceV2Run.textContent = '';
-      elements.traceV2Card.classList.add('hidden');
+      if (elements.rawLogCount) elements.rawLogCount.textContent = '0';
       elements.tokenIn.textContent = '0';
       elements.tokenOut.textContent = '0';
       elements.tokenCost.textContent = '$0.0000';
       elements.tokenCounter.classList.add('hidden');
+      elements.logsErrorBadge.classList.add('hidden');
+      elements.filterCountAll.textContent = '0';
+      elements.filterCountErrors.textContent = '0';
+      elements.filterCountSuccess.textContent = '0';
+      elements.filterCountIter.textContent = '0';
+      elements.logsBody.innerHTML = '';
     }
 
     function eventPreview(event, payload) {

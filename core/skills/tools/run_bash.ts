@@ -236,7 +236,7 @@ export const runBash: MCPSkill = {
         }
       }
 
-      const result = await executeCommand(command, resolvedCwd, timeoutMs);
+      const result = await executeCommand(command, resolvedCwd, timeoutMs, input.__signal as AbortSignal | undefined);
 
       if (result.timedOut) {
         return {
@@ -288,6 +288,7 @@ function executeCommand(
   command: string,
   cwd: string,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean }> {
   return new Promise((resolve) => {
     // H1: detached=true creates a new process group — allows killing the full tree
@@ -296,6 +297,16 @@ function executeCommand(
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+
+    // Kill process group on abort
+    const onAbort = () => {
+      try { process.kill(-(child.pid!), 'SIGKILL'); } catch { child.kill('SIGKILL'); }
+      resolve({ stdout: '', stderr: 'aborted', exitCode: -1, timedOut: false });
+    };
+    if (signal) {
+      if (signal.aborted) { onAbort(); return; }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
 
     let stdout = '';
     let stderr = '';
@@ -306,6 +317,7 @@ function executeCommand(
 
     child.on('close', (code) => {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
       resolve({
         stdout: stdout.trim(),
         stderr: stderr.trim(),

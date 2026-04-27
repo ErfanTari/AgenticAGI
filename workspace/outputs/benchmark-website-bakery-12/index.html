@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Daily Crumb - Artisan Neighborhood Bakery</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* General Styles & Reset */
+        :root {
+            --color-cream: #FDF8F0;
+            --color-soft-brown: #A0522D; /* Sienna */
+            --color-deep-green: #2F4F4F; /* Dark Slate Gray */
+            --color-muted-gold: #B8860B; /* Goldenrod */
+            --color-dark-text: #333333;
+            --color-light-text: #FFFFFF;
+            --font-heading: 'Playfair Display', serif;
+            --font-body: 'Lato', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-body);
+            line-height: 1.6;
+            color: var(--color-dark-text);
+            background-color: var(--color-cream);
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: var(--font-heading);
+            color: var(--color-deep-green);
+            margin-bottom: 1em;
+        }
+
+        h1 { font-size: 3em; }
+        h2 { font-size: 2.5em; }
+        h3 { font-size: 2em; }
+
+        a {
+            text-decoration: none;
+            color: var(--color-soft-brown);
+            transition: color 0.3s ease;
+        }
+
+        a:hover {
+            color: var(--color-muted-gold);
+        }
+
+        .button {
+            display: inline-block;
+            background-color: var(--color-soft-brown);
+            color: var(--color-light-text);
+            padding: 12px 25px;
+            border-radius: 5px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            border: none;
+            cursor: pointer;
+        }
+
+        .button:hover {
+            background-color: var(--color-muted-gold);
+            transform: translateY(-2px);
+        }
+
+        /* Header */
+        header {
+            background-color: var(--color-cream);
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        header .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: var(--font-heading);
+            font-size: 2.2em;
+            color: var(--color-deep-green);
+            font-weight: 700;
+        }
+
+        nav ul {
+            list-style: none;
+            display: flex;
+            gap: 30px;
+        }
+
+        nav a {
+            color: var(--color-dark-text);
+            font-weight: 400;
+            font-size: 1.1em;
+            position: relative;
+        }
+
+        nav a::after {
+            content: '';
+            position: absolute;
+            width: 0;
+            height: 2px;
+            display: block;
+            margin-top: 5px;
+            right: 0;
+            background: var(--color-soft-brown);
+            transition: width 0.3s ease;
+        }
+
+        nav a:hover::after {
+            width: 100%;
+            left: 0;
+            background: var(--color-muted-gold);
+        }
+
+        /* Hero Section */
+        #hero {
+            background: url('https://source.unsplash.com/random/1600x600/?bakery,bread,pastry,rustic') no-repeat center center/cover;
+            color: var(--color-light-text);
+            text-align: center;
+            padding: 150px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        #hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4); /* Dark overlay */
+        }
+
+        #hero .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 800px;
+        }
+
+        #hero h1 {
+            font-size: 4em;
+            margin-bottom: 20px;
+            color: var(--color-light-text);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.7);
+        }
+
+        #hero p {
+            font-size: 1.5em;
+            margin-bottom: 40px;
+            font-weight: 300;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.7);
+        }
+
+        /* Section Styling */
+        section {
+            padding: 80px 0;
+            text-align: center;
+        }
+
+        section:nth-of-type(even) {
+            background-color: #FDFBF5; /* Slightly off-white */
+        }
+
+        section h2 {
+            margin-bottom: 60px;
+            position: relative;
+            display: inline-block;
+        }
+
+        section h2::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: -15px;
+            width: 80px;
+            height: 3px;
+            background-color: var(--color-soft-brown);
+            border-radius: 2px;
+        }
+
+        /* About Us Section */
+        #about .container {
+            max-width: 800px;
+        }
+
+        #about p {
+            font-size: 1.15em;
+            line-height: 1.8;
+            margin-bottom: 1.5em;
+        }
+
+        /* Menu Highlights Section */
+        #menu .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            margin-top: 50px;
+        }
+
+        .menu-item {
+            background-color: var(--color-light-text);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            text-align: left;
+        }
+
+        .menu-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        }
+
+        .menu-item img {
+            width: 100%;
+            height: 250px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .menu-item-content {
+            padding: 25px;
+        }
+
+        .menu-item-content h3 {
+            font-size: 1.6em;
+            color: var(--color-soft-brown);
+            margin-bottom: 10px;
+        }
+
+        .menu-item-content p {
+            font-size: 1em;
+            color: var(--color-dark-text);
+        }
+
+        /* Testimonials Section */
+        #testimonials {
+            background-color: var(--color-deep-green);
+            color: var(--color-light-text);
+        }
+
+        #testimonials h2 {
+            color: var(--color-light-text);
+        }
+
+        #testimonials h2::after {
+            background-color: var(--color-muted-gold);
+        }
+
+        .testimonial-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            margin-top: 50px;
+        }
+
+        .testimonial {
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 10px;
+            font-style: italic;
+            position: relative;
+            text-align: center;
+        }
+
+        .testimonial::before {
+            content: '“';
+            font-family: var(--font-heading);
+            font-size: 4em;
+            color: var(--color-muted-gold);
+            position: absolute;
+            top: 10px;
+            left: 20px;
+            opacity: 0.7;
+        }
+
+        .testimonial p {
+            font-size: 1.1em;
+            margin-bottom: 15px;
+            padding-top: 20px; /* To make space for the quote mark */
+        }
+
+        .testimonial .customer-name {
+            font-weight: bold;
+            font-style: normal;
+            color: var(--color-muted-gold);
+            display: block;
+            margin-top: 10px;
+        }
+
+        /* Contact Section */
+        #contact .contact-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr;
+            gap: 60px;
+            text-align: left;
+            margin-top: 50px;
+        }
+
+        #contact .contact-info h3 {
+            color: var(--color-soft-brown);
+            margin-bottom: 20px;
+        }
+
+        #contact .contact-info p {
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        #contact .contact-info strong {
+            color: var(--color-deep-green);
+        }
+
+        .contact-form form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .contact-form input[type="text"],
+        .contact-form input[type="email"],
+        .contact-form textarea {
+            width: 100%;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: var(--font-body);
+            font-size: 1em;
+            background-color: var(--color-light-text);
+            transition: border-color 0.3s ease;
+        }
+
+        .contact-form input[type="text"]:focus,
+        .contact-form input[type="email"]:focus,
+        .contact-form textarea:focus {
+            border-color: var(--color-soft-brown);
+            outline: none;
+        }
+
+        .contact-form textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .contact-form .button {
+            align-self: flex-start;
+        }
+
+        /* Footer */
+        footer {
+            background-color: var(--color-deep-green);
+            color: var(--color-light-text);
+            padding: 40px 0;
+            text-align: center;
+            font-size: 0.9em;
+        }
+
+        footer .social-links {
+            margin-top: 20px;
+        }
+
+        footer .social-links a {
+            color: var(--color-light-text);
+            font-size: 1.5em;
+            margin: 0 15px;
+            transition: color 0.3s ease;
+        }
+
+        footer .social-links a:hover {
+            color: var(--color-muted-gold);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 992px) {
+            #hero h1 {
+                font-size: 3em;
+            }
+            #hero p {
+                font-size: 1.2em;
+            }
+            .container {
+                padding: 0 15px;
+            }
+            #contact .contact-grid {
+                grid-template-columns: 1fr;
+            }
+            #contact .contact-info {
+                text-align: center;
+            }
+            .contact-form .button {
+                align-self: center;
+            }
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 2.5em; }
+            h2 { font-size: 2em; }
+            h3 { font-size: 1.7em; }
+
+            header .container {
+                flex-direction: column;
+                gap: 15px;
+            }
+            nav ul {
+                gap: 15px;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            #hero {
+                padding: 100px 20px;
+            }
+            #hero h1 {
+                font-size: 2.5em;
+            }
+            #hero p {
+                font-size: 1em;
+            }
+            section {
+                padding: 60px 0;
+            }
+            .menu-item img {
+                height: 200px;
+            }
+            .testimonial::before {
+                font-size: 3em;
+                top: 5px;
+                left: 15px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .logo {
+                font-size: 1.8em;
+            }
+            nav ul {
+                flex-direction: column;
+                align-items: center;
+            }
+            #hero h1 {
+                font-size: 2em;
+            }
+            #hero p {
+                font-size: 0.9em;
+            }
+            .menu-grid, .testimonial-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">The Daily Crumb</div>
+            <nav>
+                <ul>
+                    <li><a href="#hero">Home</a></li>
+                    <li><a href="#menu">Menu</a></li>
+                    <li><a href="#about">About</a></li>
+                    <li><a href="#contact">Contact</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section id="hero">
+            <div class="hero-content">
+                <h1>Freshly Baked, Daily Delights</h1>
+                <p>Experience the warmth and aroma of artisan baking, crafted with passion and the finest ingredients.</p>
+                <a href="#menu" class="button">Explore Our Menu</a>
+            </div>
+        </section>
+
+        <section id="about">
+            <div class="container">
+                <h2>Our Story</h2>
+                <p>At The Daily Crumb, our journey began with a simple passion: to bring the joy of authentic, handcrafted baked goods to our beloved neighborhood. Every loaf of sourdough, every flaky croissant, and every delicate pastry is a testament to our dedication to traditional techniques and quality ingredients. We believe in the power of good food to bring people together, and we're proud to be a place where community gathers, one delicious bite at a time.</p>
+                <p>From early morning dough rises to the final golden crust, we pour our hearts into creating treats that not only taste incredible but also tell a story of craftsmanship and care. Welcome to our family, welcome to The Daily Crumb.</p>
+            </div>
+        </section>
+
+        <section id="menu">
+            <div class="container">
+                <h2>Menu Highlights</h2>
+                <div class="menu-grid">
+                    <div class="menu-item">
+                        <img src="https://via.placeholder.com/400x300/A0522D/FFFFFF?text=Sourdough+Loaf" alt="Rustic Sourdough Loaf">
+                        <div class="menu-item-content">
+                            <h3>Classic Sourdough Loaf</h3>
+                            <p>Our signature sourdough, naturally leavened and baked to perfection with a crispy crust and airy interior.</p>
+                        </div>
+                    </div>
+                    <div class="menu-item">
+                        <img src="https://via.placeholder.com/400x300/B8860B/FFFFFF?text=Flaky+Croissants" alt="Golden Flaky Croissants">
+                        <div class="menu-item-content">
+                            <h3>Buttery Croissants</h3>
+                            <p>Hand-rolled with layers of rich butter, resulting in a perfectly flaky and tender pastry.</p>
+                        </div>
+                    </div>
+                    <div class="menu-item">
+                        <img src="https://via.placeholder.com/400x300/2F4F4F/FFFFFF?text=Artisan+Pastries" alt="Assortment of Artisan Pastries">
+                        <div class="menu-item-content">
+                            <h3>Seasonal Artisan Pastries</h3>
+                            <p>A rotating selection of exquisite pastries, crafted with seasonal fruits and unique flavor combinations.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="testimonials">
+            <div class="container">
+                <h2>What Our Customers Say</h2>
+                <div class="testimonial-grid">
+                    <div class="testimonial">
+                        <p>“The Daily Crumb is a true gem! Their sourdough is the best I've ever tasted, and their pastries are simply divine. It's become my go-to spot for fresh bread and a morning treat.”</p>
+                        <span class="customer-name">— Sarah L.</span>
+                    </div>
+                    <div class="testimonial">
+                        <p>“Every visit feels like a warm hug. The aroma alone is worth the trip, and their coffee paired with a croissant makes my day. A wonderful addition to the neighborhood!”</p>
+                        <span class="customer-name">— Mark T.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="contact">
+            <div class="container">
+                <h2>Get In Touch</h2>
+                <div class="contact-grid">
+                    <div class="contact-info">
+                        <h3>Visit Us</h3>
+                        <p><strong>Address:</strong> 123 Bakery Lane, Artisan Town, AT 12345</p>
+                        <p><strong>Phone:</strong> (555) 123-4567</p>
+                        <p><strong>Email:</strong> info@thedailycrumb.com</p>
+                        <h3>Opening Hours</h3>
+                        <p><strong>Monday - Friday:</strong> 7:00 AM - 5:00 PM</p>
+                        <p><strong>Saturday:</strong> 8:00 AM - 4:00 PM</p>
+                        <p><strong>Sunday:</strong> Closed</p>
+                    </div>
+                    <div class="contact-form">
+                        <h3>Send Us a Message</h3>
+                        <form action="#" method="POST">
+                            <input type="text" name="name" placeholder="Your Name" required>
+                            <input type="email" name="email" placeholder="Your Email" required>
+                            <textarea name="message" placeholder="Your Message" required></textarea>
+                            <button type="submit" class="button">Send Message</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2023 The Daily Crumb. All rights reserved.</p>
+            <div class="social-links">
+                <a href="#" aria-label="Facebook">FB</a>
+                <a href="#" aria-label="Instagram">IG</a>
+                <a href="#" aria-label="Twitter">TW</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const navLinks = document.querySelectorAll('nav a');
+
+            navLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault(); // Prevent default anchor click behavior
+
+                    const targetId = this.getAttribute('href'); // Get the href attribute
+                    const targetSection = document.querySelector(targetId); // Select the target section
+
+                    if (targetSection) {
+                        // Scroll smoothly to the target section
+                        targetSection.scrollIntoView({
+                            behavior: 'smooth'
+                        });
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

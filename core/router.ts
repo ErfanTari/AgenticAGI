@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { buildContext } from './context.js';
 import { executePlan, runPostFlightSynthesis, buildUserReport } from './executor.js';
-import { transparency } from './transparency.js';
+import { transparency, withSpan, getCurrentRequestId } from './transparency.js';
 import { localDateString } from './utils/date.js';
 import type { WorkingMemory } from './memory/working-memory.js';
 import { stripThinkingTags } from './llm.js';
@@ -563,7 +563,12 @@ async function writeCompletionMemory(
 async function runSimplePlan(
   plan: TaskPlan,
   llmHandler: LLMHandler,
+  parentCtx?: import('./transparency.js').SpanContext,
+  signal?: AbortSignal,
 ): Promise<{ reply: string; artifactContext?: ArtifactContext }> {
+  if (!parentCtx) transparency.emit({ type: 'orphan_span', data: { label: 'SimplePlan: run steps' } });
+  const effectiveRequestId = parentCtx?.requestId ?? getCurrentRequestId() ?? 'unknown';
+  return withSpan('SimplePlan: run steps', parentCtx, effectiveRequestId, async () => {
   const stepResults = new Map<string, string>();
   let lastOutput = '';
   let artifactContext: ArtifactContext | undefined;
@@ -571,6 +576,7 @@ async function runSimplePlan(
   transparency.emit({ type: 'route', data: { level: 'simple', reason: 'plan self-assessed as simple', path: 'simple_runner' } });
 
   for (const step of plan.steps) {
+    if (signal?.aborted) throw new DOMException('Aborted by user', 'AbortError');
     // Resolve {{template}} references from prior step outputs
     const resolvedInput = resolveTemplates(
       step.input as Record<string, unknown>,
@@ -602,6 +608,7 @@ async function runSimplePlan(
   }
 
   return { reply: lastOutput || 'Done.', artifactContext };
+  }); // end withSpan
 }
 
 /**
@@ -655,6 +662,8 @@ async function handleAgenticUnits(
   workingMemory?: WorkingMemory,
   _history?: Message[],
   constraints?: import('./types.js').UserConstraint[],
+  parentCtx?: import('./transparency.js').SpanContext,
+  signal?: AbortSignal,
 ): Promise<AgenticRouteResult> {
   const goalMessage = units.map(unit => unit.content).join('\n');
   const minOrder = Math.min(...units.map(unit => unit.order));
@@ -701,9 +710,9 @@ async function handleAgenticUnits(
     blockedSkillNames,
     workspaceFiles: workspaceFiles || undefined,
     recentArtifact: _lastSessionArtifact,
-    continuationContext: continuationContext || undefined,  // FIX 2: Inject continuation context
+    continuationContext: continuationContext || undefined,
     constraints: constraints ?? [],
-  }, llmHandler);
+  }, llmHandler, parentCtx, signal);
 
   if (plan.needsConfirmation) {
     const milestoneLines = (plan.milestones ?? []).map(milestone => `- ${milestone.title}: ${milestone.description}`);
@@ -744,7 +753,7 @@ async function handleAgenticUnits(
       const constraintBlock = (constraints ?? []).length > 0
         ? `\n\nCONSTRAINTS:\n${constraints!.map(c => `- [${c.type.toUpperCase()}] ${c.value}`).join('\n')}`
         : '';
-      const loopResult = await runQueryLoop(goalMessage + constraintBlock, llmHandler, workingMemory, _history);
+      const loopResult = await runQueryLoop(goalMessage + constraintBlock, llmHandler, workingMemory, _history, undefined, undefined, parentCtx, signal);
       if (loopResult.artifactContext) {
         _lastSessionArtifact = loopResult.artifactContext;
       }
@@ -777,7 +786,7 @@ async function handleAgenticUnits(
   // Route based on the plan's self-assessed complexity
   const isSimple = planComplexity === 'LOW' || planComplexity === 'MEDIUM';
   if (isSimple) {
-    const simpleResult = await runSimplePlan(plan, llmHandler);
+    const simpleResult = await runSimplePlan(plan, llmHandler, parentCtx, signal);
     if (simpleResult.artifactContext) {
       _lastSessionArtifact = simpleResult.artifactContext;
     }
@@ -787,7 +796,7 @@ async function handleAgenticUnits(
     };
   }
 
-  const execution = await executePlan(plan, llmHandler, workingMemory);
+  const execution = await executePlan(plan, llmHandler, workingMemory, parentCtx, signal);
   // Skip LLM synthesis call when executor already escalated (e.g. hard abort, too many failures)
   let verification: import('./schemas.js').VerificationResult;
   if (execution.escalated) {
@@ -825,7 +834,12 @@ export async function routeDecomposedUnits(
   llmHandler: LLMHandler,
   workingMemory?: WorkingMemory,
   constraints?: import('./types.js').UserConstraint[],
+  parentCtx?: import('./transparency.js').SpanContext,
+  signal?: AbortSignal,
 ): Promise<RouteExecutionResult> {
+  if (!parentCtx) transparency.emit({ type: 'orphan_span', data: { label: 'Route: dispatch units' } });
+  const effectiveRequestId = parentCtx?.requestId ?? getCurrentRequestId() ?? 'unknown';
+  return withSpan('Route: dispatch units', parentCtx, effectiveRequestId, async (ctx) => {
   const conversationalUnits = units.filter(unit => unit.route === 'conversational');
   const queryUnits = units.filter(unit => unit.route === 'query');
   const agenticUnits = units.filter(unit => unit.route === 'agentic');
@@ -857,6 +871,8 @@ export async function routeDecomposedUnits(
       workingMemory,
       history,
       constraints,
+      ctx,
+      signal,
     )
     : Promise.resolve(null);
 
@@ -877,6 +893,7 @@ export async function routeDecomposedUnits(
     execution: agenticExecution?.execution,
     verification: agenticExecution?.verification,
   };
+  }); // end withSpan
 }
 
 /**

@@ -47,11 +47,13 @@ const webSearchSkill: MCPSkill = {
       return { success: false, output: '', error: 'No search query provided' };
     }
 
+    const userSignal = input.__signal as AbortSignal | undefined;
     // Try Brave Search API first if key available
     const braveApiKey = process.env.BRAVE_SEARCH_API_KEY;
     if (braveApiKey) {
       try {
         const controller = new AbortController();
+        userSignal?.addEventListener('abort', () => controller.abort(userSignal.reason), { once: true });
         const timer = setTimeout(() => controller.abort(), 10000);
 
         const url = `${BRAVE_ENDPOINT}?q=${encodeURIComponent(query)}&count=5`;
@@ -98,6 +100,7 @@ const webSearchSkill: MCPSkill = {
 
     try {
       const controller = new AbortController();
+      userSignal?.addEventListener('abort', () => controller.abort(userSignal.reason), { once: true });
       const timer = setTimeout(() => controller.abort(), 5000);
 
       const response = await fetch(url, { signal: controller.signal });

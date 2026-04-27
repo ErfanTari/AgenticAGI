@@ -106,7 +106,9 @@ const webFetchSkill: MCPSkill = {
     }
 
     try {
+      const userSignal = input.__signal as AbortSignal | undefined;
       const controller = new AbortController();
+      userSignal?.addEventListener('abort', () => controller.abort(userSignal.reason), { once: true });
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
       const response = await fetch(url, {

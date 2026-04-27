@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { AgentResponse, Classification, DecompositionResult, DecomposedUnit, LLMHandler, Message } from './types.js';
 import { localDatePlusDays } from './utils/date.js';
 import { resolveQuery } from './resolver.js';
@@ -31,7 +32,7 @@ import { extractMemoryMetadata } from './memory/lifecycle.js';
 import { quickResolve } from './memory/quick-resolve.js';
 import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
 import type { TaskPlan } from './schemas.js';
-import { transparency, withRequestId } from './transparency.js';
+import { transparency, withRequestId, withSpan, truncate, type SpanContext } from './transparency.js';
 import { getMemoryMode, isMemoryFullyDisabled } from './memory-mode.js';
 import { runIntake } from './intake.js';
 import type { IntakeResult } from './intake.js';
@@ -1170,17 +1171,28 @@ function classifyConfirmationResponse(message: string): 'approve' | 'reject' | '
 export function processMessage(
   message: string,
   history: Message[],
-  options?: { llmHandler?: LLMHandler },
+  options?: { llmHandler?: LLMHandler; signal?: AbortSignal },
 ): Promise<AgentResponse> {
-  return withRequestId(() => _processMessageImpl(message, history, options));
+  const requestId = randomUUID();
+  return withRequestId(
+    () => withSpan(`request: ${truncate(message, 60)}`, undefined, requestId, (rootCtx) =>
+      _processMessageImpl(message, history, options, rootCtx),
+    ),
+    requestId,
+  );
 }
 
 async function _processMessageImpl(
   message: string,
   history: Message[],
-  options?: { llmHandler?: LLMHandler },
+  options?: { llmHandler?: LLMHandler; signal?: AbortSignal },
+  rootCtx?: SpanContext,
 ): Promise<AgentResponse> {
   isProcessingMessage = true;
+  if (options?.signal?.aborted) {
+    isProcessingMessage = false;
+    throw new DOMException('Aborted by user', 'AbortError');
+  }
   if (!isMemoryFullyDisabled()) recordActivity(); // Phase 16: track last activity for AutoDream idle detection
   transparency.emit({ type: 'memory_mode', data: { mode: getMemoryMode() } });
   let decomposition: DecompositionResult | null = null;
@@ -1188,7 +1200,12 @@ async function _processMessageImpl(
     // === FIX 0: Plan Confirmation Interceptor (step [0]) ===
     // Deterministic confirmation without LLM calls. Reads the user's raw message
     // and classifies it as approval, rejection, or ambiguous.
-    const handler = options?.llmHandler ?? callLLM;
+    const signal = options?.signal;
+    const baseLLM = options?.llmHandler ?? callLLM;
+    // Wrap the LLM handler to thread the abort signal through every call
+    const handler: LLMHandler = signal
+      ? (msgs, opts) => (baseLLM as typeof callLLM)(msgs, opts, signal)
+      : baseLLM;
     const currentPendingPlan = _getPendingConfirmationPlan();
     if (currentPendingPlan) {
       const findingsPrefix = await buildFindingsPrefix();
@@ -1323,7 +1340,7 @@ async function _processMessageImpl(
         const quickComplexity = await assessComplexity(message, { intent: 'planned_workflow', codes: [] }, handler);
         if (quickComplexity.level === 'LOW' || quickComplexity.level === 'MEDIUM') {
           transparency.emit({ type: 'route', data: { level: quickComplexity.level, reason: quickComplexity.reason, path: 'query_loop' } });
-          const loopResult = await runQueryLoop(message, handler, undefined, history);
+          const loopResult = await runQueryLoop(message, handler, undefined, history, undefined, undefined, rootCtx, signal);
           return {
             reply: findingsPrefix + loopResult.reply,
             intent: 'planned_workflow',
@@ -1424,7 +1441,7 @@ The memory entries provided above are confirmed to exist in the database. You MU
       const db = getDb();
       // Ensure memory agent is initialized (in case startAgent wasn't called)
       memoryAgent.init(db, handler);
-      intakeResult = await runIntake(message, db, handler);
+      intakeResult = await runIntake(message, db, handler, rootCtx);
       // Intake event is emitted inside runIntake — no duplicate emit here.
     } catch {
       // Intake is advisory — never block processing
@@ -1432,10 +1449,10 @@ The memory entries provided above are confirmed to exist in the database. You MU
 
     // Create fresh repair context for this message's decomposition
     const repairContext = { count: 0 };
-    decomposition = await decomposeMessage(message, handler, intakeResult?.resolvedContext, repairContext);
+    decomposition = await decomposeMessage(message, handler, intakeResult?.resolvedContext, repairContext, rootCtx);
 
     if (decomposition.units.length === 1 && GREETING_ONLY.test(decomposition.units[0].content)) {
-      const routed = await routeDecomposedUnits(decomposition.units, [], history, handler);
+      const routed = await routeDecomposedUnits(decomposition.units, [], history, handler, undefined, undefined, rootCtx, signal);
       return {
         reply: findingsPrefix + routed.reply,
         intent: 'greeting',
@@ -1523,7 +1540,7 @@ The memory entries provided above are confirmed to exist in the database. You MU
       }
     }
 
-    const routed = await routeDecomposedUnits(decomposition.units, unitResults, history, handler, workingMemory ?? undefined, intakeResult?.constraints ?? []);
+    const routed = await routeDecomposedUnits(decomposition.units, unitResults, history, handler, workingMemory ?? undefined, intakeResult?.constraints ?? [], rootCtx, signal);
 
     // FIX 0: If routing produced a plan that needs confirmation, store it and return the confirmation prompt
     if (routed.plan?.needsConfirmation && !routed.execution) {

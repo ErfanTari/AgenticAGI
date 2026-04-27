@@ -11,10 +11,11 @@ describe('Phase 16: QueryLoop repeated generated file guard', () => {
     runWithRetryMock.mockReset();
   });
 
-  it('does not execute generate_and_save_file twice for the same successful path', async () => {
+  it('auto-overwrites on second generate_and_save_file call for same path instead of blocking', async () => {
     const { runQueryLoop } = await import('../../core/query-loop.js');
 
-    runWithRetryMock.mockResolvedValueOnce({
+    // Both calls succeed (second one uses auto-overwrite)
+    runWithRetryMock.mockResolvedValue({
       success: true,
       output: 'Generated and saved mechanical_watch.py',
       retries: 0,
@@ -34,14 +35,15 @@ describe('Phase 16: QueryLoop repeated generated file guard', () => {
 
     const result = await runQueryLoop('Create a mechanical watch simulator in Python.', mockLLM as never);
 
-    expect(runWithRetryMock).toHaveBeenCalledTimes(1);
-    expect(runWithRetryMock).toHaveBeenCalledWith(
+    // Second call proceeds with overwrite:true instead of being blocked
+    expect(runWithRetryMock).toHaveBeenCalledTimes(2);
+    expect(runWithRetryMock).toHaveBeenNthCalledWith(
+      2,
       'generate_and_save_file',
-      expect.objectContaining({ path: 'mechanical_watch.py' }),
+      expect.objectContaining({ path: 'mechanical_watch.py', overwrite: true }),
       expect.any(Function),
     );
     expect(result.stoppedBecause).toBe('no_action');
     expect(result.reply).toContain('already been created');
-    expect(result.skillsUsed).toEqual(['generate_and_save_file']);
   });
 });

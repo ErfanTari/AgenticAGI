@@ -2,6 +2,7 @@
  * generate_and_save_file — self-contained file generation and write in one skill call.
  * Handles complete file generation from spec and writes to disk atomically.
  */
+import fs from 'node:fs';
 import { callLLM } from '../../llm.js';
 import { fetchByCode } from '../../memory/fetch.js';
 import { TOKEN_BUDGETS } from '../../../config/agent.config.js';
@@ -46,6 +47,37 @@ function htmlValidationErrors(v: HTMLValidationResult): string[] {
   if (!v.hasBody) errors.push('Missing <body> tag');
   if (!v.properlyClosed) errors.push('Missing </html> closing tag');
   return errors;
+}
+
+// ─── Repetition Detector ─────────────────────────────────────────────────────
+
+function detectRepetitionLoop(content: string): string | null {
+  const lines = content.split('\n');
+  if (lines.length < 20) return null;
+
+  // Count identical line occurrences
+  const freq = new Map<string, number>();
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.length < 10) continue; // skip blanks/short lines
+    freq.set(trimmed, (freq.get(trimmed) ?? 0) + 1);
+  }
+
+  let maxCount = 0;
+  let dominantLine = '';
+  for (const [line, count] of freq) {
+    if (count > maxCount) { maxCount = count; dominantLine = line; }
+  }
+
+  // Flag if a single line appears > 15 times OR comprises > 30% of non-trivial lines
+  const nonTrivialLines = [...freq.values()].reduce((s, c) => s + c, 0);
+  const ratio = nonTrivialLines > 0 ? maxCount / nonTrivialLines : 0;
+
+  if (maxCount > 15 || ratio > 0.3) {
+    return `Model repetition loop detected: line repeated ${maxCount}x (${Math.round(ratio * 100)}% of output). Sample: "${dominantLine.slice(0, 80)}"`;
+  }
+
+  return null;
 }
 
 // ─── Spec Resolution ─────────────────────────────────────────────────────────
@@ -227,6 +259,7 @@ const generateAndSaveFileSkill: MCPSkill = {
     const WORKSPACE_ROOT = nodePath.resolve(process.cwd(), 'workspace');
     const normalizedPath = pathValue.replace(/^\.\/+/, '').replace(/^\/?workspace\//, '');
     const absTarget = nodePath.resolve(WORKSPACE_ROOT, normalizedPath);
+    fs.mkdirSync(nodePath.dirname(absTarget), { recursive: true });
     const collision = resolveCollision(absTarget, { overwrite });
     const finalAbsPath = collision.finalPath;
     const finalRelPath = nodePath.relative(WORKSPACE_ROOT, finalAbsPath).split(nodePath.sep).join('/');
@@ -319,6 +352,15 @@ const generateAndSaveFileSkill: MCPSkill = {
         .replace(/\n?```\s*$/i, '')
         .trim();
 
+      // Repetition loop guard — catch model stuck in SVG/tag loop before writing garbage
+      const repetitionError = detectRepetitionLoop(content);
+      if (repetitionError) {
+        lastError = repetitionError;
+        previousOutput = content;
+        console.warn(`[generate_and_save_file] attempt ${attempt} repetition loop: ${repetitionError}`);
+        continue;
+      }
+
       // For HTML: validate structure
       if (format === 'html') {
         const validation = validateHTML(content);
@@ -344,6 +386,27 @@ const generateAndSaveFileSkill: MCPSkill = {
               ? `Generated and saved ${finalRelPath} (renamed from ${pathValue} to avoid collision)`
               : `Generated and saved ${finalRelPath}`,
           };
+        }
+
+        // If the only error is a missing closing tag, patch it rather than re-generating.
+        // The model hit its token limit mid-output — the content is otherwise valid.
+        const onlyMissingClose = errors.length === 1 && errors[0].includes('Missing </html>');
+        if (onlyMissingClose) {
+          const hasBody = /<\/body>/i.test(content);
+          content = content.trimEnd() + (hasBody ? '' : '\n</body>') + '\n</html>';
+          console.log(`[generate_and_save_file] patched missing </html> closing tag`);
+          // re-validate after patch
+          const v2 = validateHTML(content);
+          const e2 = htmlValidationErrors(v2);
+          if (e2.length === 0) {
+            const writeResult = await runSkill('file_writer', { path: finalRelPath, content, mode: input.mode, overwrite: true });
+            if (!writeResult.success) return writeResult;
+            return {
+              success: true,
+              output: `Generated and saved ${finalRelPath} (closing tag patched)`,
+              display: `Generated and saved ${finalRelPath} (closing tag patched)`,
+            };
+          }
         }
 
         // Invalid — set up for retry
