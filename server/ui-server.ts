@@ -84,7 +84,8 @@ type ServerMessage =
   | { type: 'span_event'; requestId: string; spanId: string; label: string; parentSpanId?: string; durationMs?: number; status?: string }
   | { type: 'stop_ack'; stopped: boolean; requestId?: string; reason?: string }
   | { type: 'permission_request'; skill: string; required: string; reason: string }
-  | { type: 'permission_resolved'; granted: boolean };
+  | { type: 'permission_resolved'; granted: boolean }
+  | { type: 'diag_ready'; requestId: string; content: string; path: string };
 
 interface TraceNode {
   spanId: string;
@@ -558,6 +559,12 @@ function handleTransparencyEvent(connection: ClientConnection, event: Transparen
         status: d.status,
       });
     }
+    return;
+  }
+
+  if (event.type === 'diag_ready') {
+    const d = event.data as { requestId: string; path: string; content: string };
+    sendJson(connection, { type: 'diag_ready', requestId: d.requestId, content: d.content, path: d.path });
     return;
   }
 

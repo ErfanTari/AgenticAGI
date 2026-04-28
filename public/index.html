@@ -1743,9 +1743,10 @@
           <div id="tokenCounter" class="token-counter hidden" title="Session token usage">
             <span id="tokenIn" class="token-val">0</span><span class="token-sep">↑</span><span id="tokenOut" class="token-val">0</span><span class="token-sep">↓</span><span id="tokenCost" class="token-cost">$0.0000</span>
           </div>
-          <button id="clear-log-btn" class="btn btn-ghost" type="button" style="font-size:10px;padding:3px 8px;">Clear</button>
-          <button id="copy-log-btn" class="btn btn-ghost" type="button" style="font-size:10px;padding:3px 8px;">Copy</button>
-          <button id="copy-details-btn" class="btn btn-ghost" type="button" style="font-size:10px;padding:3px 8px;" title="Copy full JSON envelopes">JSON</button>
+          <button id="clear-log-btn" class="btn btn-ghost" type="button" style="font-size:9px;padding:2px 7px;">Clear</button>
+          <button id="copy-log-btn" class="btn btn-ghost" type="button" style="font-size:9px;padding:2px 7px;">Copy</button>
+          <button id="copy-details-btn" class="btn btn-ghost" type="button" style="font-size:9px;padding:2px 7px;" title="Copy full JSON envelopes">JSON</button>
+          <button id="copy-diag-btn" class="btn btn-ghost" type="button" style="font-size:9px;padding:2px 7px;" title="Copy last request .diag summary">Diag</button>
           <button id="closeLogsButton" class="btn btn-ghost" type="button" title="Close logs">✕</button>
         </div>
       </div>
@@ -2092,6 +2093,7 @@
     elements.clearLogButton.addEventListener('click', clearTransparencyLog);
     elements.copyLogButton.addEventListener('click', copyTransparencyLog);
     document.getElementById('copy-details-btn').addEventListener('click', copyDetailedTransparencyLog);
+    document.getElementById('copy-diag-btn').addEventListener('click', copyLastDiag);
     elements.chatInput.addEventListener('input', () => {
       autoResize();
       syncComposer();
@@ -2609,6 +2611,14 @@
           return;
         }
 
+        if (payload.type === 'diag_ready') {
+          window.__lastDiag = payload.content;
+          window.__lastDiagPath = payload.path;
+          const btn = document.getElementById('copy-diag-btn');
+          if (btn) { btn.style.fontWeight = 'bold'; setTimeout(() => { btn.style.fontWeight = ''; }, 3000); }
+          return;
+        }
+
         if (payload.type === 'stop_ack') {
           if (!payload.stopped) {
             state.stopping = false;
@@ -3121,6 +3131,20 @@
         if (btn) btn.textContent = 'Copied!';
         toast(`${envelopes.length} events copied (${filter})`, 'success');
         setTimeout(() => { if (btn) btn.textContent = 'JSON'; }, 1500);
+      }).catch(() => { toast('Copy failed', 'error'); });
+    }
+
+    function copyLastDiag() {
+      const content = window.__lastDiag;
+      const btn = document.getElementById('copy-diag-btn');
+      if (!content) {
+        toast('No .diag available yet — run a request first', 'info');
+        return;
+      }
+      copyTextToClipboard(content).then(() => {
+        if (btn) btn.textContent = 'Copied!';
+        toast('Diag summary copied', 'success');
+        setTimeout(() => { if (btn) btn.textContent = 'Diag'; }, 1500);
       }).catch(() => { toast('Copy failed', 'error'); });
     }
 

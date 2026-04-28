@@ -287,5 +287,7 @@ export function startDiagSession(requestId: string): () => Promise<void> {
     await fs.mkdir(path.dirname(outPath), { recursive: true });
     await fs.writeFile(outPath, text, 'utf-8');
     active.delete(requestId);
+    // Notify any transparency subscribers (e.g. ui-server) that the diag is ready
+    transparency.emit({ type: 'diag_ready', data: { requestId, path: outPath, content: text } });
   };
 }

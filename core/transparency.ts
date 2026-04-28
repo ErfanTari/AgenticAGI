@@ -68,6 +68,7 @@ export type TransparencyEvent =
   | { type: 'query_loop_end'; data: { reason: string; iterations: number } }
   | { type: 'query_loop_aborted'; data: { iteration: number } }
   | { type: 'query_loop_repair_loop_detected'; data: { consecutiveRepairCount: number; action: string } }
+  | { type: 'diag_ready'; data: { requestId: string; path: string; content: string } }
   // Phase 16 Usability — routing decision
   | { type: 'route'; data: { level: string; reason: string; path: string } }
   // Fix 5 — decomposition repair telemetry
