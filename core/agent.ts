@@ -387,7 +387,8 @@ function buildSkillCompatibilityClassification(message: string): Classification 
     return { intent: 'skill', codes: [], skill: 'run_bash', skillInput: { command } };
   }
 
-  if (matchesAny(message, WEB_SEARCH_PATTERNS)) {
+  const WEB_SEARCH_AGENTIC_GUARD = /\b(download|save|fetch|catalog|catalogue|collect|scrape|store|grab)\b/i;
+  if (matchesAny(message, WEB_SEARCH_PATTERNS) && !WEB_SEARCH_AGENTIC_GUARD.test(message)) {
     return {
       intent: 'skill',
       codes: [],

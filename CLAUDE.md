@@ -576,3 +576,5 @@ Execution is NOT blocked — the event is a regression sentinel for tests.
 | `context-diet-complete` | Token-efficient execution: one-liner skill list, prompt budget system, signal-gated memory reads, sliding history window, sub-agent primitive, complexity-scaled iteration caps, hard budget guardrails |
 | `sprint-d1-prefix-cache-complete` | LM Studio KV cache prefix stability: stable system prompts, goal/index in user `<context>` block, `cache_prompt:true` in request bodies, `llm_cache_metric` events, session seen-set |
 | `sprint-e-cc-parity-complete` | CC-adopted safety features: read-before-write + mtime guard (file_writer), offset/limit pagination (file_reader, glob), `description` required field + expanded Zsh blocklist (run_bash), options[] array (request_user_input) |
+| `plan-step-limit-fix-complete` | Raised planner step cap 8→30, integrity-warning escalation to HIGH |
+| `queryloop-webdownload-complete` | Multi-target web-download hardening: batch gather+download, file integrity check (200 KB floor), flipbook blocklist, direct-URL detection, context discipline rules |

@@ -130,3 +130,52 @@ The following skills are available (name — purpose):
 
 If you need the full parameter schema for a skill before calling it, use:
   {"action":"skill_schema","input":{"name":"<skill_name>"}}
+
+## Multi-Target Web-Work Rules
+
+Apply these rules whenever the goal contains multiple named targets that each require a web search AND a file download (e.g. "download catalogs for brand A, B, C, D").
+
+### Phase 1 — Gather (search only, no downloads yet)
+1. Issue one `web_search` per target using the query pattern:
+   `<brand> catalog filetype:pdf` OR `site:<brand-domain> catalog pdf`
+2. From each result set, extract the **best candidate direct PDF URL** — a URL that ends in `.pdf` or whose anchor text / description explicitly says "Download PDF".
+3. If no direct PDF URL found in first search, try one fallback search:
+   `intitle:"index of" "<brand>" catalog pdf`
+4. Record all candidate URLs in a STATUS table:
+   `STATUS: found=[] pending=[...] candidates={brand: url}`
+5. Do NOT call `run_bash` during Phase 1. Do NOT call `web_fetch` on brand homepages — homepage fetches waste iterations without yielding download URLs.
+6. Move to Phase 2 only once you have a candidate URL for every target, OR have exhausted 2 searches per target.
+
+### Phase 2 — Batch Download (one bash script)
+1. Build a **single** `run_bash` call that:
+   - Creates the output directory once (`mkdir -p`)
+   - Downloads all candidate URLs with `curl` in sequence
+   - Uses the header: `-H "User-Agent: Mozilla/5.0 (compatible)"` on every curl call
+   - Uses `--max-time 30` and `-L` (follow redirects) flags
+   - After each download, immediately checks file size with `wc -c` and content type with `file --brief`
+   - Prints a one-line summary per file: `BRAND | STATUS | SIZE_KB | PATH`
+2. File integrity rule embedded in the script:
+   ```bash
+   SIZE=$(wc -c < "$OUTFILE")
+   if [ "$SIZE" -lt 204800 ]; then
+     echo "$BRAND | INVALID (${SIZE}B — likely HTML redirect, not a PDF) | $SIZE | $OUTFILE"
+     rm -f "$OUTFILE"
+   else
+     echo "$BRAND | OK | $((SIZE/1024))KB | $OUTFILE"
+   fi
+   ```
+3. The bash script returns **only the summary table** to the agent — not the full curl output. This prevents context ballooning.
+4. After the script completes, parse the summary. For any `INVALID` brand, attempt one retry with `web_search` using `"<brand>" general catalog PDF direct download -site:issuu.com -site:pubhtml5.com`. If a direct `.pdf` URL is found, curl it individually with the same integrity check.
+
+### Direct URL Detection
+Before issuing any `curl` download, verify the URL is a direct file:
+- URL ends in `.pdf` → proceed
+- URL contains `/download/` or `/assets/` or `/files/` and no `.html` → likely direct, proceed with integrity check
+- URL leads to `issuu.com`, `pubhtml5.com`, `fliphtml5.com`, `yumpu.com`, `calameo.com` → these are JS flipbook viewers. `curl` cannot extract the PDF. Skip and search for an alternative source.
+- URL contains `javascript:` → skip immediately
+- When in doubt: `curl -sI <URL> | grep -i content-type` to inspect headers before downloading
+
+### Context Discipline
+- After Phase 2 completes, emit one consolidated STATUS block covering all brands.
+- Do not emit individual per-brand STATUS blocks mid-loop during Phase 1 — consolidate.
+- If the iteration count exceeds 15 without completing Phase 2, stop searching for missing brands and report what was found vs. not found, with the best known URLs for missing brands.
