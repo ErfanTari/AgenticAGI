@@ -578,3 +578,4 @@ Execution is NOT blocked — the event is a regression sentinel for tests.
 | `sprint-e-cc-parity-complete` | CC-adopted safety features: read-before-write + mtime guard (file_writer), offset/limit pagination (file_reader, glob), `description` required field + expanded Zsh blocklist (run_bash), options[] array (request_user_input) |
 | `plan-step-limit-fix-complete` | Raised planner step cap 8→30, integrity-warning escalation to HIGH |
 | `queryloop-webdownload-complete` | Multi-target web-download hardening: batch gather+download, file integrity check (200 KB floor), flipbook blocklist, direct-URL detection, context discipline rules |
+| `queryloop-bash-split-complete` | Bash payload split (one run_bash per brand), json-repair circuit breaker (3-strike recovery injection), previous sprint Phase 2 rule corrected |

@@ -487,6 +487,9 @@ export async function runQueryLoop(
 
   // Fix 1: Per-iteration format repair counter (max 2 repairs before giving up)
   const formatRepairCounts = new Map<string, number>();
+  // Consecutive repair circuit breaker: tracks how many iterations in a row ended in any repair path
+  let consecutiveRepairCount = 0;
+  let lastRepairAction = '';
 
   const skillsUsed: string[] = [];
   const filesWritten: string[] = [];  // track files generated this session
@@ -560,6 +563,11 @@ export async function runQueryLoop(
     toolCall = allToolCalls.length > 0 ? allToolCalls[0] : null;
     } // end LLM branch
 
+    // Successful parse — reset consecutive repair counter
+    if (toolCall) {
+      consecutiveRepairCount = 0;
+    }
+
     // Emit narration if model prefixed the JSON with prose
     if (toolCall) {
       const firstBrace = reply.indexOf('{');
@@ -578,6 +586,7 @@ export async function runQueryLoop(
         const repairCount = (formatRepairCounts.get(sig) ?? 0) + 1;
         formatRepairCounts.set(sig, repairCount);
         if (repairCount <= 2) {
+          consecutiveRepairCount++;
           transparency.emit({ type: 'query_loop_narration', data: { narration: `[format-repair ${repairCount}/2] malformed tagged tool call detected`, iteration } });
           messages.push({ role: 'assistant', content: reply });
           messages.push({
@@ -602,6 +611,27 @@ export async function runQueryLoop(
         const sig = replySignature(reply);
         const repairCount = (formatRepairCounts.get(sig) ?? 0) + 1;
         formatRepairCounts.set(sig, repairCount);
+        consecutiveRepairCount++;
+        // Extract action name from partial JSON for circuit breaker tracking
+        const actionMatch = reply.match(/"action"\s*:\s*"([^"]+)"/);
+        if (actionMatch) lastRepairAction = actionMatch[1];
+
+        // 3-strike circuit breaker: model is stuck regenerating the same oversized script
+        if (consecutiveRepairCount >= 3) {
+          transparency.emit({ type: 'query_loop_repair_loop_detected', data: { consecutiveRepairCount, action: lastRepairAction } });
+          messages.push({ role: 'assistant', content: reply });
+          messages.push({
+            role: 'user',
+            content: [
+              '[SYSTEM RECOVERY] Your last command was too long to serialize. You must split it into smaller steps — one target per run_bash call — and retry. Do not regenerate the same large script.',
+              '',
+              goalBlock(iteration + 1, filesWritten),
+            ].join('\n'),
+          });
+          consecutiveRepairCount = 0;
+          continue;
+        }
+
         transparency.emit({ type: 'query_loop_narration', data: { narration: `[json-repair ${repairCount}/2] incomplete tool call detected`, iteration } });
         const escalation = repairCount >= 2
           ? 'You have repeated an incomplete JSON tool call. Do NOT truncate. Emit exactly one complete JSON object with all closing braces.'
@@ -626,6 +656,7 @@ export async function runQueryLoop(
         const repairCount = (formatRepairCounts.get(sig) ?? 0) + 1;
         formatRepairCounts.set(sig, repairCount);
         if (repairCount <= 2) {
+          consecutiveRepairCount++;
           transparency.emit({ type: 'query_loop_narration', data: { narration: `[intent-repair ${repairCount}/2] tool intent without valid JSON`, iteration } });
           messages.push({ role: 'assistant', content: reply });
           messages.push({

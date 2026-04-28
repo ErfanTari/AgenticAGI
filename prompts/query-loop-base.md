@@ -146,26 +146,34 @@ Apply these rules whenever the goal contains multiple named targets that each re
 5. Do NOT call `run_bash` during Phase 1. Do NOT call `web_fetch` on brand homepages — homepage fetches waste iterations without yielding download URLs.
 6. Move to Phase 2 only once you have a candidate URL for every target, OR have exhausted 2 searches per target.
 
-### Phase 2 — Batch Download (one bash script)
-1. Build a **single** `run_bash` call that:
-   - Creates the output directory once (`mkdir -p`)
-   - Downloads all candidate URLs with `curl` in sequence
-   - Uses the header: `-H "User-Agent: Mozilla/5.0 (compatible)"` on every curl call
-   - Uses `--max-time 30` and `-L` (follow redirects) flags
-   - After each download, immediately checks file size with `wc -c` and content type with `file --brief`
-   - Prints a one-line summary per file: `BRAND | STATUS | SIZE_KB | PATH`
-2. File integrity rule embedded in the script:
-   ```bash
-   SIZE=$(wc -c < "$OUTFILE")
-   if [ "$SIZE" -lt 204800 ]; then
-     echo "$BRAND | INVALID (${SIZE}B — likely HTML redirect, not a PDF) | $SIZE | $OUTFILE"
-     rm -f "$OUTFILE"
-   else
-     echo "$BRAND | OK | $((SIZE/1024))KB | $OUTFILE"
-   fi
-   ```
-3. The bash script returns **only the summary table** to the agent — not the full curl output. This prevents context ballooning.
-4. After the script completes, parse the summary. For any `INVALID` brand, attempt one retry with `web_search` using `"<brand>" general catalog PDF direct download -site:issuu.com -site:pubhtml5.com`. If a direct `.pdf` URL is found, curl it individually with the same integrity check.
+### Phase 2 — Sequential Per-Brand Download
+**CRITICAL: Never generate one bash script for all brands at once. One `run_bash` call per brand.**
+
+For each brand that has a confirmed candidate URL (from Phase 1), issue one `run_bash` call:
+
+```bash
+BRAND="<BrandName>"
+OUTFILE="workspace/Catalogs/<BrandName>_catalog.pdf"
+URL="<direct-pdf-url>"
+curl -s -L --max-time 30 \
+  -H "User-Agent: Mozilla/5.0 (compatible)" \
+  -o "$OUTFILE" "$URL"
+SIZE=$(wc -c < "$OUTFILE" 2>/dev/null || echo 0)
+if [ "$SIZE" -lt 204800 ]; then
+  echo "INVALID|${BRAND}|${SIZE}B|HTML redirect or cookie wall — not a PDF"
+  rm -f "$OUTFILE"
+else
+  echo "OK|${BRAND}|$((SIZE/1024))KB|$OUTFILE"
+fi
+```
+
+Rules:
+1. Each script is self-contained: BRAND, OUTFILE, URL, curl, SIZE check, echo result — nothing else.
+2. Do NOT repeat `mkdir -p workspace/Catalogs` inside each script. Create the directory once in a separate `run_bash` before starting downloads.
+3. Do NOT chain multiple brands with `&&` or `;` in one command. One brand per call.
+4. If the brand's URL was not confirmed in Phase 1, skip it and note it as `SKIPPED|BrandName|no direct PDF URL found`.
+5. After all per-brand scripts complete, emit one consolidated STATUS block:
+   `FINAL_STATUS: ok=[...] invalid=[...] skipped=[...]`
 
 ### Direct URL Detection
 Before issuing any `curl` download, verify the URL is a direct file:

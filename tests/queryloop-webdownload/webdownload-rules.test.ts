@@ -14,8 +14,9 @@ describe('query-loop-base.md web-download hardening rules', () => {
     expect(prompt).toContain('Phase 1 — Gather');
   });
 
-  it('contains Phase 2 Batch Download instruction', () => {
-    expect(prompt).toContain('Phase 2 — Batch Download');
+  it('contains Phase 2 download instruction', () => {
+    // Heading was updated to Sequential Per-Brand Download in queryloop-bash-split sprint
+    expect(prompt).toContain('Phase 2 —');
   });
 
   it('contains filetype:pdf search operator instruction', () => {
@@ -38,7 +39,8 @@ describe('query-loop-base.md web-download hardening rules', () => {
     expect(prompt).toContain('User-Agent: Mozilla/5.0');
   });
 
-  it('contains context ballooning discipline rule', () => {
-    expect(prompt).toContain('context ballooning');
+  it('contains context discipline section', () => {
+    // "context ballooning" phrase moved; check for the discipline section header instead
+    expect(prompt).toContain('Context Discipline');
   });
 });
