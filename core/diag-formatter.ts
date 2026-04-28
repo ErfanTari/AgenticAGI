@@ -167,7 +167,10 @@ export function startDiagSession(requestId: string): () => Promise<void> {
       }
       case 'query_loop_start': {
         const d = e.data as { goal?: string };
-        if (d.goal && !state.goal) state.goal = trunc(d.goal, 120);
+        // Always prefer the actual task goal over the span label (span may capture a permission reply)
+        if (d.goal) state.goal = trunc(d.goal, 120);
+        // Auto-detect engine when route event is absent (e.g. permission-resume flows)
+        if (!state.engine) state.engine = 'query-loop';
         break;
       }
       case 'query_loop_iteration': {

@@ -149,26 +149,27 @@ Apply these rules whenever the goal contains multiple named targets that each re
 ### Phase 2 — Sequential Per-Brand Download
 **CRITICAL: Never generate one bash script for all brands at once. One `run_bash` call per brand.**
 
-For each brand that has a confirmed candidate URL (from Phase 1), issue one `run_bash` call:
+For each brand that has a confirmed candidate URL (from Phase 1), issue one `run_bash` call.
+
+**SECURITY RULE: Do NOT use shell variable substitution (`${VAR}`, `$VAR`, `$((expr))`). Hardcode the brand name, file path, and URL directly in the command. This is required — variable substitution is blocked.**
+
+Use this exact pattern (replace `<BrandName>` and `<URL>` with literal values):
 
 ```bash
-BRAND="<BrandName>"
-OUTFILE="workspace/Catalogs/<BrandName>_catalog.pdf"
-URL="<direct-pdf-url>"
-curl -s -L --max-time 30 \
-  -H "User-Agent: Mozilla/5.0 (compatible)" \
-  -o "$OUTFILE" "$URL"
-SIZE=$(wc -c < "$OUTFILE" 2>/dev/null || echo 0)
-if [ "$SIZE" -lt 204800 ]; then
-  echo "INVALID|${BRAND}|${SIZE}B|HTML redirect or cookie wall — not a PDF"
-  rm -f "$OUTFILE"
-else
-  echo "OK|${BRAND}|$((SIZE/1024))KB|$OUTFILE"
-fi
+curl -s -L --max-time 30 -H "User-Agent: Mozilla/5.0 (compatible)" -o "workspace/Catalogs/<BrandName>_catalog.pdf" "<URL>"
+SIZE=$(wc -c < "workspace/Catalogs/<BrandName>_catalog.pdf" 2>/dev/null || echo 0)
+if [ "$SIZE" -lt 204800 ]; then echo "INVALID|<BrandName>|not a PDF"; rm -f "workspace/Catalogs/<BrandName>_catalog.pdf"; else echo "OK|<BrandName>|workspace/Catalogs/<BrandName>_catalog.pdf"; fi
+```
+
+CORRECT example for neolith:
+```bash
+curl -s -L --max-time 30 -H "User-Agent: Mozilla/5.0 (compatible)" -o "workspace/Catalogs/neolith_catalog.pdf" "https://example.com/neolith.pdf"
+SIZE=$(wc -c < "workspace/Catalogs/neolith_catalog.pdf" 2>/dev/null || echo 0)
+if [ "$SIZE" -lt 204800 ]; then echo "INVALID|neolith|not a PDF"; rm -f "workspace/Catalogs/neolith_catalog.pdf"; else echo "OK|neolith|workspace/Catalogs/neolith_catalog.pdf"; fi
 ```
 
 Rules:
-1. Each script is self-contained: BRAND, OUTFILE, URL, curl, SIZE check, echo result — nothing else.
+1. Hardcode brand name and path as literal strings — no shell variables.
 2. Do NOT repeat `mkdir -p workspace/Catalogs` inside each script. Create the directory once in a separate `run_bash` before starting downloads.
 3. Do NOT chain multiple brands with `&&` or `;` in one command. One brand per call.
 4. If the brand's URL was not confirmed in Phase 1, skip it and note it as `SKIPPED|BrandName|no direct PDF URL found`.
