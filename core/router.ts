@@ -15,7 +15,7 @@ import { getActivePermissionMode } from './permission.js';
 import { isMemoryDisabled } from './memory-flag.js';
 import { runSkill } from './skills/runner.js';
 import { memoryAgent } from './memory/memory-agent.js';
-import { type ArtifactContext, runQueryLoop } from './query-loop.js';
+import { type ArtifactContext, runQueryLoop, COMPLEXITY_ITERATION_CAPS } from './query-loop.js';
 import { PATHS } from '../config/agent.config.js';
 import { runWithRetry } from './react.js';
 import { resolveTemplates } from './planner.js';
@@ -753,7 +753,8 @@ async function handleAgenticUnits(
       const constraintBlock = (constraints ?? []).length > 0
         ? `\n\nCONSTRAINTS:\n${constraints!.map(c => `- [${c.type.toUpperCase()}] ${c.value}`).join('\n')}`
         : '';
-      const loopResult = await runQueryLoop(goalMessage + constraintBlock, llmHandler, workingMemory, _history, undefined, undefined, parentCtx, signal);
+      const codingCap = COMPLEXITY_ITERATION_CAPS[(plan.complexity ?? 'LOW') as keyof typeof COMPLEXITY_ITERATION_CAPS] ?? COMPLEXITY_ITERATION_CAPS['LOW'];
+      const loopResult = await runQueryLoop(goalMessage + constraintBlock, llmHandler, workingMemory, _history, undefined, { maxIterationsOverride: codingCap }, parentCtx, signal);
       if (loopResult.artifactContext) {
         _lastSessionArtifact = loopResult.artifactContext;
       }
