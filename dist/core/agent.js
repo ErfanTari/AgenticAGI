@@ -8,7 +8,7 @@ import { getSkillsForIntent } from './skills/registry.js';
 import { decomposeMessage, isLikelyCompoundMessage } from './decomposition.js';
 import { routeDecomposedUnits, executeConfirmedPlan } from './router.js';
 import { assessComplexity } from './planner.js';
-import { runQueryLoop } from './query-loop.js';
+import { runQueryLoop, COMPLEXITY_ITERATION_CAPS } from './query-loop.js';
 import { searchMemoryForUnits } from './memory/unit-search.js';
 import { runWithRetry } from './react.js';
 import { addRelationship, fetchByCode, getEntryByCode, hybridSearch, upsertEntry, savePendingPlan, clearPendingPlan, loadPendingUserInput, clearPendingUserInput, loadPendingPermissionRequest, clearPendingPermissionRequest, } from './memory/mod.js';
@@ -22,6 +22,7 @@ import { extractMemoryMetadata } from './memory/lifecycle.js';
 import { quickResolve } from './memory/quick-resolve.js';
 import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
 import { transparency, withRequestId, withSpan, truncate } from './transparency.js';
+import { startDiagSession } from './diag-formatter.js';
 import { getMemoryMode, isMemoryFullyDisabled } from './memory-mode.js';
 import { runIntake } from './intake.js';
 import { createWorkingMemory, loadWorkingMemory } from './memory/working-memory.js';
@@ -1061,7 +1062,8 @@ function classifyConfirmationResponse(message) {
 }
 export function processMessage(message, history, options) {
     const requestId = randomUUID();
-    return withRequestId(() => withSpan(`request: ${truncate(message, 60)}`, undefined, requestId, (rootCtx) => _processMessageImpl(message, history, options, rootCtx)), requestId);
+    const flushDiag = startDiagSession(requestId);
+    return withRequestId(() => withSpan(`request: ${truncate(message, 60)}`, undefined, requestId, (rootCtx) => _processMessageImpl(message, history, options, rootCtx)), requestId).finally(() => flushDiag());
 }
 async function _processMessageImpl(message, history, options, rootCtx) {
     isProcessingMessage = true;
@@ -1151,7 +1153,7 @@ async function _processMessageImpl(message, history, options, rootCtx) {
                     const findingsPrefix = await buildFindingsPrefix();
                     // Auto-resume the query-loop if the original goal was saved with the permission request
                     if (pendingPerm.goal) {
-                        const loopResult = await runQueryLoop(pendingPerm.goal, handler, undefined, history, undefined, undefined, rootCtx, signal);
+                        const loopResult = await runQueryLoop(pendingPerm.goal, handler, undefined, history, undefined, { maxIterationsOverride: COMPLEXITY_ITERATION_CAPS['MEDIUM'] }, rootCtx, signal);
                         return {
                             reply: findingsPrefix + loopResult.reply,
                             intent: 'planned_workflow',
@@ -1249,7 +1251,7 @@ async function _processMessageImpl(message, history, options, rootCtx) {
                 const quickComplexity = await assessComplexity(message, { intent: 'planned_workflow', codes: [] }, handler);
                 if (quickComplexity.level === 'LOW' || quickComplexity.level === 'MEDIUM') {
                     transparency.emit({ type: 'route', data: { level: quickComplexity.level, reason: quickComplexity.reason, path: 'query_loop' } });
-                    const loopResult = await runQueryLoop(message, handler, undefined, history, undefined, undefined, rootCtx, signal);
+                    const loopResult = await runQueryLoop(message, handler, undefined, history, undefined, { maxIterationsOverride: COMPLEXITY_ITERATION_CAPS[quickComplexity.level] }, rootCtx, signal);
                     return {
                         reply: findingsPrefix + loopResult.reply,
                         intent: 'planned_workflow',

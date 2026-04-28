@@ -162,10 +162,12 @@ export function stripThinkingTags(text: string): string {
   // 1. Explicit reasoning block tags (all models)
   result = result.replace(/<think>[\s\S]*?<\/think>/gi, '');
   result = result.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
+  result = result.replace(/<thinking>[\s\S]*?<\/thinking>/gi, ''); // Qwen/DeepSeek variant
   result = result.replace(/<\|im_start\|>[\s\S]*?<\|im_end\|>/g, '');
   // Orphaned opening tags
   result = result.replace(/<think>[\s\S]*/gi, '');
   result = result.replace(/<thought>[\s\S]*/gi, '');
+  result = result.replace(/<thinking>[\s\S]*/gi, '');
 
   // 1b. Gemma 4 thinking format: <|channel>thought\n[reasoning]<channel|>
   result = result.replace(/<\|channel>thought\n[\s\S]*?<channel\|>/g, '');
@@ -619,6 +621,8 @@ export async function callLLM(
       if (inT > 0 || outT > 0) recordTokens(inT, outT);
       transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
       const stripped = stripThinkingTags(raw);
+      const bytesRemoved = raw.length - stripped.length;
+      if (bytesRemoved > 0) transparency.emit({ type: 'thinking_tag_stripped', data: { bytesRemoved } });
       transparency.emit({ type: 'llm_stripped', data: { stripped } });
       return stripped;
     } catch (err: unknown) {
@@ -642,6 +646,8 @@ export async function callLLM(
       if (inT > 0 || outT > 0) recordTokens(inT, outT);
       transparency.emit({ type: 'llm_raw', data: { raw, ms: elapsed } });
       const stripped = stripThinkingTags(raw);
+      const bytesRemovedFb = raw.length - stripped.length;
+      if (bytesRemovedFb > 0) transparency.emit({ type: 'thinking_tag_stripped', data: { bytesRemoved: bytesRemovedFb } });
       transparency.emit({ type: 'llm_stripped', data: { stripped } });
       return stripped;
     } catch (err: unknown) {

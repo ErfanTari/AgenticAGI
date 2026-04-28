@@ -1,0 +1,24 @@
+ZARABAN DIAG v1
+===============
+id:       612a6cc0
+goal:     what is 2+2
+engine:   (unknown) | (unknown)
+outcome:  (unknown)
+duration: 1ms
+tokens:   in=0 out=0 cost=$0.0000
+
+ITERATIONS (0 total)
+──────────────────────
+  (none)
+
+MILESTONES
+──────────
+  (none)
+
+REPAIRS/ANOMALIES
+─────────────────
+  (none)
+
+ERRORS
+──────
+  (none)

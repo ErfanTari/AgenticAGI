@@ -1,0 +1,24 @@
+ZARABAN DIAG v1
+===============
+id:       bd843bdb
+goal:     Benchmark task: create a complete single-file bakery websit…
+engine:   (unknown) | (unknown)
+outcome:  (unknown)
+duration: 8362ms
+tokens:   in=1656 out=296 cost=$0.0094
+
+ITERATIONS (0 total)
+──────────────────────
+  (none)
+
+MILESTONES
+──────────
+  (none)
+
+REPAIRS/ANOMALIES
+─────────────────
+  (none)
+
+ERRORS
+──────
+  (none)

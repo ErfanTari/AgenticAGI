@@ -92,6 +92,28 @@ class SessionCache {
   size(): number {
     return this.entries.size;
   }
+
+  // ── Skill-call history (for read-before-edit gate) ──────────────────────────
+
+  private skillHistory: Array<{ skill: string; args: Record<string, unknown> }> = [];
+  private readonly SKILL_HISTORY_MAX = 50;
+
+  recordSkillCall(skill: string, args: Record<string, unknown>): void {
+    this.skillHistory.push({ skill, args });
+    if (this.skillHistory.length > this.SKILL_HISTORY_MAX) {
+      this.skillHistory.shift();
+    }
+  }
+
+  /** Return the last `turnsBack` skill calls matching any of the given skill names. */
+  getRecentSkillResults(skillNames: string[], turnsBack: number): Array<{ skill: string; args: Record<string, unknown> }> {
+    const recent = this.skillHistory.slice(-turnsBack);
+    return recent.filter(r => skillNames.includes(r.skill));
+  }
+
+  clearSkillHistory(): void {
+    this.skillHistory = [];
+  }
 }
 
 export const sessionCache = new SessionCache();

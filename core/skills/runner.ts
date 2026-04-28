@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import type { SkillResult } from './types.js';
 import { getSkill } from './registry.js';
 import { enforcePermission, getActivePermissionMode } from '../permission.js';
 import { transparency, type SpanContext } from '../transparency.js';
 import { savePendingPermissionRequest } from '../memory/index.js';
+import { sessionCache } from '../memory/session-cache.js';
 
 const SKILL_OUTPUT_LIMITS: Record<string, number> = {
   web_search: 3000,
@@ -43,6 +45,50 @@ export function labelForSkill(skillName: string, input: Record<string, unknown>)
   return `Skill: ${skillName}`;
 }
 
+// ── Read-before-edit gate ────────────────────────────────────────────────────
+
+const READ_BEFORE_EDIT_TURNS = 50; // last N recorded calls to check
+const EDIT_SKILLS = new Set(['patch_file', 'file_writer']);
+const READ_SKILLS = ['file_reader', 'grep_workspace'];
+
+function preCallGate(skillName: string, input: Record<string, unknown>): SkillResult | null {
+  if (!EDIT_SKILLS.has(skillName)) return null;
+
+  const targetPath = String(input.filepath ?? input.filePath ?? input.path ?? '');
+  if (!targetPath) return null;
+
+  // file_writer is only gated when overwriting an existing file
+  if (skillName === 'file_writer') {
+    const overwrite = input.overwrite === true;
+    const append = input.append === true;
+    if (!overwrite && !append) {
+      // Creating a new file — check existence
+      const wsPath = targetPath.startsWith('workspace/')
+        ? targetPath
+        : `workspace/${targetPath.replace(/^\.\//, '')}`;
+      const absPath = `${process.cwd()}/${wsPath}`;
+      if (!existsSync(absPath)) return null; // new file, no gate
+    }
+  }
+
+  const recent = sessionCache.getRecentSkillResults(READ_SKILLS, READ_BEFORE_EDIT_TURNS);
+  const hasRead = recent.some(r => {
+    const p = String(r.args.filepath ?? r.args.filePath ?? r.args.path ?? '');
+    return p === targetPath ||
+      p.endsWith('/' + targetPath) ||
+      targetPath.endsWith('/' + p);
+  });
+
+  if (!hasRead) {
+    return {
+      success: false,
+      output: '',
+      error: `read-before-edit: you must call file_reader on '${targetPath}' before editing. The current file contents are required for the SEARCH block to match. Call: {"action":"file_reader","input":{"path":"${targetPath}"}}`,
+    };
+  }
+  return null;
+}
+
 export async function runSkill(
   name: string,
   input: Record<string, unknown>,
@@ -77,6 +123,11 @@ export async function runSkill(
     }
     return { success: false, output: '', error: check.error };
   }
+
+  // Read-before-edit gate (patch_file and overwriting file_writer require a prior read)
+  const gateRejection = preCallGate(name, input);
+  if (gateRejection) return gateRejection;
+
   const spanId = randomUUID();
   const spanStart = Date.now();
   const label = labelForSkill(name, input);
@@ -97,6 +148,10 @@ export async function runSkill(
       type: 'span_end',
       data: { spanId, durationMs: Date.now() - spanStart, status: outcome.success ? 'ok' : 'error' },
     });
+    // Record successful read calls for the read-before-edit gate
+    if (outcome.success && (name === 'file_reader' || name === 'grep_workspace')) {
+      sessionCache.recordSkillCall(name, cleanInput);
+    }
     return outcome;
   } catch (e) {
     transparency.emit({

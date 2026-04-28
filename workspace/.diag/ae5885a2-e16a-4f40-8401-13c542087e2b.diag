@@ -1,0 +1,24 @@
+ZARABAN DIAG v1
+===============
+id:       ae5885a2
+goal:     msg one
+engine:   LOW | query_loop
+outcome:  no_action
+duration: 7ms
+tokens:   in=0 out=0 cost=$0.0000
+
+ITERATIONS (1 total)
+──────────────────────
+   1  (unknown)       Hello!                                                        [OK]
+
+MILESTONES
+──────────
+  (none)
+
+REPAIRS/ANOMALIES
+─────────────────
+  (none)
+
+ERRORS
+──────
+  (none)

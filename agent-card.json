@@ -42,7 +42,8 @@
       "confirm_plan",
       "request_user_input",
       "request_permission",
-      "skill_schema"
+      "skill_schema",
+      "task_tracker"
     ],
     "planning": {
       "max_steps": 8,

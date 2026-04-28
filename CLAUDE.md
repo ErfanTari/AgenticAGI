@@ -234,13 +234,15 @@ emits `memory_gate_opened` / `memory_gate_skipped` transparency events according
 
 ## 9. Skills System
 
-**22 skills registered, all annotated with `permissionLevel`:**
+**23 skills registered, all annotated with `permissionLevel`:**
 
 | Level | Skills |
 |-------|--------|
 | `read-only` | calculator, file_reader, web_search, web_fetch, url_extract, memory_read, memory_history, content_writer, verify_state, grep_workspace, list_dir, glob, skill_schema, request_user_input |
-| `workspace-write` | file_writer, patch_file, memory_write, relationship_write, generate_and_save_file, confirm_plan |
+| `workspace-write` | file_writer, patch_file, memory_write, relationship_write, generate_and_save_file, confirm_plan, task_tracker |
 | `full-access` | run_bash, implement_and_test |
+
+`task_tracker` uses an operation discriminated union (`add` / `list` / `update`) to keep schema surface small. Persists to `NOW.TD` notebook.
 
 Registry is frozen at module load. `_unfreezeRegistry()` lifts for tests (without clearing built-ins).
 
@@ -312,6 +314,10 @@ Gemma models use the same Gemini OpenAI-compatible endpoint with a different mod
 | 1b/2b/3b/4b | 60,000ms |
 | Default | 120,000ms |
 
+**Thinking-block hygiene:** Gemma 4 and Qwen emit `<think>`/`<thinking>`/`<thought>` blocks even when reasoning is "disabled". `stripThinkingTags()` in `core/llm.ts` strips all known variants (including `<thinking>` added in Sprint A) before any downstream logic sees the output. A `thinking_tag_stripped` transparency event fires when bytes are removed. Module `core/llm-helpers/strip-thinking.ts` exports `stripThinking()` with `bytesRemoved` metric.
+
+**LM Studio response_format:** `responseSchema` in `LLMCallOptions` is sent as `json_schema` to cloud providers. For local LM Studio, schema is injected as a prompt instruction. Applied only at control-plane call sites (routing, decomposition, intake, verifier, plan-delta). Never applied to code generation, prose synthesis, or patch bodies.
+
 ---
 
 ## 11. Test Patterns
@@ -345,7 +351,7 @@ db.pragma('foreign_keys = OFF');
 - `tests/phase13/rich-artifact-compatibility.test.ts` — 4 tests (legacy compat)
 - Several more listed in CLAUDE.legacy.md
 
-**Current baseline:** 1585/1610 tests pass (30 new tests from Context Diet sprint).
+**Current baseline:** 1552/1552 tests pass (Sprint A adds ~48 new tests in `tests/sprint-a/`).
 
 ---
 
@@ -545,6 +551,16 @@ Execution is NOT blocked — the event is a regression sentinel for tests.
 
 ---
 
+## 18. Edit Format
+
+`patch_file` uses the diff-fenced format. The file path goes inside the opening fence immediately after the language tag. Layered matcher (exact → whitespace-normalised → leading-whitespace-flex → fuzzy ≥0.85). Ambiguity is failure, never guess. Failure returns a structured `PatchFailure` payload (JSON in `output` field) with `classification`, `nearestCandidates`, `surroundingLines`, and `hint`.
+
+Read-before-edit gate enforced in `core/skills/runner.ts`: any `patch_file` or overwriting `file_writer` call requires a prior `file_reader` or `grep_workspace` on the same path within the last 50 recorded calls. Gate returns a structured rejection, never throws. Session-cache tracks skill call history via `recordSkillCall()` / `getRecentSkillResults()`.
+
+ZARABAN rules file (`prompts/zaraban-rules.md`) carries the parallel-call directive and edit-hygiene block. Format reference: `prompts/edit-format-diff-fenced.md`.
+
+---
+
 ## Phase Index (summary — see CLAUDE.legacy.md for full detail)
 
 | Tag | Sprint |
@@ -582,3 +598,4 @@ Execution is NOT blocked — the event is a regression sentinel for tests.
 | `diag-formatter-complete` | Passive diagnostic formatter: compact .diag file per request (~300–500 tokens), subscribes to transparency bus, covers QueryLoop iters, milestones, repairs, token totals, errors. Replaces 10k–220k trace dumps for AI-assisted diagnosis. |
 | `queryloop-download-hardened-complete` | Bash template hardened: no variables/substitution (Sprint-E blocklist compat), timeout → one-retry → TIMEOUT_SKIP rule, web_fetch-on-timeout blocked |
 | `diag-formatter-fixes-complete` | Diag formatter: goal priority fix (query_loop_start wins over span label), engine fallback chain (route → query_loop_start → milestone_start), route label formatting |
+| `sprint-a-edit-reliability-complete` | Diff-fenced patches, layered matcher (Aider port, Apache-2.0), structured failure feedback, read-before-edit gate, thinking-strip (<thinking> added), response_format wired, task_tracker skill, zaraban-rules.md |

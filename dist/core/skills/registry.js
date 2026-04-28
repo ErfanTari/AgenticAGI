@@ -25,6 +25,7 @@ import confirmPlanSkill from './tools/confirm_plan.js';
 import { requestUserInputSkill } from './tools/request_user_input.js';
 import { requestPermissionSkill } from './tools/request_permission.js';
 import skillSchemaSkill from './tools/skill_schema.js';
+import taskTrackerSkill from './tools/task_tracker.js';
 // --- MCP Skill Registry (Map-based) ---
 const registry = new Map();
 let _frozen = false;
@@ -172,6 +173,7 @@ registerSkill(confirmPlanSkill);
 registerSkill(requestUserInputSkill);
 registerSkill(requestPermissionSkill);
 registerSkill(skillSchemaSkill);
+registerSkill(taskTrackerSkill);
 // Freeze the registry after all built-in skills are registered
 freezeRegistry();
 // --- Legacy skill loading (used by context builder) ---
