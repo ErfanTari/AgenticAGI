@@ -205,9 +205,12 @@ function looksLikeToolIntent(text: string): boolean {
   const lower = text.toLowerCase();
   return (
     // Model mentioned a skill name or action-like word suggesting tool use
-    /\b(generate_and_save_file|file_writer|file_reader|web_search|run_bash|memory_write|calculator|content_writer)\b/.test(lower) ||
+    /\b(generate_and_save_file|file_writer|file_reader|web_search|web_fetch|url_extract|run_bash|memory_write|calculator|content_writer|patch_file|grep_workspace|list_dir|glob|verify_state|implement_and_test)\b/.test(lower) ||
     // Common "I will use..." preamble patterns without completing the JSON
     /\bi\s+(will|am going to|should|need to)\s+(use|call|invoke|run)\b/.test(lower) ||
+    // Narrated imminent web/research/download work without emitting JSON (common with Qwen / local models)
+    /\b(i'll|i will|let me|we should|i should|i need to|i'm going to)\b[\s\S]{0,220}?\b(search|research|download|fetch|look up|gather|find|pull|scrape)\b/i.test(lower) ||
+    /\b(start(?:ed|ing)?\s+by|begin(?:ning)?\s+with)\b[\s\S]{0,80}?\b(search|download|fetch|look|gather)\w*\b/i.test(lower) ||
     // Partial action key present but no valid JSON
     /"action"\s*:/.test(text)
   );

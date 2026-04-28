@@ -190,4 +190,48 @@ describe('QueryLoop — raw fallback (xml-recovery)', () => {
     expect(callCount).toBeLessThanOrEqual(3);
     expect(['no_action', 'max_iterations']).toContain(result.stoppedBecause);
   });
+
+  it('10. Prose-only "I will research / let me search" triggers intent-repair then tool use', async () => {
+    const { runQueryLoop } = await import('../../core/query-loop.js');
+
+    let callCount = 0;
+    const mockLLM = async () => {
+      callCount++;
+      if (callCount === 1) {
+        return "I'll research and download catalogs for all 6 brands. Let me start by searching for each brand's website.";
+      }
+      if (callCount === 2) {
+        return '{"action":"calculator","input":{"expression":"1+1"}}';
+      }
+      return 'Task summary: checked arithmetic placeholder (1+1=2) while preparing catalog research.';
+    };
+
+    const result = await runQueryLoop('Research porcelain catalog PDFs for Neolith', mockLLM as any);
+
+    expect(callCount).toBeGreaterThanOrEqual(2);
+    expect(result.skillsUsed).toContain('calculator');
+    expect(result.stoppedBecause).toBe('no_action');
+  });
+});
+
+// ─── assessComplexity — multi-target heuristics (Zaraban trace regression) ─
+
+describe('assessComplexity — multi-target list heuristics', () => {
+  it('11. Long comma-separated brand-style list → MEDIUM', async () => {
+    const { assessComplexity } = await import('../../core/planner.js');
+    const msg = 'Neolith , Laminam , Flaviker , Living ceramic , Dekton , Sappienstone';
+    const r = await assessComplexity(msg, { intent: 'planned_workflow', codes: [] });
+    expect(r.level).toBe('MEDIUM');
+    expect(r.reason).toContain('LongCommaSeparatedList');
+  });
+
+  it('12. Comma list + research/download verbs → at least MEDIUM (often FORCE_HIGH bulkResearch)', async () => {
+    const { assessComplexity } = await import('../../core/planner.js');
+    const msg = 'Research and download catalogs for Neolith, Laminam, Flaviker';
+    const r = await assessComplexity(msg, { intent: 'planned_workflow', codes: [] });
+    expect(['MEDIUM', 'HIGH', 'MAX']).toContain(r.level);
+    expect(
+      r.reason.includes('MultiTargetWebWork') || r.reason.includes('ForceHigh') || r.reason.includes('bulkResearch'),
+    ).toBe(true);
+  });
 });

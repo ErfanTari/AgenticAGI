@@ -4,7 +4,7 @@
 ## Active loops
 
 ## Known entries
-WHO.CT-000001: Sara Moradi — Reviewer
+WHO.CT-000001: John Smith — Test contact
 WHO.CT-000002: Jane Doe — Test contact 2
 WHO.CT-000003: Integration Test Contact — Test contact for quick-resolve
 WHO.CT-000004: Dave — Summary for Dave

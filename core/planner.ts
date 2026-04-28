@@ -83,6 +83,27 @@ export async function assessComplexity(
     };
   }
 
+  // Multi-segment list + web/catalog/research verbs → MEDIUM+ (avoid quick-route LOW misreads)
+  if (
+    /\b(research|download|catalogs?|brochures?|internet|online|for\s+each|all\s+\d+|gather|collect)\b/i.test(message)
+    && /(?:\s*[^,]{2,48}\s*,){2,}\s*[^,]{2,48}/.test(message)
+  ) {
+    return {
+      level: 'MEDIUM',
+      reason: 'MultiTargetWebWork: comma-separated targets with research/download/catalog intent',
+      estimatedSteps: 6,
+    };
+  }
+
+  // Long comma-separated reply (e.g. many brand names after a prior "which catalogs?" prompt)
+  if (/(?:\s*[^,\n]{1,48}\s*,){4,}\s*[^,\n]{1,48}/.test(message) && message.length > 45) {
+    return {
+      level: 'MEDIUM',
+      reason: 'LongCommaSeparatedList: many segments suggest batch follow-up work',
+      estimatedSteps: 5,
+    };
+  }
+
   // We call the underlying complexity detection without going through isComplexTask wrapper
   // to avoid potential circular reference issues
   const { count, signals, skills } = countHeuristicSignals(message);
