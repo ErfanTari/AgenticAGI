@@ -137,6 +137,10 @@ const globSkill: MCPSkill = {
         type: 'number',
         description: 'Maximum number of files to return (default 100)',
       },
+      offset: {
+        type: 'number',
+        description: 'Skip this many results before returning (for pagination, 0-based). Use with max_results to page through large result sets.',
+      },
     },
     required: ['pattern'],
   },
@@ -144,6 +148,7 @@ const globSkill: MCPSkill = {
   async execute(input: Record<string, unknown>): Promise<SkillResult> {
     const pattern = String(input.pattern ?? '').trim();
     const maxResults = typeof input.max_results === 'number' ? input.max_results : DEFAULT_MAX_RESULTS;
+    const offset = typeof input.offset === 'number' ? Math.max(0, Math.floor(input.offset)) : 0;
 
     if (!pattern) {
       return { success: false, output: '', error: 'pattern must be a non-empty string' };
@@ -158,24 +163,30 @@ const globSkill: MCPSkill = {
     }
 
     if (!fs.existsSync(WORKSPACE_ROOT)) {
-      return { success: true, output: JSON.stringify({ files: [], truncated: false }) };
+      return { success: true, output: JSON.stringify({ files: [], truncated: false, total: 0, offset }) };
     }
 
+    // Collect all matching files up to hard limit so we can report accurate total and support any offset
+    const COLLECT_HARD_LIMIT = 10_000;
+
     // Try ripgrep first
-    let files = await globWithRipgrep(pattern, WORKSPACE_ROOT, maxResults);
+    let files = await globWithRipgrep(pattern, WORKSPACE_ROOT, COLLECT_HARD_LIMIT);
 
     // Fall back to JS implementation if ripgrep not available
     if (files === null) {
-      files = await globWithFallback(pattern, WORKSPACE_ROOT, maxResults);
+      files = await globWithFallback(pattern, WORKSPACE_ROOT, COLLECT_HARD_LIMIT);
     }
 
-    const truncated = files.length >= maxResults;
+    const page = files.slice(offset, offset + maxResults);
+    const truncated = files.length > offset + maxResults;
 
     return {
       success: true,
       output: JSON.stringify({
-        files: files.slice(0, maxResults),
+        files: page,
         truncated,
+        total: files.length,
+        offset,
       }),
     };
   },

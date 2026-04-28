@@ -141,6 +141,8 @@ const FORCE_HIGH_SIGNALS: Record<string, RegExp> = {
   scaffolding: /\b(scaffold|boilerplate|starter\s+(kit|project|template)|project\s+structure|monorepo|microservice)\b/i,
   // Rendering / graphics / animation
   rendering: /\b(canvas\s+api|webgl|three\.?js|animation\s+loop|requestAnimationFrame|shader|particle\s+system|2d\s+engine|3d\s+engine)\b/i,
+  // Multi-target research / bulk download — 3+ brands/companies/items mentioned together
+  bulkResearch: /\b(download|find|get|search|collect|gather|fetch)\b.{0,120}(?:(?:,\s*(?:and\s+)?|\s+and\s+)[A-Z][a-z]+){2,}/,
 };
 
 // Heuristic regex patterns for multi-step detection

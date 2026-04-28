@@ -53,6 +53,16 @@ const BLOCKED_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /\bwipefs\b/i, reason: 'filesystem signature wipe' },
   // Multi-line bypass prevention
   { pattern: /rm[\s\S]*-[\s\S]*r[\s\S]*f/i, reason: 'recursive delete (multiline attempt)' },
+  // Zsh-specific bypass vectors (adopted from Claude Code bashSecurity.ts)
+  { pattern: /<\(/, reason: 'process substitution <()' },
+  { pattern: />(?!\s*\/dev\/)(?!\s*\/workspace)\(/, reason: 'process substitution >()' },
+  { pattern: /=\([^)]*\)/, reason: 'Zsh process substitution =()' },
+  { pattern: /(?:^|[\s;&|])=[a-zA-Z_]/, reason: 'Zsh equals expansion (=cmd) — bypasses command allowlists' },
+  { pattern: /\$\{[^}]*\}/, reason: '${} parameter substitution in command position' },
+  { pattern: /\bzmodload\b/i, reason: 'Zsh module loader — gateway to dangerous builtins' },
+  { pattern: /\bemulate\b.*-c/i, reason: 'Zsh eval-equivalent' },
+  { pattern: /\b(zpty|ztcp|zsocket|sysopen|syswrite|sysread)\b/i, reason: 'Zsh dangerous module builtin' },
+  { pattern: /HEREDOC_IN_SUBSTITUTION|\$\(.*<</s, reason: 'heredoc inside command substitution' },
 ];
 
 const REQUIRES_CONFIRMATION_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
@@ -141,7 +151,7 @@ function normalizeWorkspaceCwd(cwd: string): string {
  */
 export const runBash: MCPSkill = {
   name: 'run_bash',
-  description: 'Run a bash command inside the workspace directory. Use for git, npm, file ops, build steps, deployment commands.',
+  description: 'Run a bash command inside the workspace directory. Use for git, npm, file ops, build steps, deployment commands, and downloading binary files (e.g. curl -o file.pdf https://example.com/file.pdf). Plain curl downloads are allowed — only curl piped to a shell is blocked.',
   permissionLevel: 'full-access',
 
   inputSchema: {
@@ -150,6 +160,10 @@ export const runBash: MCPSkill = {
       command: {
         type: 'string',
         description: 'Bash command to run (e.g., "npm install" or "git status")',
+      },
+      description: {
+        type: 'string',
+        description: 'Short description of what this command does in active voice (e.g. "Install npm deps", "Run test suite", "List workspace files"). Used for audit logs and transparency.',
       },
       cwd: {
         type: 'string',
@@ -160,7 +174,7 @@ export const runBash: MCPSkill = {
         description: 'Optional timeout in milliseconds (default: 30000, max: 60000)',
       },
     },
-    required: ['command'],
+    required: ['command', 'description'],
   },
 
   async execute(input: Record<string, unknown>): Promise<SkillResult> {
@@ -168,6 +182,7 @@ export const runBash: MCPSkill = {
     const command = typeof rawCommand === 'string'
       ? normalizeWorkspacePathsInCommand(rawCommand)
       : '';
+    const description = typeof input.description === 'string' ? input.description.trim() : '';
     const rawCwd = input.cwd as string | undefined;
     const cwd = typeof rawCwd === 'string' ? normalizeWorkspaceCwd(rawCwd) : undefined;
     const timeoutMs = Math.min(parseInt(String(input.timeout || '30000')), 60000);
@@ -269,7 +284,7 @@ export const runBash: MCPSkill = {
         warningPrefix = '[warning: no sandbox — running without isolation]\n';
       }
 
-      return { success: true, output: warningPrefix + output };
+      return { success: true, output: warningPrefix + output, display: description || command.slice(0, 80) };
     } catch (err) {
       return {
         success: false,

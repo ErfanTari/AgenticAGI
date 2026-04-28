@@ -22,6 +22,7 @@ import type { Message } from '../core/types.js';
 
 type ClientMessage =
   | { type: 'chat'; text: string }
+  | { type: 'set_permission_mode'; mode: 'read-only' | 'workspace-write' | 'full-access' }
   | { type: 'set_provider_mode'; mode: ProviderMode }
   | { type: 'set_local_model'; model: string }
   | { type: 'set_cloud_model'; model: string }
@@ -81,7 +82,9 @@ type ServerMessage =
   | { type: 'models_refresh_error'; message: string }
   | { type: 'trace_tree'; requestId: string; root: TraceNode }
   | { type: 'span_event'; requestId: string; spanId: string; label: string; parentSpanId?: string; durationMs?: number; status?: string }
-  | { type: 'stop_ack'; stopped: boolean; requestId?: string; reason?: string };
+  | { type: 'stop_ack'; stopped: boolean; requestId?: string; reason?: string }
+  | { type: 'permission_request'; skill: string; required: string; reason: string }
+  | { type: 'permission_resolved'; granted: boolean };
 
 interface TraceNode {
   spanId: string;
@@ -610,6 +613,26 @@ function handleTransparencyEvent(connection: ClientConnection, event: Transparen
     return;
   }
 
+  // ── Permission escalation → push approval card to UI ─────────────────────────
+
+  if (event.type === 'permission_escalation_requested') {
+    sendJson(connection, {
+      type: 'permission_request',
+      skill: event.data.skill,
+      required: event.data.required,
+      reason: event.data.reason,
+    });
+    return;
+  }
+
+  if (event.type === 'permission_escalation_granted' || event.type === 'permission_escalation_denied') {
+    sendJson(connection, {
+      type: 'permission_resolved',
+      granted: event.type === 'permission_escalation_granted',
+    });
+    return;
+  }
+
   // ── QueryLoop synthetic plan diagram ─────────────────────────────────────────
 
   if (event.type === 'query_loop_start') {
@@ -787,6 +810,17 @@ function handleClientMessage(connection: ClientConnection, raw: string) {
     }
     connection.providerMode = parsed.mode;
     sendProviderStatus(connection);
+    return;
+  }
+
+  if (parsed.type === 'set_permission_mode') {
+    const allowed = ['read-only', 'workspace-write', 'full-access'];
+    if (allowed.includes(parsed.mode)) {
+      process.env.PERMISSION_MODE = parsed.mode;
+      // Also broadcast so all clients can sync their UI
+      for (const c of clients) sendJson(c, { type: 'permission_mode_status', mode: parsed.mode } as any);
+      console.log('[ui] Permission mode switched to:', parsed.mode);
+    }
     return;
   }
 

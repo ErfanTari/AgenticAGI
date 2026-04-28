@@ -4,6 +4,23 @@ import type { MCPSkill, SkillResult } from '../types.js';
 import { resolveCollision } from '../../utils/path-collision.js';
 import { transparency } from '../../transparency.js';
 
+// Session-scoped read registry: tracks last read mtime per absolute path.
+// Populated by file_reader when it reads a file; checked here before every write.
+// Prevents blind overwrites and catches external modifications since last read.
+const _readRegistry = new Map<string, { mtimeMs: number; isPartial: boolean }>();
+
+export function _markFileRead(absolutePath: string, mtimeMs: number, isPartial = false): void {
+  _readRegistry.set(absolutePath, { mtimeMs, isPartial });
+}
+
+export function _clearReadRegistry(): void {
+  _readRegistry.clear();
+}
+
+export function _getReadEntry(absolutePath: string) {
+  return _readRegistry.get(absolutePath);
+}
+
 function normalizeWorkspacePath(inputPath: string): string {
   return inputPath
     .replace(/^\.\/+/, '')
@@ -15,6 +32,7 @@ function normalizeWorkspacePath(inputPath: string): string {
  *
  * Writes or appends content to files within the workspace directory.
  * Security: Path traversal prevented, all operations jailed to workspace/
+ * Safety: Read-before-write invariant + mtime staleness check for existing files.
  */
 export const fileWriter: MCPSkill = {
   name: 'file_writer',
@@ -77,7 +95,7 @@ export const fileWriter: MCPSkill = {
     }
 
     // 10MB size limit
-    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
     const contentSize = Buffer.byteLength(content, 'utf-8');
     if (contentSize > MAX_FILE_SIZE) {
       return {
@@ -123,6 +141,38 @@ export const fileWriter: MCPSkill = {
         ? { finalPath: resolved, renamed: false, originalPath: resolved }
         : resolveCollision(resolved, { overwrite });
       const finalResolved = collision.finalPath;
+
+      // ── Read-before-write + mtime staleness guard ────────────────────────
+      // Only applies when we are actually overwriting an existing file in-place
+      // (collision resolver did NOT rename to a new path).
+      if (mode !== 'append' && !collision.renamed && fs.existsSync(finalResolved)) {
+        const stat = fs.statSync(finalResolved);
+        const entry = _readRegistry.get(finalResolved);
+
+        if (!entry) {
+          return {
+            success: false,
+            output: '',
+            error: `File has not been read yet. Read it first with file_reader before overwriting: ${filePath}`,
+          };
+        }
+
+        if (entry.isPartial) {
+          return {
+            success: false,
+            output: '',
+            error: `File was only partially read (offset/limit). Read the full file before overwriting: ${filePath}`,
+          };
+        }
+
+        if (Math.floor(stat.mtimeMs) > entry.mtimeMs) {
+          return {
+            success: false,
+            output: '',
+            error: `File has been modified externally since it was last read. Read it again before writing: ${filePath}`,
+          };
+        }
+      }
       const finalFilePath = path.relative(WORKSPACE_ROOT, finalResolved);
 
       // Create parent directories if needed
@@ -146,6 +196,9 @@ export const fileWriter: MCPSkill = {
         };
       } else {
         fs.writeFileSync(finalResolved, content, 'utf-8');
+        // Update registry so subsequent writes in same session don't re-trigger the guard
+        const newStat = fs.statSync(finalResolved);
+        _readRegistry.set(finalResolved, { mtimeMs: newStat.mtimeMs, isPartial: false });
         return {
           success: true,
           output: collision.renamed

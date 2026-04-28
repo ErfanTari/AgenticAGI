@@ -82,7 +82,7 @@ const _llmModel = process.env.LLM_MODEL ?? '';
 export const LLM_CONFIG = {
   endpoint: process.env.LLM_ENDPOINT ?? '',
   model: _llmModel,
-  maxTokens: 8000,
+  maxTokens: 16000,
   temperature: 0.3,
   timeoutMs: getTimeoutForModel(_llmModel),
 };

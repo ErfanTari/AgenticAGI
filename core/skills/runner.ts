@@ -3,6 +3,7 @@ import type { SkillResult } from './types.js';
 import { getSkill } from './registry.js';
 import { enforcePermission, getActivePermissionMode } from '../permission.js';
 import { transparency, type SpanContext } from '../transparency.js';
+import { savePendingPermissionRequest } from '../memory/index.js';
 
 const SKILL_OUTPUT_LIMITS: Record<string, number> = {
   web_search: 3000,
@@ -57,6 +58,23 @@ export async function runSkill(
   }
   const check = enforcePermission(name, skill.permissionLevel, getActivePermissionMode());
   if (!check.allowed) {
+    // Only auto-trigger escalation UI when the skill has a valid permission level.
+    // Skills with undefined/invalid permissionLevel (e.g. test-registered mocks) just
+    // get a plain denial — no DB write or escalation event.
+    const validLevels = ['read-only', 'workspace-write', 'full-access'];
+    if (skill.permissionLevel && validLevels.includes(skill.permissionLevel)) {
+      const reason = typeof input.description === 'string' && input.description
+        ? input.description
+        : `The agent needs to run '${name}' to continue the task`;
+      const savedGoal = typeof input.__goal === 'string' ? input.__goal : undefined;
+      savePendingPermissionRequest(name, skill.permissionLevel, reason, savedGoal);
+      transparency.emit({ type: 'permission_escalation_requested', data: { skill: name, required: skill.permissionLevel, reason } });
+      return {
+        success: false,
+        output: '',
+        error: `Permission required: '${name}' needs '${skill.permissionLevel}'. A permission request has been sent to the UI — please approve or deny to continue.`,
+      };
+    }
     return { success: false, output: '', error: check.error };
   }
   const spanId = randomUUID();
@@ -67,7 +85,9 @@ export async function runSkill(
     data: { spanId, parentSpanId: parentCtx?.spanId, label, ts: spanStart },
   });
   // Inject signal into input so skills that support it (run_bash, web_fetch, web_search) can abort
-  const effectiveInput = signal ? { ...input, __signal: signal } : input;
+  // Remove internal __goal field (used only for permission request context, not for skill execution)
+  const { __goal, ...cleanInput } = input;
+  const effectiveInput = signal ? { ...cleanInput, __signal: signal } : cleanInput;
   try {
     const result = await skill.execute(effectiveInput);
     const outcome: SkillResult = result.success && result.output

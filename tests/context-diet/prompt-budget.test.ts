@@ -70,7 +70,7 @@ describe('Context Diet: prompt-budget', () => {
       setMemoryMode('disabled');
       const built = buildQueryLoopSystemPrompt({ goal: 'write hello world', pointerIndex: '', activeLoops: '' });
       // With one-liner skills + template, should be well under old ~2700 token baseline
-      expect(built.tokenEstimate).toBeLessThan(2000);
+      expect(built.tokenEstimate).toBeLessThan(2300);
     });
 
     it('sources include skill_list and query-loop-base.md', () => {

@@ -376,6 +376,15 @@ export function initDatabase(dbPath?: string): Database.Database {
       context    TEXT,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS pending_permission_requests (
+      id           INTEGER PRIMARY KEY CHECK (id = 1),
+      skill        TEXT NOT NULL,
+      required     TEXT NOT NULL,
+      reason       TEXT NOT NULL,
+      goal         TEXT,
+      created_at   TEXT NOT NULL
+    );
   `);
 
   // Phase 5 migration: add due_date column for existing databases
@@ -423,6 +432,13 @@ export function initDatabase(dbPath?: string): Database.Database {
   ];
   for (const sql of PHASE15_COLUMNS) {
     try { db.exec(sql); } catch { /* column already exists */ }
+  }
+
+  // Permission escalation goal resumption: add goal column for auto-resume on grant
+  try {
+    db.exec('ALTER TABLE pending_permission_requests ADD COLUMN goal TEXT');
+  } catch {
+    /* column already exists */
   }
 
   // Phase 4: Initialize FTS5 and chunks tables
@@ -664,4 +680,38 @@ export function loadPendingUserInput(): PendingUserInput | null {
 export function clearPendingUserInput(): void {
   const d = getDb();
   d.prepare('DELETE FROM pending_user_inputs WHERE id = 1').run();
+}
+
+// ── Permission escalation requests ───────────────────────────────────────────
+
+export interface PendingPermissionRequest {
+  skill: string;
+  required: string;
+  reason: string;
+  createdAt: string;
+  goal?: string;
+}
+
+export function savePendingPermissionRequest(skill: string, required: string, reason: string, goal?: string): void {
+  const d = getDb();
+  d.prepare(
+    'INSERT OR REPLACE INTO pending_permission_requests (id, skill, required, reason, goal, created_at) VALUES (1, ?, ?, ?, ?, ?)'
+  ).run(skill, required, reason, goal ?? null, new Date().toISOString());
+}
+
+export function loadPendingPermissionRequest(): PendingPermissionRequest | null {
+  try {
+    const d = getDb();
+    const row = d.prepare('SELECT skill, required, reason, goal, created_at FROM pending_permission_requests WHERE id = 1').get() as
+      { skill: string; required: string; reason: string; goal?: string | null; created_at: string } | undefined;
+    if (!row) return null;
+    return { skill: row.skill, required: row.required, reason: row.reason, createdAt: row.created_at, goal: row.goal ?? undefined };
+  } catch {
+    return null;
+  }
+}
+
+export function clearPendingPermissionRequest(): void {
+  const d = getDb();
+  d.prepare('DELETE FROM pending_permission_requests WHERE id = 1').run();
 }

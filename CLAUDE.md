@@ -234,11 +234,11 @@ emits `memory_gate_opened` / `memory_gate_skipped` transparency events according
 
 ## 9. Skills System
 
-**20 skills registered, all annotated with `permissionLevel`:**
+**22 skills registered, all annotated with `permissionLevel`:**
 
 | Level | Skills |
 |-------|--------|
-| `read-only` | calculator, file_reader, web_search, web_fetch, url_extract, memory_read, memory_history, content_writer, verify_state, grep_workspace, list_dir, glob |
+| `read-only` | calculator, file_reader, web_search, web_fetch, url_extract, memory_read, memory_history, content_writer, verify_state, grep_workspace, list_dir, glob, skill_schema, request_user_input |
 | `workspace-write` | file_writer, patch_file, memory_write, relationship_write, generate_and_save_file, confirm_plan |
 | `full-access` | run_bash, implement_and_test |
 
@@ -246,6 +246,40 @@ Registry is frozen at module load. `_unfreezeRegistry()` lifts for tests (withou
 
 **`generate_and_save_file`** is the preferred tool for single-file generation (HTML, JS, CSS).
 Not deprecated. Single-tool approach has fewer failure points than content_writer → file_writer chain.
+
+### CC-Adopted Safety Features (Sprint E — CC Parity)
+
+**`file_writer` — read-before-write + mtime staleness guard:**
+- Overwriting an existing file in-place requires that `file_reader` has read it first this session.
+- If the file changed on disk since the last read, write is rejected: "File has been modified externally since last read."
+- Partial reads (`offset`/`limit`) satisfy the registry but set `isPartial=true` — a partial read does NOT satisfy the guard for full overwrites.
+- Auto-rename path (collision → new filename) is exempt — guard only applies when the file would be overwritten in-place.
+- Append mode is always exempt.
+- Registry: `_markFileRead(absolutePath, mtimeMs, isPartial)` / `_clearReadRegistry()` / `_getReadEntry()` exported from `file_writer.ts`.
+- After a successful write, registry is updated with the new mtime so subsequent writes in the same session don't re-trigger.
+
+**`file_reader` — offset/limit pagination:**
+- New optional `offset` (1-based line number) and `limit` (max lines) params.
+- Full read → `_markFileRead(path, mtime, isPartial=false)`.
+- Paginated read → `_markFileRead(path, mtime, isPartial=true)`.
+- Output includes pagination hint: `[Lines X–Y of Z. Use offset=N to read more.]`
+
+**`run_bash` — description field (required) + expanded Zsh blocklist:**
+- `description` is now a **required** field. Short human-readable label of what the command does.
+- Surfaced in `display` field of SkillResult → shown in transparency/audit log.
+- Blocklist expanded with CC's Zsh-specific bypass patterns: `<()` process substitution, `=cmd` Zsh equals expansion, `${…}` substitution, `zmodload`, `zpty`, `ztcp`, `zsocket`, `sysopen/syswrite/sysread`, `emulate -c`.
+- All patterns checked per-line AND on full command text to prevent newline injection bypass.
+
+**`glob` — offset pagination:**
+- New optional `offset` param (0-based). Use with `max_results` to page through large result sets.
+- Returns `{ files, truncated, total, offset }` — `total` is accurate count of all matches (up to 10,000 hard cap).
+
+**`request_user_input` — options[] array:**
+- New optional `options: string[]` param. List of multiple-choice labels (e.g. `["Yes", "No", "Skip"]`).
+- Included in transparency event `user_input_requested.data.options`.
+- Encoded into the `context` field for storage (no DB schema change needed).
+
+**Test coverage:** `tests/skills/cc-adoptions.test.ts` — 22 tests covering all 5 features.
 
 ---
 
@@ -541,3 +575,4 @@ Execution is NOT blocked — the event is a regression sentinel for tests.
 | `memory-toggle-gemma4-logs-claudemd-complete` | Full memory toggle gating, Gemma 4 models, detailed log export |
 | `context-diet-complete` | Token-efficient execution: one-liner skill list, prompt budget system, signal-gated memory reads, sliding history window, sub-agent primitive, complexity-scaled iteration caps, hard budget guardrails |
 | `sprint-d1-prefix-cache-complete` | LM Studio KV cache prefix stability: stable system prompts, goal/index in user `<context>` block, `cache_prompt:true` in request bodies, `llm_cache_metric` events, session seen-set |
+| `sprint-e-cc-parity-complete` | CC-adopted safety features: read-before-write + mtime guard (file_writer), offset/limit pagination (file_reader, glob), `description` required field + expanded Zsh blocklist (run_bash), options[] array (request_user_input) |

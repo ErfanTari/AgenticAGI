@@ -95,6 +95,17 @@ interface ToolCall {
  * Returns null if no recognisable tool-call object is found.
  */
 function extractToolCall(text: string): ToolCall | null {
+  const all = extractAllToolCalls(text);
+  return all.length > 0 ? all[0] : null;
+}
+
+/**
+ * Extracts ALL tool call JSON objects from a model response.
+ * When a model emits multiple {"action":...} objects in one reply (e.g. batched downloads),
+ * this captures all of them so they can be queued and executed sequentially.
+ */
+function extractAllToolCalls(text: string): ToolCall[] {
+  const results: ToolCall[] = [];
   let depth = 0;
   let start = -1;
   let inString = false;
@@ -130,14 +141,14 @@ function extractToolCall(text: string): ToolCall | null {
               ? rawInput as Record<string, unknown>
               : {};
             const thought = typeof parsed.thought === 'string' ? parsed.thought : undefined;
-            return { action: actionName, input, thought };
+            results.push({ action: actionName, input, thought });
           }
         } catch { /* not valid JSON — continue scanning */ }
         start = -1;
       }
     }
   }
-  return null;
+  return results;
 }
 
 function hasUnbalancedJsonBraces(text: string): boolean {
@@ -480,6 +491,10 @@ export async function runQueryLoop(
   let sessionArtifact: ArtifactContext | null = lastArtifactContext ?? null;
   let lastReply = '';
 
+  // Multi-call queue: when the model emits multiple tool calls in one response,
+  // they are buffered here and drained one per iteration without re-calling the LLM.
+  const pendingToolQueue: ToolCall[] = [];
+
   transparency.emit({ type: 'query_loop_start', data: { goal } });
 
   for (let iteration = 1; iteration <= effectiveMaxIterations; iteration++) {
@@ -495,6 +510,17 @@ export async function runQueryLoop(
     });
     let iterSpanStatus: 'ok' | 'error' = 'ok';
     try {
+
+    // ── Drain queued tool calls before calling the LLM again ─────────────────
+    // When the model emits multiple tool calls in one reply, they are buffered in
+    // pendingToolQueue. Each subsequent iteration drains one without an LLM round-trip.
+    let toolCall: ToolCall | null = null;
+    let reply: string = lastReply;
+
+    if (pendingToolQueue.length > 0) {
+      toolCall = pendingToolQueue.shift()!;
+      transparency.emit({ type: 'query_loop_iteration', data: { iteration, reply: `[queued] ${toolCall.action}` } });
+    } else {
     // Collapse old history to keep context lean
     if (iteration > HISTORY_KEEP_PAIRS + 1) {
       collapseOldHistory(messages, baseMessageCount);
@@ -503,7 +529,7 @@ export async function runQueryLoop(
     // Gemma 4 sometimes wraps tool calls inside <|channel>thought blocks;
     // parsing raw output would mistake those for completed tool executions.
     const raw = await llmHandler(messages, { maxTokens: loopMaxTokens ?? TOKEN_BUDGETS.QUERY_LOOP_ITER, disableThinking: true });
-    const reply = stripThinkingTags(raw).trim();
+    reply = stripThinkingTags(raw).trim();
     lastReply = reply;
 
     // Pure-thinking turn: model only thought, no actual output.
@@ -521,8 +547,15 @@ export async function runQueryLoop(
 
     transparency.emit({ type: 'query_loop_iteration', data: { iteration, reply: reply.slice(0, 200) } });
 
-    // Try to extract a tool call
-    const toolCall = extractToolCall(reply);
+    // Extract all tool calls — queue extras for subsequent iterations
+    const allToolCalls = extractAllToolCalls(reply);
+    if (allToolCalls.length > 1) {
+      // First call runs this iteration; remainder queued
+      pendingToolQueue.push(...allToolCalls.slice(1));
+      transparency.emit({ type: 'query_loop_narration', data: { narration: `[multi-call] ${allToolCalls.length} tool calls queued from one response`, iteration } });
+    }
+    toolCall = allToolCalls.length > 0 ? allToolCalls[0] : null;
+    } // end LLM branch
 
     // Emit narration if model prefixed the JSON with prose
     if (toolCall) {
@@ -741,7 +774,9 @@ export async function runQueryLoop(
     // Execute the skill
     transparency.emit({ type: 'query_loop_skill_call', data: { skill: toolCall.action, input: toolCall.input } });
 
-    const result = await runWithRetry(toolCall.action, toolCall.input, llmHandler);
+    // Thread goal so runner.ts can save it with permission requests for auto-resume
+    const enrichedInput = { ...toolCall.input, __goal: goal };
+    const result = await runWithRetry(toolCall.action, enrichedInput, llmHandler);
 
     if (!skillsUsed.includes(toolCall.action)) {
       skillsUsed.push(toolCall.action);
@@ -832,6 +867,21 @@ export async function runQueryLoop(
       });
     } else {
       const errMsg = result.error ?? 'Unknown error';
+
+      // Permission escalation — runner already saved the pending request and emitted the event.
+      // Stop the loop cleanly so the UI can show Yes/Yes to All/No. The user's reply
+      // will be handled by the permission intercept in agent.ts on the next message.
+      if (errMsg.startsWith('Permission required:')) {
+        pendingToolQueue.length = 0; // discard any queued calls — they'll re-run after approval
+        transparency.emit({ type: 'query_loop_end', data: { reason: 'permission_required', iterations: iteration } });
+        return {
+          reply: `I need elevated permissions to continue. ${errMsg}`,
+          iterations: iteration,
+          skillsUsed,
+          stoppedBecause: 'permission_required' as any,
+          artifactContext: sessionArtifact ?? undefined,
+        };
+      }
 
       // Fix 3: Track semantic failure signature
       const sig = failureSignature(toolCall.action, toolCall.input, errMsg);

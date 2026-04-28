@@ -85,8 +85,11 @@ describe('file_writer collision handling', () => {
   });
 
   it('called with overwrite: true on existing file → overwrites in place', async () => {
-    const { fileWriter } = await import('../../core/skills/tools/file_writer.js');
-    fs.writeFileSync(path.join(workspaceDir, 'config.json'), '{"old":true}');
+    const { fileWriter, _markFileRead } = await import('../../core/skills/tools/file_writer.js');
+    const filePath = path.join(workspaceDir, 'config.json');
+    fs.writeFileSync(filePath, '{"old":true}');
+    // Register the read so the read-before-write guard is satisfied
+    _markFileRead(filePath, fs.statSync(filePath).mtimeMs, false);
     const result = await fileWriter.execute({ path: 'config.json', content: '{"new":true}', overwrite: true });
     expect(result.success).toBe(true);
     expect(result.output).not.toContain('-2');

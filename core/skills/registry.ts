@@ -26,6 +26,7 @@ import listDirSkill from './tools/list_dir.js';
 import globSkill from './tools/glob.js';
 import confirmPlanSkill from './tools/confirm_plan.js';
 import { requestUserInputSkill } from './tools/request_user_input.js';
+import { requestPermissionSkill } from './tools/request_permission.js';
 import skillSchemaSkill from './tools/skill_schema.js';
 
 // --- MCP Skill Registry (Map-based) ---
@@ -103,13 +104,19 @@ export function getSkillDescriptions(): string {
 
 /** One-liner list: "name — first sentence of description" per line. ~300 tokens for full registry. */
 export function getSkillOneLinerList(mode: PermissionLevel, opts?: { memoryEnabled?: boolean }): string {
-  return getSkillsByPermission(mode, opts)
-    .map(s => {
-      // Use only the first sentence to keep lines short
-      const firstSentence = s.description.split(/\.\s+/)[0].replace(/\.$/, '');
-      return `${s.name} — ${firstSentence}`;
-    })
-    .join('\n');
+  const memoryEnabled = opts?.memoryEnabled !== false;
+  const lines: string[] = [];
+  for (const skill of registry.values()) {
+    if (!memoryEnabled && MEMORY_SKILL_NAMES.has(skill.name)) continue;
+    const firstSentence = skill.description.split(/\.\s+/)[0].replace(/\.$/, '');
+    if (LEVEL_RANK[skill.permissionLevel] <= LEVEL_RANK[mode]) {
+      lines.push(`${skill.name} — ${firstSentence}`);
+    } else {
+      // Show locked skills so model knows they exist and can request_permission
+      lines.push(`${skill.name} — ${firstSentence} [requires ${skill.permissionLevel} — call request_permission to unlock]`);
+    }
+  }
+  return lines.join('\n');
 }
 
 /** Compact format: name + description + required params only. No JSON examples. ~half the full format size. */
@@ -187,6 +194,7 @@ registerSkill(listDirSkill);
 registerSkill(globSkill);
 registerSkill(confirmPlanSkill);
 registerSkill(requestUserInputSkill);
+registerSkill(requestPermissionSkill);
 registerSkill(skillSchemaSkill);
 
 // Freeze the registry after all built-in skills are registered

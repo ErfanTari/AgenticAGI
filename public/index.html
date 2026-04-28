@@ -955,6 +955,29 @@
       height: 46px;
     }
 
+    /* ── Permission approval card ── */
+    #permissionCard {
+      display: none;
+      margin: 0 var(--sp-4) var(--sp-3);
+      padding: var(--sp-3) var(--sp-4);
+      border: 1.5px solid var(--accent);
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+      gap: var(--sp-3);
+      flex-direction: column;
+    }
+    #permissionCard.visible { display: flex; }
+    .perm-header { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-body); font-weight: 600; color: var(--accent); }
+    .perm-header .perm-icon { font-size: 1.2em; }
+    .perm-skill { font-size: 12px; color: var(--text-muted); font-family: monospace; }
+    .perm-reason { font-size: var(--fs-body); color: var(--text); line-height: 1.4; }
+    .perm-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+    .perm-btn { padding: 6px 16px; border-radius: 6px; border: 1.5px solid transparent; font-size: 13px; font-weight: 500; cursor: pointer; transition: opacity .15s; }
+    .perm-btn:hover { opacity: .85; }
+    .perm-btn-yes { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .perm-btn-yesall { background: transparent; color: var(--accent); border-color: var(--accent); }
+    .perm-btn-no { background: transparent; color: var(--text-muted); border-color: var(--border); }
+
     .plan-body {
       min-height: 0;
       overflow: auto;
@@ -1604,6 +1627,19 @@
           <span class="starter-icon">·</span><span>Normal chat</span>
         </button>
       </div>
+      <div id="permissionCard">
+        <div class="perm-header">
+          <span class="perm-icon">🔐</span>
+          <span>Permission required</span>
+          <span class="perm-skill" id="permSkillLabel"></span>
+        </div>
+        <div class="perm-reason" id="permReason"></div>
+        <div class="perm-actions">
+          <button class="perm-btn perm-btn-yes" id="permYes" type="button">Yes</button>
+          <button class="perm-btn perm-btn-yesall" id="permYesToAll" type="button">Yes to All</button>
+          <button class="perm-btn perm-btn-no" id="permNo" type="button">No</button>
+        </div>
+      </div>
       <form id="composer" class="composer">
         <textarea id="chatInput" placeholder="Message zaraban..." rows="1"></textarea>
         <button id="sendButton" class="btn btn-primary" type="submit" data-mode="send">Send</button>
@@ -2084,6 +2120,7 @@
         autoResize();
         syncComposer();
         elements.chatInput.focus();
+        sendCurrentMessage();
       });
     });
 
@@ -2638,6 +2675,19 @@
           return;
         }
 
+        if (payload.type === 'permission_request') {
+          showPermissionCard(payload.skill, payload.required, payload.reason);
+          hideTyping();
+          state.processing = false;
+          syncComposer();
+          return;
+        }
+
+        if (payload.type === 'permission_resolved') {
+          hidePermissionCard();
+          return;
+        }
+
         if (payload.type === 'error') {
           hideTyping();
           state.processing = false;
@@ -2706,6 +2756,8 @@
     function sendCurrentMessage() {
       const text = elements.chatInput.value.trim();
       if (!text || !state.connected || state.processing || !state.socket) return;
+      // Hide starter chips after first message
+      elements.starterSuggestions.classList.add('hidden');
       appendMessage('user', text);
       state.processing = true;
       showTyping();
@@ -2714,6 +2766,29 @@
       syncComposer();
       state.socket.send(JSON.stringify({ type: 'chat', text }));
     }
+
+    // ── Permission approval card ──
+    function showPermissionCard(skill, required, reason) {
+      const card = document.getElementById('permissionCard');
+      document.getElementById('permSkillLabel').textContent = `needs ${required}`;
+      document.getElementById('permReason').textContent = reason;
+      card.classList.add('visible');
+    }
+    function hidePermissionCard() {
+      document.getElementById('permissionCard').classList.remove('visible');
+    }
+    function sendPermissionReply(answer) {
+      hidePermissionCard();
+      if (!state.socket || !state.connected) return;
+      appendMessage('user', answer);
+      state.processing = true;
+      syncComposer();
+      showTyping();
+      state.socket.send(JSON.stringify({ type: 'chat', text: answer }));
+    }
+    document.getElementById('permYes').addEventListener('click', () => sendPermissionReply('yes'));
+    document.getElementById('permYesToAll').addEventListener('click', () => sendPermissionReply('yes_to_all'));
+    document.getElementById('permNo').addEventListener('click', () => sendPermissionReply('no'));
 
     function appendMessage(role, text, options = {}) {
       const row = document.createElement('div');

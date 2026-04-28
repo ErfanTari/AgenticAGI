@@ -3,8 +3,8 @@ code: PLAN.EX-000002
 nb: PLAN
 type: EX
 name: bakery-website-final-spec
-status: active
-updated: 2026-04-27
+status: failed
+updated: 2026-04-28
 summary: Final spec for artisan bakery website
 importance_score: 0
 utility_score: 0

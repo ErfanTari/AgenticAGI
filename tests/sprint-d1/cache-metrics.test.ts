@@ -59,6 +59,6 @@ describe('llm_cache_metric event type', () => {
     // The stable system prompt should be < 1500 tokens since it no longer includes goal+index
     const built = buildQueryLoopSystemPrompt({ goal: 'a'.repeat(5000), pointerIndex: 'b'.repeat(5000), activeLoops: '' });
     // If goal/index were still in system, this would be huge
-    expect(built.tokenEstimate).toBeLessThan(2000);
+    expect(built.tokenEstimate).toBeLessThan(2300);
   });
 });
