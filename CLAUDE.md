@@ -579,3 +579,4 @@ Execution is NOT blocked — the event is a regression sentinel for tests.
 | `plan-step-limit-fix-complete` | Raised planner step cap 8→30, integrity-warning escalation to HIGH |
 | `queryloop-webdownload-complete` | Multi-target web-download hardening: batch gather+download, file integrity check (200 KB floor), flipbook blocklist, direct-URL detection, context discipline rules |
 | `queryloop-bash-split-complete` | Bash payload split (one run_bash per brand), json-repair circuit breaker (3-strike recovery injection), previous sprint Phase 2 rule corrected |
+| `diag-formatter-complete` | Passive diagnostic formatter: compact .diag file per request (~300–500 tokens), subscribes to transparency bus, covers QueryLoop iters, milestones, repairs, token totals, errors. Replaces 10k–220k trace dumps for AI-assisted diagnosis. |

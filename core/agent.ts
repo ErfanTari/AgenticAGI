@@ -36,6 +36,7 @@ import { quickResolve } from './memory/quick-resolve.js';
 import { WriteEntrySchema, writeEntryJsonSchema } from './schemas.js';
 import type { TaskPlan } from './schemas.js';
 import { transparency, withRequestId, withSpan, truncate, type SpanContext } from './transparency.js';
+import { startDiagSession } from './diag-formatter.js';
 import { getMemoryMode, isMemoryFullyDisabled } from './memory-mode.js';
 import { runIntake } from './intake.js';
 import type { IntakeResult } from './intake.js';
@@ -1178,12 +1179,13 @@ export function processMessage(
   options?: { llmHandler?: LLMHandler; signal?: AbortSignal },
 ): Promise<AgentResponse> {
   const requestId = randomUUID();
+  const flushDiag = startDiagSession(requestId);
   return withRequestId(
     () => withSpan(`request: ${truncate(message, 60)}`, undefined, requestId, (rootCtx) =>
       _processMessageImpl(message, history, options, rootCtx),
     ),
     requestId,
-  );
+  ).finally(() => flushDiag());
 }
 
 async function _processMessageImpl(
