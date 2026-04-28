@@ -151,22 +151,29 @@ Apply these rules whenever the goal contains multiple named targets that each re
 
 For each brand that has a confirmed candidate URL (from Phase 1), issue one `run_bash` call.
 
-**SECURITY RULE: Do NOT use shell variable substitution (`${VAR}`, `$VAR`, `$((expr))`). Hardcode the brand name, file path, and URL directly in the command. This is required — variable substitution is blocked.**
-
-Use this exact pattern (replace `<BrandName>` and `<URL>` with literal values):
+Each `run_bash` call must be fully hardcoded — no bash variables, no `${}`, no `$()`.
+Use this exact pattern for each brand:
 
 ```bash
-curl -s -L --max-time 30 -H "User-Agent: Mozilla/5.0 (compatible)" -o "workspace/Catalogs/<BrandName>_catalog.pdf" "<URL>"
-SIZE=$(wc -c < "workspace/Catalogs/<BrandName>_catalog.pdf" 2>/dev/null || echo 0)
-if [ "$SIZE" -lt 204800 ]; then echo "INVALID|<BrandName>|not a PDF"; rm -f "workspace/Catalogs/<BrandName>_catalog.pdf"; else echo "OK|<BrandName>|workspace/Catalogs/<BrandName>_catalog.pdf"; fi
+curl -s -L --max-time 30 \
+  -H "User-Agent: Mozilla/5.0 (compatible)" \
+  -o "workspace/Catalogs/<BrandName>_catalog.pdf" \
+  "<direct-pdf-url>"
 ```
 
-CORRECT example for neolith:
+Then in a separate `run_bash` call, check the file size:
+
 ```bash
-curl -s -L --max-time 30 -H "User-Agent: Mozilla/5.0 (compatible)" -o "workspace/Catalogs/neolith_catalog.pdf" "https://example.com/neolith.pdf"
-SIZE=$(wc -c < "workspace/Catalogs/neolith_catalog.pdf" 2>/dev/null || echo 0)
-if [ "$SIZE" -lt 204800 ]; then echo "INVALID|neolith|not a PDF"; rm -f "workspace/Catalogs/neolith_catalog.pdf"; else echo "OK|neolith|workspace/Catalogs/neolith_catalog.pdf"; fi
+wc -c < workspace/Catalogs/<BrandName>_catalog.pdf
 ```
+
+If the size returned is less than 204800, run:
+
+```bash
+rm workspace/Catalogs/<BrandName>_catalog.pdf
+```
+
+And mark that brand as `INVALID`. Do NOT use shell variables, parameter substitution, or command substitution (`$(...)`, `${...}`) anywhere in these commands. Write the brand name and path literally each time.
 
 Rules:
 1. Hardcode brand name and path as literal strings — no shell variables.
@@ -175,6 +182,11 @@ Rules:
 4. If the brand's URL was not confirmed in Phase 1, skip it and note it as `SKIPPED|BrandName|no direct PDF URL found`.
 5. After all per-brand scripts complete, emit one consolidated STATUS block:
    `FINAL_STATUS: ok=[...] invalid=[...] skipped=[...]`
+
+**Timeout handling:**
+- If a `curl` download fails with a timeout error: do one `web_search` for `"<brand> catalog pdf direct download"` and try the best new URL once.
+- If that also fails (timeout, 404, or size < 200KB): mark brand as `TIMEOUT_SKIP` and stop trying. Do not increase `--max-time`. Do not use `web_fetch` on a URL that previously timed out — large media sites will return 100MB+ bodies.
+- Report `TIMEOUT_SKIP` brands in the final `FINAL_STATUS` block.
 
 ### Direct URL Detection
 Before issuing any `curl` download, verify the URL is a direct file:
