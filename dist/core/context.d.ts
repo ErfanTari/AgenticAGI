@@ -34,6 +34,9 @@ export declare function getIndexSummary(): string;
  * Falls back gracefully if summarization fails.
  */
 export declare function buildRollingContext(history: Message[], llmHandler: LLMHandler): Promise<ContextHistory>;
+/** Returns the stable, never-changing portion of the system prompt.
+ *  Used as the KV cache anchor: identical for every processMessage call. */
+export declare function buildStablePrelude(): string;
 export type ContextMode = 'default' | 'agentic_coding';
 export declare function buildContext(userMessage: string, resolved: ResolvedMemory | null, history: Message[], skills: Skill[], intent?: Intent, skillOutput?: string, llmHandler?: LLMHandler, contextMode?: ContextMode, signals?: IntakeSignals | null): Promise<Message[]>;
 /**

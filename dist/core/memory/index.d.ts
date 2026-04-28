@@ -56,3 +56,13 @@ export interface PendingUserInput {
 export declare function savePendingUserInput(question: string, context?: string): void;
 export declare function loadPendingUserInput(): PendingUserInput | null;
 export declare function clearPendingUserInput(): void;
+export interface PendingPermissionRequest {
+    skill: string;
+    required: string;
+    reason: string;
+    createdAt: string;
+    goal?: string;
+}
+export declare function savePendingPermissionRequest(skill: string, required: string, reason: string, goal?: string): void;
+export declare function loadPendingPermissionRequest(): PendingPermissionRequest | null;
+export declare function clearPendingPermissionRequest(): void;

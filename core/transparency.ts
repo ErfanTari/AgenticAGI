@@ -97,6 +97,7 @@ export type TransparencyEvent =
   | { type: 'continuation_context_loaded'; data: { code: string; length: number } }
   // JSON Integrity Sprint — FIX 3: Plan referential integrity
   | { type: 'plan_integrity_warning'; data: { orphanedSteps: string[]; missingSteps: string[]; brokenDependencies: string[] } }
+  | { type: 'complexity_escalation'; data: { reason: string; missing: number } }
   | { type: 'plan_image_warning'; data: { message: string; steps: string[] } }
   // DVD Log Analysis Fix Sprint — FIX 1: BM25 relevance gate
   | { type: 'unit_search_filtered'; data: { unitId: string; reason: string; droppedCount: number } }

@@ -270,7 +270,8 @@ DEPENDENCY RULES:
 - Only add dependsOn when a step's INPUT field contains a template reference to an earlier step's storeResultAs value such as {{projects}} or {{saved_code}}. If there is no template reference, dependsOn must be [].
 
 Rules:
-- Maximum 8 steps
+- Maximum 30 steps
+For tasks that enumerate N items (brands, files, contacts, URLs), each item typically requires 2–4 steps. Plan accordingly — do not artificially merge steps to stay under the limit.
 - Use "dependsOn" to reference previous step IDs when a step needs prior output
 - Use "storeResultAs" to name outputs that later steps reference via {{that_exact_name}} in their input
 - Mark non-critical steps as "optional": true

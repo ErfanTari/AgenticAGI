@@ -354,6 +354,15 @@ export function initDatabase(dbPath) {
       context    TEXT,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS pending_permission_requests (
+      id           INTEGER PRIMARY KEY CHECK (id = 1),
+      skill        TEXT NOT NULL,
+      required     TEXT NOT NULL,
+      reason       TEXT NOT NULL,
+      goal         TEXT,
+      created_at   TEXT NOT NULL
+    );
   `);
     // Phase 5 migration: add due_date column for existing databases
     try {
@@ -405,6 +414,13 @@ export function initDatabase(dbPath) {
             db.exec(sql);
         }
         catch { /* column already exists */ }
+    }
+    // Permission escalation goal resumption: add goal column for auto-resume on grant
+    try {
+        db.exec('ALTER TABLE pending_permission_requests ADD COLUMN goal TEXT');
+    }
+    catch {
+        /* column already exists */
     }
     // Phase 4: Initialize FTS5 and chunks tables
     initFTS();
@@ -603,4 +619,24 @@ export function loadPendingUserInput() {
 export function clearPendingUserInput() {
     const d = getDb();
     d.prepare('DELETE FROM pending_user_inputs WHERE id = 1').run();
+}
+export function savePendingPermissionRequest(skill, required, reason, goal) {
+    const d = getDb();
+    d.prepare('INSERT OR REPLACE INTO pending_permission_requests (id, skill, required, reason, goal, created_at) VALUES (1, ?, ?, ?, ?, ?)').run(skill, required, reason, goal ?? null, new Date().toISOString());
+}
+export function loadPendingPermissionRequest() {
+    try {
+        const d = getDb();
+        const row = d.prepare('SELECT skill, required, reason, goal, created_at FROM pending_permission_requests WHERE id = 1').get();
+        if (!row)
+            return null;
+        return { skill: row.skill, required: row.required, reason: row.reason, createdAt: row.created_at, goal: row.goal ?? undefined };
+    }
+    catch {
+        return null;
+    }
+}
+export function clearPendingPermissionRequest() {
+    const d = getDb();
+    d.prepare('DELETE FROM pending_permission_requests WHERE id = 1').run();
 }

@@ -1,4 +1,4 @@
-export { initDatabase, getDb, closeDatabase, getEntryByCode, queryEntries, getNotebookCounts, nextCounter, savePendingPlan, loadPendingPlan, clearPendingPlan, savePendingUserInput, loadPendingUserInput, clearPendingUserInput } from './index.js';
+export { initDatabase, getDb, closeDatabase, getEntryByCode, queryEntries, getNotebookCounts, nextCounter, savePendingPlan, loadPendingPlan, clearPendingPlan, savePendingUserInput, loadPendingUserInput, clearPendingUserInput, savePendingPermissionRequest, loadPendingPermissionRequest, clearPendingPermissionRequest } from './index.js';
 export { generateCode, parseCode } from './codegen.js';
 export { createEntry, updateEntry, upsertEntry } from './write.js';
 export { fetchByCode } from './fetch.js';

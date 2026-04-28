@@ -131,7 +131,7 @@ describe('Priority 3: Task Decomposer', () => {
     expect((resolved.nested as any).val).toBe('Hello World');
   });
 
-  it('P3D: max 8 steps enforced', async () => {
+  it('P3D: plans under the 30-step cap are preserved', async () => {
     const steps = Array.from({ length: 10 }, (_, i) => ({
       id: `step${i + 1}`,
       description: `Step ${i + 1}`,
@@ -145,7 +145,7 @@ describe('Priority 3: Task Decomposer', () => {
     }));
 
     const plan = await decomposeTask('do many things', { skills: 'calculator' }, mockLLM);
-    expect(plan.steps.length).toBeLessThanOrEqual(8);
+    expect(plan.steps.length).toBe(10);
   });
 
   it('P3E: plan can include memory_write step', async () => {

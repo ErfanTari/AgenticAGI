@@ -3,6 +3,9 @@ import { createHash } from 'node:crypto';
 import { LLM_CONFIG, LLM_FALLBACK_CONFIG, ANTHROPIC_CLOUD_CONFIG } from '../config/agent.config.js';
 import { transparency, withSpan, getCurrentRequestId } from './transparency.js';
 import { recordTokens } from './token-counter.js';
+// Session-scoped set of prefix hashes seen so far — first occurrence = miss, subsequent = hit.
+const _seenPrefixHashes = new Set();
+export function _resetSeenPrefixHashes() { _seenPrefixHashes.clear(); }
 const llmRuntimeStore = new AsyncLocalStorage();
 function getTimeoutForModel(modelName) {
     const lower = modelName.toLowerCase();
@@ -17,11 +20,23 @@ function getTimeoutForModel(modelName) {
 function getDefaultApiKey() {
     return process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY;
 }
+function detectProviderKind(endpoint) {
+    const lower = endpoint.toLowerCase();
+    if (lower.includes('localhost') || lower.includes('127.0.0.1') || lower.includes('lmstudio')) {
+        return 'lmstudio';
+    }
+    if (lower.includes('generativelanguage.googleapis.com'))
+        return 'gemini';
+    if (lower.includes('openai.com'))
+        return 'openai';
+    return 'other';
+}
 export function getPrimaryLLMProfile() {
     if (!LLM_CONFIG.endpoint || !LLM_CONFIG.model)
         return null;
     return {
         kind: 'openai-compatible',
+        providerKind: detectProviderKind(LLM_CONFIG.endpoint),
         label: 'primary',
         endpoint: LLM_CONFIG.endpoint,
         model: LLM_CONFIG.model,
@@ -192,13 +207,13 @@ async function callOpenAICompatibleProfile(profile, messages, options, userSigna
         controller.abort();
     }, timeoutMs);
     try {
-        return await callOpenAICompatibleEndpoint(profile.endpoint, profile.model, profile.apiKey, messages, options, controller.signal, profile.label, profile.temperature, profile.maxTokens);
+        return await callOpenAICompatibleEndpoint(profile.endpoint, profile.model, profile.apiKey, messages, options, controller.signal, profile.label, profile.temperature, profile.maxTokens, profile.providerKind);
     }
     finally {
         clearTimeout(timer);
     }
 }
-async function callOpenAICompatibleEndpoint(endpoint, model, apiKey, messages, options, signal, label, temperature, defaultMaxTokens) {
+async function callOpenAICompatibleEndpoint(endpoint, model, apiKey, messages, options, signal, label, temperature, defaultMaxTokens, providerKind) {
     const headers = { 'Content-Type': 'application/json' };
     if (apiKey)
         headers.Authorization = `Bearer ${apiKey}`;
@@ -214,6 +229,10 @@ async function callOpenAICompatibleEndpoint(endpoint, model, apiKey, messages, o
         max_tokens: effectiveOptions?.maxTokens ?? defaultMaxTokens,
         temperature,
     };
+    // LM Studio: enable KV cache reuse by sending cache_prompt:true
+    if (providerKind === 'lmstudio') {
+        requestBody.cache_prompt = true;
+    }
     // LM Studio / llama.cpp thinking suppression.
     // Enabled when the call site passes disableThinking:true OR when DISABLE_THINKING=true
     // in .env (global fallback). Only applied to primary/local calls — never to cloud fallback.
@@ -245,6 +264,16 @@ async function callOpenAICompatibleEndpoint(endpoint, model, apiKey, messages, o
         else {
             workingMessages.unshift({ role: 'system', content: schemaInstruction });
         }
+    }
+    // Emit cache metric: first call with this prefix hash in session = miss, subsequent = hit.
+    if (providerKind === 'lmstudio') {
+        const prefixHash = computePrefixHash(workingMessages);
+        const hit = _seenPrefixHashes.has(prefixHash);
+        if (!hit)
+            _seenPrefixHashes.add(prefixHash);
+        const requestId = getCurrentRequestId() ?? 'unknown';
+        const stableTokens = Math.round((workingMessages[0]?.content?.length ?? 0) / 4);
+        transparency.emit({ type: 'llm_cache_metric', data: { prefixHash, hit, requestId, engine: label, stableTokens } });
     }
     const response = await fetch(endpoint, {
         method: 'POST',

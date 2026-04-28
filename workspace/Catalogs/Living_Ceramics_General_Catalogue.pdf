@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="es-ES">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="google-site-verification" content="1pzFWQ62S1GogUZDYgt1HjUH1S804TDxZCSoV97CG48" />
+	<link rel="profile" href="https://gmpg.org/xfn/11">
+	<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.2/css/all.css" integrity="sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr" crossorigin="anonymous">
+
+    <meta name='robots' content='noindex, follow' />
+	<style>img:is([sizes="auto" i], [sizes^="auto," i]) { contain-intrinsic-size: 3000px 1500px }</style>
+	
+	<!-- This site is optimized with the Yoast SEO plugin v27.2 - https://yoast.com/product/yoast-seo-wordpress/ -->
+	<title>Página no encontrada - Livingceramics</title>
+	<meta property="og:locale" content="es_ES" />
+	<meta property="og:title" content="Página no encontrada - Livingceramics" />
+	<meta property="og:site_name" content="Livingceramics" />
+	<script type="application/ld+json" class="yoast-schema-graph">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://livingceramics.com/#website","url":"https://livingceramics.com/","name":"Livingceramics","description":"Superficies cerámicas contemporáneas para proyectos de arquitectura e interiorismo. Diseño, tecnología y emoción al servicio de espacios únicos","potentialAction":[{"@type":"SearchAction","target":{"@type":"EntryPoint","urlTemplate":"https://livingceramics.com/?s={search_term_string}"},"query-input":{"@type":"PropertyValueSpecification","valueRequired":true,"valueName":"search_term_string"}}],"inLanguage":"es-ES"}]}</script>
+	<!-- / Yoast SEO plugin. -->
+
+
+<link rel='dns-prefetch' href='//unpkg.com' />
+<link rel="alternate" type="application/rss+xml" title="Livingceramics &raquo; Feed" href="https://livingceramics.com/feed/" />
+<link rel="alternate" type="application/rss+xml" title="Livingceramics &raquo; Comments Feed" href="https://livingceramics.com/comments/feed/" />
+		<style>
+			.lazyload,
+			.lazyloading {
+				max-width: 100%;
+			}
+		</style>
+		<link rel='stylesheet' id='wp-block-library-css' href='https://livingceramics.com/wp-includes/css/dist/block-library/style.min.css?ver=6fda8ce1ca0e8fc57840089768c58247' type='text/css' media='all' />
+<style id='classic-theme-styles-inline-css' type='text/css'>
+/*! This file is auto-generated */
+.wp-block-button__link{color:#fff;background-color:#32373c;border-radius:9999px;box-shadow:none;text-decoration:none;padding:calc(.667em + 2px) calc(1.333em + 2px);font-size:1.125em}.wp-block-file__button{background:#32373c;color:#fff;text-decoration:none}
+</style>
+<style id='global-styles-inline-css' type='text/css'>
+:root{--wp--preset--aspect-ratio--square: 1;--wp--preset--aspect-ratio--4-3: 4/3;--wp--preset--aspect-ratio--3-4: 3/4;--wp--preset--aspect-ratio--3-2: 3/2;--wp--preset--aspect-ratio--2-3: 2/3;--wp--preset--aspect-ratio--16-9: 16/9;--wp--preset--aspect-ratio--9-16: 9/16;--wp--preset--color--black: #000000;--wp--preset--color--cyan-bluish-gray: #abb8c3;--wp--preset--color--white: #ffffff;--wp--preset--color--pale-pink: #f78da7;--wp--preset--color--vivid-red: #cf2e2e;--wp--preset--color--luminous-vivid-orange: #ff6900;--wp--preset--color--luminous-vivid-amber: #fcb900;--wp--preset--color--light-green-cyan: #7bdcb5;--wp--preset--color--vivid-green-cyan: #00d084;--wp--preset--color--pale-cyan-blue: #8ed1fc;--wp--preset--color--vivid-cyan-blue: #0693e3;--wp--preset--color--vivid-purple: #9b51e0;--wp--preset--gradient--vivid-cyan-blue-to-vivid-purple: linear-gradient(135deg,rgba(6,147,227,1) 0%,rgb(155,81,224) 100%);--wp--preset--gradient--light-green-cyan-to-vivid-green-cyan: linear-gradient(135deg,rgb(122,220,180) 0%,rgb(0,208,130) 100%);--wp--preset--gradient--luminous-vivid-amber-to-luminous-vivid-orange: linear-gradient(135deg,rgba(252,185,0,1) 0%,rgba(255,105,0,1) 100%);--wp--preset--gradient--luminous-vivid-orange-to-vivid-red: linear-gradient(135deg,rgba(255,105,0,1) 0%,rgb(207,46,46) 100%);--wp--preset--gradient--very-light-gray-to-cyan-bluish-gray: linear-gradient(135deg,rgb(238,238,238) 0%,rgb(169,184,195) 100%);--wp--preset--gradient--cool-to-warm-spectrum: linear-gradient(135deg,rgb(74,234,220) 0%,rgb(151,120,209) 20%,rgb(207,42,186) 40%,rgb(238,44,130) 60%,rgb(251,105,98) 80%,rgb(254,248,76) 100%);--wp--preset--gradient--blush-light-purple: linear-gradient(135deg,rgb(255,206,236) 0%,rgb(152,150,240) 100%);--wp--preset--gradient--blush-bordeaux: linear-gradient(135deg,rgb(254,205,165) 0%,rgb(254,45,45) 50%,rgb(107,0,62) 100%);--wp--preset--gradient--luminous-dusk: linear-gradient(135deg,rgb(255,203,112) 0%,rgb(199,81,192) 50%,rgb(65,88,208) 100%);--wp--preset--gradient--pale-ocean: linear-gradient(135deg,rgb(255,245,203) 0%,rgb(182,227,212) 50%,rgb(51,167,181) 100%);--wp--preset--gradient--electric-grass: linear-gradient(135deg,rgb(202,248,128) 0%,rgb(113,206,126) 100%);--wp--preset--gradient--midnight: linear-gradient(135deg,rgb(2,3,129) 0%,rgb(40,116,252) 100%);--wp--preset--font-size--small: 13px;--wp--preset--font-size--medium: 20px;--wp--preset--font-size--large: 36px;--wp--preset--font-size--x-large: 42px;--wp--preset--spacing--20: 0.44rem;--wp--preset--spacing--30: 0.67rem;--wp--preset--spacing--40: 1rem;--wp--preset--spacing--50: 1.5rem;--wp--preset--spacing--60: 2.25rem;--wp--preset--spacing--70: 3.38rem;--wp--preset--spacing--80: 5.06rem;--wp--preset--shadow--natural: 6px 6px 9px rgba(0, 0, 0, 0.2);--wp--preset--shadow--deep: 12px 12px 50px rgba(0, 0, 0, 0.4);--wp--preset--shadow--sharp: 6px 6px 0px rgba(0, 0, 0, 0.2);--wp--preset--shadow--outlined: 6px 6px 0px -3px rgba(255, 255, 255, 1), 6px 6px rgba(0, 0, 0, 1);--wp--preset--shadow--crisp: 6px 6px 0px rgba(0, 0, 0, 1);}:where(.is-layout-flex){gap: 0.5em;}:where(.is-layout-grid){gap: 0.5em;}body .is-layout-flex{display: flex;}.is-layout-flex{flex-wrap: wrap;align-items: center;}.is-layout-flex > :is(*, div){margin: 0;}body .is-layout-grid{display: grid;}.is-layout-grid > :is(*, div){margin: 0;}:where(.wp-block-columns.is-layout-flex){gap: 2em;}:where(.wp-block-columns.is-layout-grid){gap: 2em;}:where(.wp-block-post-template.is-layout-flex){gap: 1.25em;}:where(.wp-block-post-template.is-layout-grid){gap: 1.25em;}.has-black-color{color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-color{color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-color{color: var(--wp--preset--color--white) !important;}.has-pale-pink-color{color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-color{color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-color{color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-color{color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-color{color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-color{color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-color{color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-color{color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-color{color: var(--wp--preset--color--vivid-purple) !important;}.has-black-background-color{background-color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-background-color{background-color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-background-color{background-color: var(--wp--preset--color--white) !important;}.has-pale-pink-background-color{background-color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-background-color{background-color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-background-color{background-color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-background-color{background-color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-background-color{background-color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-background-color{background-color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-background-color{background-color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-background-color{background-color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-background-color{background-color: var(--wp--preset--color--vivid-purple) !important;}.has-black-border-color{border-color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-border-color{border-color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-border-color{border-color: var(--wp--preset--color--white) !important;}.has-pale-pink-border-color{border-color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-border-color{border-color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-border-color{border-color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-border-color{border-color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-border-color{border-color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-border-color{border-color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-border-color{border-color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-border-color{border-color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-border-color{border-color: var(--wp--preset--color--vivid-purple) !important;}.has-vivid-cyan-blue-to-vivid-purple-gradient-background{background: var(--wp--preset--gradient--vivid-cyan-blue-to-vivid-purple) !important;}.has-light-green-cyan-to-vivid-green-cyan-gradient-background{background: var(--wp--preset--gradient--light-green-cyan-to-vivid-green-cyan) !important;}.has-luminous-vivid-amber-to-luminous-vivid-orange-gradient-background{background: var(--wp--preset--gradient--luminous-vivid-amber-to-luminous-vivid-orange) !important;}.has-luminous-vivid-orange-to-vivid-red-gradient-background{background: var(--wp--preset--gradient--luminous-vivid-orange-to-vivid-red) !important;}.has-very-light-gray-to-cyan-bluish-gray-gradient-background{background: var(--wp--preset--gradient--very-light-gray-to-cyan-bluish-gray) !important;}.has-cool-to-warm-spectrum-gradient-background{background: var(--wp--preset--gradient--cool-to-warm-spectrum) !important;}.has-blush-light-purple-gradient-background{background: var(--wp--preset--gradient--blush-light-purple) !important;}.has-blush-bordeaux-gradient-background{background: var(--wp--preset--gradient--blush-bordeaux) !important;}.has-luminous-dusk-gradient-background{background: var(--wp--preset--gradient--luminous-dusk) !important;}.has-pale-ocean-gradient-background{background: var(--wp--preset--gradient--pale-ocean) !important;}.has-electric-grass-gradient-background{background: var(--wp--preset--gradient--electric-grass) !important;}.has-midnight-gradient-background{background: var(--wp--preset--gradient--midnight) !important;}.has-small-font-size{font-size: var(--wp--preset--font-size--small) !important;}.has-medium-font-size{font-size: var(--wp--preset--font-size--medium) !important;}.has-large-font-size{font-size: var(--wp--preset--font-size--large) !important;}.has-x-large-font-size{font-size: var(--wp--preset--font-size--x-large) !important;}
+:where(.wp-block-post-template.is-layout-flex){gap: 1.25em;}:where(.wp-block-post-template.is-layout-grid){gap: 1.25em;}
+:where(.wp-block-columns.is-layout-flex){gap: 2em;}:where(.wp-block-columns.is-layout-grid){gap: 2em;}
+:root :where(.wp-block-pullquote){font-size: 1.5em;line-height: 1.6;}
+</style>
+<link rel='stylesheet' id='cookie-consent-style-css' href='https://livingceramics.com/wp-content/plugins/click-datos-lopd/assets/css/style.css?ver=6fda8ce1ca0e8fc57840089768c58247' type='text/css' media='all' />
+<link rel='stylesheet' id='contact-form-7-css' href='https://livingceramics.com/wp-content/plugins/contact-form-7/includes/css/styles.css?ver=6.1.5' type='text/css' media='all' />
+<link rel='stylesheet' id='living-ceramics-css' href='https://livingceramics.com/wp-content/themes/living-ceramics/style.css?ver=1.0.2.8' type='text/css' media='all' />
+<link rel='stylesheet' id='owl-css' href='https://livingceramics.com/wp-content/themes/living-ceramics/assets/owl/owl.carousel.min.css?ver=2.3.4' type='text/css' media='all' />
+<link rel='stylesheet' id='owl-theme-css' href='https://livingceramics.com/wp-content/themes/living-ceramics/assets/owl/owl.theme.default.min.css?ver=2.3.4' type='text/css' media='all' />
+<link rel='stylesheet' id='lightbox-css' href='https://livingceramics.com/wp-content/themes/living-ceramics/assets/lightbox/lightbox.css?ver=2.11.1' type='text/css' media='all' />
+<link rel='stylesheet' id='aos-css' href='https://livingceramics.com/wp-content/themes/living-ceramics/assets/aos/aos.css?ver=1' type='text/css' media='all' />
+<link rel='stylesheet' id='magnific-popup-css' href='https://livingceramics.com/wp-content/themes/living-ceramics/assets/magnific-popup/magnific-popup.css?ver=1.1.0' type='text/css' media='all' />
+<link rel='stylesheet' id='siroppe-css' href='https://livingceramics.com/wp-content/themes/living-ceramics/assets/siroppe/siroppe.css?ver=20210410.13201777406559' type='text/css' media='all' />
+<link rel='stylesheet' id='frow-css' href='https://livingceramics.com/wp-content/themes/living-ceramics/assets/frow/frow.min.css?ver=3' type='text/css' media='all' />
+<link rel='stylesheet' id='swiper-css' href='https://unpkg.com/swiper/swiper-bundle.min.css?ver=6.0.0' type='text/css' media='all' />
+<link rel='stylesheet' id='gridder-css' href='https://livingceramics.com/wp-content/themes/living-ceramics/assets/gridder/css/jquery.gridder.min.css?ver=1.4.2' type='text/css' media='all' />
+<link rel='stylesheet' id='lc-blocks-1-css' href='https://livingceramics.com/wp-includes/css/dist/edit-post/classic.min.css?ver=1.0.2.8' type='text/css' media='all' />
+<link rel='stylesheet' id='lc-blocks-2-css' href='https://livingceramics.com/wp-includes/css/dist/block-library/style.css?ver=1.0.2.8' type='text/css' media='all' />
+<link rel='stylesheet' id='dflip-style-css' href='https://livingceramics.com/wp-content/plugins/3d-flipbook-dflip-lite/assets/css/dflip.min.css?ver=2.4.27' type='text/css' media='all' />
+<script type="text/javascript" src="https://livingceramics.com/wp-includes/js/jquery/jquery.min.js?ver=3.7.1" id="jquery-core-js"></script>
+<script type="text/javascript" src="https://livingceramics.com/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1" id="jquery-migrate-js"></script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/plugins/stop-user-enumeration/frontend/js/frontend.js?ver=1.7.7" id="stop-user-enumeration-js" defer="defer" data-wp-strategy="defer"></script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/themes/living-ceramics/assets/magnific-popup/jquery.magnific-popup.min.js?ver=1.1.0" id="magnific-popup-js"></script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/themes/living-ceramics/assets/gridder/js/jquery.gridder.min.js?ver=1.4.2" id="gridder-js"></script>
+<script type="text/javascript" id="my_loadmore-js-extra">
+/* <![CDATA[ */
+var living_loadmore_params = {"ajaxurl":"https:\/\/livingceramics.com\/wp-admin\/admin-ajax.php","posts":"{\"post_type\":\"post\",\"posts_per_page\":6,\"post_status\":\"publish\",\"paged\":1,\"error\":\"\",\"m\":\"\",\"p\":0,\"post_parent\":\"\",\"subpost\":\"\",\"subpost_id\":\"\",\"attachment\":\"\",\"attachment_id\":0,\"name\":\"\",\"pagename\":\"\",\"page_id\":0,\"second\":\"\",\"minute\":\"\",\"hour\":\"\",\"day\":0,\"monthnum\":0,\"year\":0,\"w\":0,\"category_name\":\"\",\"tag\":\"\",\"cat\":\"\",\"tag_id\":\"\",\"author\":\"\",\"author_name\":\"\",\"feed\":\"\",\"tb\":\"\",\"meta_key\":\"\",\"meta_value\":\"\",\"preview\":\"\",\"s\":\"\",\"sentence\":\"\",\"title\":\"\",\"fields\":\"all\",\"menu_order\":\"\",\"embed\":\"\",\"category__in\":[],\"category__not_in\":[],\"category__and\":[],\"post__in\":[],\"post__not_in\":[],\"post_name__in\":[],\"tag__in\":[],\"tag__not_in\":[],\"tag__and\":[],\"tag_slug__in\":[],\"tag_slug__and\":[],\"post_parent__in\":[],\"post_parent__not_in\":[],\"author__in\":[],\"author__not_in\":[],\"search_columns\":[],\"tax_query\":[{\"taxonomy\":\"language\",\"field\":\"term_taxonomy_id\",\"terms\":[32],\"operator\":\"IN\"}],\"orderby\":\"menu_order\",\"order\":\"ASC\",\"update_post_term_cache\":true,\"ignore_sticky_posts\":false,\"suppress_filters\":false,\"cache_results\":true,\"update_menu_item_cache\":false,\"lazy_load_term_meta\":true,\"update_post_meta_cache\":true,\"nopaging\":false,\"comments_per_page\":\"50\",\"no_found_rows\":false,\"taxonomy\":\"language\",\"term_id\":32}","current_page":"1","max_page":"13"};
+/* ]]> */
+</script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/themes/living-ceramics/js/living-blog.js?ver=6fda8ce1ca0e8fc57840089768c58247" id="my_loadmore-js"></script>
+<link rel="https://api.w.org/" href="https://livingceramics.com/wp-json/" /><link rel="EditURI" type="application/rsd+xml" title="RSD" href="https://livingceramics.com/xmlrpc.php?rsd" />
+
+<style id="cdlopd-css" type="text/css" media="screen">
+				#catapult-cookie-bar {
+					box-sizing: border-box;
+					max-height: 0;
+					opacity: 0;
+					z-index: 99999;
+					overflow: hidden;
+					color: #ffffff;
+					position: fixed;
+					left: 20px;
+					bottom: 6%;
+					width: 300px;
+					background-color: #212121;
+                                        border-style: solid;
+                                        border-width: px;
+                                        border-color: ;
+				}
+				#catapult-cookie-bar a {
+					color: #e0e0e0;
+				}
+				#catapult-cookie-bar .x_close span {
+					background-color: ;
+				}
+				button#catapultCookieAceptar {
+					background:#212121;
+					color: #ffffff;
+					border: 0; padding: 6px 9px; border-radius: 3px;
+				}
+                                button#catapultCookieRechazar {
+					background:#212121;
+					color: #ffffff;
+					border: 0; padding: 6px 9px; border-radius: 3px;
+				}
+				#catapult-cookie-bar h3 {
+					color: #ffffff;
+				}
+				.has-cookie-bar #catapult-cookie-bar {
+					opacity: 1;
+					max-height: 999px;
+					min-height: 30px;
+				}</style>		<script>
+			document.documentElement.className = document.documentElement.className.replace('no-js', 'js');
+		</script>
+				<style>
+			.no-js img.lazyload {
+				display: none;
+			}
+
+			figure.wp-block-image img.lazyloading {
+				min-width: 150px;
+			}
+
+			.lazyload,
+			.lazyloading {
+				--smush-placeholder-width: 100px;
+				--smush-placeholder-aspect-ratio: 1/1;
+				width: var(--smush-image-width, var(--smush-placeholder-width)) !important;
+				aspect-ratio: var(--smush-image-aspect-ratio, var(--smush-placeholder-aspect-ratio)) !important;
+			}
+
+						.lazyload, .lazyloading {
+				opacity: 0;
+			}
+
+			.lazyloaded {
+				opacity: 1;
+				transition: opacity 400ms;
+				transition-delay: 0ms;
+			}
+
+					</style>
+		
+<!-- Meta Pixel Code -->
+<script type='text/javascript'>
+!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+document,'script','https://connect.facebook.net/en_US/fbevents.js');
+</script>
+<!-- End Meta Pixel Code -->
+<script type='text/javascript'>var url = window.location.origin + '?ob=open-bridge';
+            fbq('set', 'openbridge', '187168039366227', url);
+fbq('init', '187168039366227', {}, {
+    "agent": "wordpress-6.8.5-4.1.5"
+})</script><script type='text/javascript'>
+    fbq('track', 'PageView', []);
+  </script><style type="text/css">.recentcomments a{display:inline !important;padding:0 !important;margin:0 !important;}</style><link rel="icon" href="https://livingceramics.com/wp-content/uploads/2019/09/cropped-favicon-32x32.jpg" sizes="32x32" />
+<link rel="icon" href="https://livingceramics.com/wp-content/uploads/2019/09/cropped-favicon-192x192.jpg" sizes="192x192" />
+<link rel="apple-touch-icon" href="https://livingceramics.com/wp-content/uploads/2019/09/cropped-favicon-180x180.jpg" />
+<meta name="msapplication-TileImage" content="https://livingceramics.com/wp-content/uploads/2019/09/cropped-favicon-270x270.jpg" />
+		<style type="text/css" id="wp-custom-css">
+			@media (max-width: 768px) {
+    .alternative-item.right{
+        display: block;
+        margin-top: 50px;
+    }
+		
+.alternative-text .des p a:last-child{
+	margin-bottom: 2vw;
+	display:block;
+	text-align:center;
+}
+	.ficha-producto .related-products{margin-top:50px !important;}
+}
+
+.alternative-text a{
+	border:1px solid #c7c7c7;
+	text-decoration:none;
+	padding:15px;
+	position: relative;
+    top: 20px;
+}
+
+.alternative-text a:hover{
+	color:#fff;
+	background-color:#212121;
+}
+
+.alternative-item.right{
+        margin-top: 75;
+}
+
+.grecaptcha-badge { 
+    visibility: hidden;
+}
+
+.page-id-10561 a{color:#fff;}
+
+.postid-10201 .small-text_grey-md{visibility:hidden;}		</style>
+		
+
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-149516254-1"></script>
+<script>window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'UA-149516254-1');</script>
+
+<!-- Google Tag Manager (ES)-->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','GTM-W9D5FL4');</script>
+<!-- End Google Tag Manager -->
+
+</head>
+
+<body class="error404 wp-theme-living-ceramics">
+
+
+
+<!-- Google Tag Manager (noscript) (ES) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-W9D5FL4" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+
+
+<!-- Meta Pixel Code -->
+<noscript>
+<img height="1" width="1" style="display:none" alt="fbpx"
+src="https://www.facebook.com/tr?id=187168039366227&ev=PageView&noscript=1" />
+</noscript>
+<!-- End Meta Pixel Code -->
+
+<div id="page" class="site">
+    <header id="masthead" class="site-header">
+        <div class="site-branding">
+			<a href="https://livingceramics.com"><img id="logo-svg" src="https://livingceramics.com/wp-content/themes/living-ceramics/img/logo.svg" alt="living ceramics logo" /></a>
+		</div><!-- .site-branding -->
+
+        <nav id="site-navigation" class="main-navigation">
+            <ul id="menu-menu-principal" class="menu"><li id="menu-item-2262" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2262"><a href="https://livingceramics.com/productos-intermedia/">Productos</a></li>
+<li id="menu-item-179" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-179"><a href="https://livingceramics.com/disenadores/">Diseñadores</a></li>
+<li id="menu-item-10596" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-10596"><a href="https://livingceramics.com/custom-design-hub-2/">Custom Design HUB</a></li>
+<li id="menu-item-2749" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2749"><a href="https://livingceramics.com/proyectos-2/">Proyectos</a></li>
+<li id="menu-item-79" class="menu-item menu-item-type-post_type menu-item-object-page current_page_parent menu-item-79"><a href="https://livingceramics.com/noticias/">Noticias</a></li>
+<li id="menu-item-127" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-127"><a href="https://livingceramics.com/nosotros/">Nosotros</a></li>
+<li id="menu-item-2635" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2635"><a href="https://livingceramics.com/living-awards/">Living Awards</a></li>
+<li id="menu-item-108" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-108"><a href="https://livingceramics.com/contacto/">Contacto</a></li>
+<li id="menu-item-2750" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2750"><a href="https://livingceramics.com/descargas/">Descargas</a></li>
+<li id="menu-item-2258" class="pll-parent-menu-item menu-item menu-item-type-custom menu-item-object-custom menu-item-2258"><a href="#pll_switcher">ES</a></li>
+<li id="menu-item-2312" class="crm-link menu-item menu-item-type-custom menu-item-object-custom menu-item-2312"><a href="http://crm.livingceramics.com">&#8211;</a></li>
+</ul>        </nav><!-- #site-navigation -->
+        <div class="hamburger-desktop"></div>
+
+        <div id="open-btn" class="hamburger">
+            <span class="hamburger_item"></span>
+            <span class="hamburger_item"></span>
+        </div>
+
+        <div class="full-mobile-menu-container">
+            <div class="menu-mobile">
+                <div id="close-btn" class="close-menu">
+                    <p class="tertiary-title_white">Cerrar</p>
+                </div>
+
+                <nav class="menu-mobile-nav">
+                    <ul id="menu-menu-principal-1" class="menu"><li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2262"><a href="https://livingceramics.com/productos-intermedia/">Productos</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-179"><a href="https://livingceramics.com/disenadores/">Diseñadores</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-10596"><a href="https://livingceramics.com/custom-design-hub-2/">Custom Design HUB</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2749"><a href="https://livingceramics.com/proyectos-2/">Proyectos</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page current_page_parent menu-item-79"><a href="https://livingceramics.com/noticias/">Noticias</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-127"><a href="https://livingceramics.com/nosotros/">Nosotros</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2635"><a href="https://livingceramics.com/living-awards/">Living Awards</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-108"><a href="https://livingceramics.com/contacto/">Contacto</a></li>
+<li class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2750"><a href="https://livingceramics.com/descargas/">Descargas</a></li>
+<li class="pll-parent-menu-item menu-item menu-item-type-custom menu-item-object-custom menu-item-2258"><a href="#pll_switcher">ES</a></li>
+<li class="crm-link menu-item menu-item-type-custom menu-item-object-custom menu-item-2312"><a href="http://crm.livingceramics.com">&#8211;</a></li>
+</ul>                </nav>
+            </div>
+        </div>
+    </header><!-- #masthead -->
+
+    <div id="drag-and-hold">
+        <img src="https://livingceramics.com/wp-content/themes/living-ceramics/img/scroll.svg" alt="" />
+    </div>
+
+    <div id="arrow-gallery-controller">
+        <img src="https://livingceramics.com/wp-content/themes/living-ceramics/img/flecha_about.svg" alt="" />
+        <!-- <div class="arrow-holder">
+            <div class="arrow-body"></div>
+        </div> -->
+    </div>
+
+    <div id="content" class="site-content">
+
+    <div class="main-container error-404">
+        <div class="error-404_container" style="background-image: url('https://livingceramics.com/wp-content/themes/living-ceramics/img/background-404.png')">
+        </div>
+
+        <div class="error-message-holder">
+            <div class="error-header">
+                <h5>Error</h5>
+                <h1>404</h1>
+            </div>
+            <div class="error-text paragraph_white"> <!-- FIXME: Internacionalizar este texto o hacerlo dinámico --> 
+                <p>La página que buscas no existe o no está disponible.                      Pero no te preocupes, te redirigimos a nuestra home                      para que puedas seguir descubriendo Living Ceramics</p>
+            </div>
+            <div class="link-holder">
+                <a href="https://livingceramics.com">Volver a la Home</a>
+            </div>
+        </div>
+       
+    </div>
+
+
+		
+	<div class="home-newsletter">
+		<div class="frow-container">
+
+			<div class="frow gutters row-between">
+				<div class="col-md-12-12 text-right">
+					<a href="#" class="home-newsletter-close"><img src="https://livingceramics.com/wp-content/themes/living-ceramics/img/ico-cerrar-newsletter.png" /></a>
+				</div>
+
+				<div class="col-md-5-12">
+					<h2>SUSCRÍBETE A NUESTRO NEWSLETTER:</h2>
+					<p>Suscríbete aquí a nuestra newsletter para conocer las noticias más relevantes acerca de Livingceramics. Únicamente te mandaremos un correo si creemos que hay algo que valga la pena contarte. </p>
+				</div>
+
+				<div class="col-md-5-12">
+					
+<div class="wpcf7 no-js" id="wpcf7-f4176-o1" lang="es-ES" dir="ltr" data-wpcf7-id="4176">
+<div class="screen-reader-response"><p role="status" aria-live="polite" aria-atomic="true"></p> <ul></ul></div>
+<form action="/wp-content/uploads/2025/03/CATALOGO-GENERAL_V03.pdf#wpcf7-f4176-o1" method="post" class="wpcf7-form init 52f673941b8f cmatic-conn cmatic-aud-2 cmatic-mapd0-0 cmatic-v0976 cmatic-sent-0 cmatic-total-5015" aria-label="Contact form" novalidate="novalidate" data-status="init">
+<fieldset class="hidden-fields-container"><input type="hidden" name="_wpcf7" value="4176" /><input type="hidden" name="_wpcf7_version" value="6.1.5" /><input type="hidden" name="_wpcf7_locale" value="es_ES" /><input type="hidden" name="_wpcf7_unit_tag" value="wpcf7-f4176-o1" /><input type="hidden" name="_wpcf7_container_post" value="0" /><input type="hidden" name="_wpcf7_posted_data_hash" value="" /><input type="hidden" name="_wpcf7_recaptcha_response" value="" />
+</fieldset>
+<div class="frow form-newsletter">
+	<div class="col-md-8-12">
+		<p><span class="wpcf7-form-control-wrap" data-name="newsletter-email"><input size="40" maxlength="400" class="wpcf7-form-control wpcf7-email wpcf7-validates-as-required wpcf7-text wpcf7-validates-as-email form-control" aria-required="true" aria-invalid="false" placeholder="Introducir email" value="" type="email" name="newsletter-email" /></span>
+		</p>
+	</div>
+	<div class="col-md-4-12">
+		<p><input class="wpcf7-form-control wpcf7-submit has-spinner form-button" type="submit" value="Suscribirme" />
+		</p>
+	</div>
+</div><div class="wpcf7-response-output" aria-hidden="true"></div>
+</form>
+</div>
+				</div>
+			</div>
+
+		</div>
+	</div>
+
+
+	</div><!-- #content -->
+
+	<footer id="colophon" class="site-footer">
+		<div class="footer-nav">
+	<div class="footer-menu-container">
+		<ul id="menu-footer-menu" class="menu"><li id="menu-item-2237" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-2237"><a href="https://livingceramics.com/contacto/">Contacto</a></li>
+<li id="menu-item-6533" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-6533"><a href="https://livingceramics.com/descargas/">Descargas</a></li>
+<li id="menu-item-6532" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-6532"><a href="https://livingceramics.com/politica-de-gestion/">Política gestión</a></li>
+<li><a href="#" class="home-newsletter-toogle">Newsletter</a></li></ul>	</div>
+</div>
+		<div class="social-holder">
+    <ul class="social-links-list">
+                    <li class="social-item">
+                <a target="_blank" href="https://www.facebook.com/livingceramics/ "><i class="fab fa-facebook-f "></i></a> 
+            </li>
+                    <li class="social-item">
+                <a target="_blank" href="https://www.linkedin.com/company/living-ceramics "><i class="fab fa-linkedin-in "></i></a> 
+            </li>
+                    <li class="social-item">
+                <a target="_blank" href="https://www.pinterest.com/LivingCeramics_/ "><i class="fab fa-pinterest-p "></i></a> 
+            </li>
+                    <li class="social-item">
+                <a target="_blank" href="https://www.youtube.com/channel/UCtbcOXnZWEH-GZzTBTtmaIg "><i class="fab fa-youtube "></i></a> 
+            </li>
+                    <li class="social-item">
+                <a target="_blank" href="https://www.instagram.com/livingceramics/ "><i class="fab fa-instagram "></i></a> 
+            </li>
+            </ul>
+</div>	</footer><!-- #colophon -->
+</div><!-- #page -->
+
+<script type="speculationrules">
+{"prefetch":[{"source":"document","where":{"and":[{"href_matches":"\/*"},{"not":{"href_matches":["\/wp-*.php","\/wp-admin\/*","\/wp-content\/uploads\/*","\/wp-content\/*","\/wp-content\/plugins\/*","\/wp-content\/themes\/living-ceramics\/*","\/*\\?(.+)"]}},{"not":{"selector_matches":"a[rel~=\"nofollow\"]"}},{"not":{"selector_matches":".no-prefetch, .no-prefetch a"}}]},"eagerness":"conservative"}]}
+</script>
+<script>function loadScript(a){var b=document.getElementsByTagName("head")[0],c=document.createElement("script");c.type="text/javascript",c.src="https://tracker.metricool.com/app/resources/be.js",c.onreadystatechange=a,c.onload=a,b.appendChild(c)}loadScript(function(){beTracker.t({hash:'a792ead039a76f88503283dc681772d6'})})</script>    <!-- Meta Pixel Event Code -->
+    <script type='text/javascript'>
+        document.addEventListener( 'wpcf7mailsent', function( event ) {
+        if( "fb_pxl_code" in event.detail.apiResponse){
+            eval(event.detail.apiResponse.fb_pxl_code);
+        }
+        }, false );
+    </script>
+    <!-- End Meta Pixel Event Code -->
+        <div id='fb-pxl-ajax-code'></div><script type="text/javascript" id="cookie-consent-js-extra">
+/* <![CDATA[ */
+var cdlopd_vars = {"version":"1"};
+/* ]]> */
+</script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/plugins/click-datos-lopd/assets/js/click-datos-lopd-js.js?ver=2.3.0" id="cookie-consent-js"></script>
+<script type="text/javascript" src="https://livingceramics.com/wp-includes/js/dist/hooks.min.js?ver=4d63a3d491d11ffd8ac6" id="wp-hooks-js"></script>
+<script type="text/javascript" src="https://livingceramics.com/wp-includes/js/dist/i18n.min.js?ver=5e580eb46a90c2b997e6" id="wp-i18n-js"></script>
+<script type="text/javascript" id="wp-i18n-js-after">
+/* <![CDATA[ */
+wp.i18n.setLocaleData( { 'text direction\u0004ltr': [ 'ltr' ] } );
+/* ]]> */
+</script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/plugins/contact-form-7/includes/swv/js/index.js?ver=6.1.5" id="swv-js"></script>
+<script type="text/javascript" id="contact-form-7-js-translations">
+/* <![CDATA[ */
+( function( domain, translations ) {
+	var localeData = translations.locale_data[ domain ] || translations.locale_data.messages;
+	localeData[""].domain = domain;
+	wp.i18n.setLocaleData( localeData, domain );
+} )( "contact-form-7", {"translation-revision-date":"2025-12-01 15:45:40+0000","generator":"GlotPress\/4.0.3","domain":"messages","locale_data":{"messages":{"":{"domain":"messages","plural-forms":"nplurals=2; plural=n != 1;","lang":"es"},"This contact form is placed in the wrong place.":["Este formulario de contacto est\u00e1 situado en el lugar incorrecto."],"Error:":["Error:"]}},"comment":{"reference":"includes\/js\/index.js"}} );
+/* ]]> */
+</script>
+<script type="text/javascript" id="contact-form-7-js-before">
+/* <![CDATA[ */
+var wpcf7 = {
+    "api": {
+        "root": "https:\/\/livingceramics.com\/wp-json\/",
+        "namespace": "contact-form-7\/v1"
+    }
+};
+/* ]]> */
+</script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/plugins/contact-form-7/includes/js/index.js?ver=6.1.5" id="contact-form-7-js"></script>
+<script type="text/javascript" src="https://unpkg.com/swiper/swiper-bundle.min.js?ver=6.0.0" id="swiper-js"></script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/themes/living-ceramics/assets/kinetic/kinetic.js?ver=2.2.4" id="kinetic-js"></script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/themes/living-ceramics/assets/owl/owl.carousel.min.js?ver=2.3.4" id="owl-js"></script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/themes/living-ceramics/assets/lightbox/lightbox.js?ver=2.11.1" id="lightbox-js"></script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/themes/living-ceramics/assets/aos/aos.js?ver=1" id="aos-js"></script>
+<script type="text/javascript" id="living-ceramics-js-extra">
+/* <![CDATA[ */
+var postlove = {"ajax_url":"https:\/\/livingceramics.com\/wp-admin\/admin-ajax.php","dwnldfrm_on":"0","site_url":"https:\/\/livingceramics.com","theme_url":"https:\/\/livingceramics.com\/wp-content\/themes\/living-ceramics","user_id":"0","locale":"es_ES","currentid":"0","theme_version":"1.0.2.8"};
+/* ]]> */
+</script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/themes/living-ceramics/js/main.js?ver=1.0.2.8" id="living-ceramics-js"></script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/plugins/3d-flipbook-dflip-lite/assets/js/dflip.min.js?ver=2.4.27" id="dflip-script-js"></script>
+<script type="text/javascript" src="https://www.google.com/recaptcha/api.js?render=6LepqgYmAAAAAESdifEpCq1p6m5Djku7_918_QUE&amp;ver=3.0" id="google-recaptcha-js"></script>
+<script type="text/javascript" src="https://livingceramics.com/wp-includes/js/dist/vendor/wp-polyfill.min.js?ver=3.15.0" id="wp-polyfill-js"></script>
+<script type="text/javascript" id="wpcf7-recaptcha-js-before">
+/* <![CDATA[ */
+var wpcf7_recaptcha = {
+    "sitekey": "6LepqgYmAAAAAESdifEpCq1p6m5Djku7_918_QUE",
+    "actions": {
+        "homepage": "homepage",
+        "contactform": "contactform"
+    }
+};
+/* ]]> */
+</script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/plugins/contact-form-7/modules/recaptcha/index.js?ver=6.1.5" id="wpcf7-recaptcha-js"></script>
+<script type="text/javascript" id="smush-lazy-load-js-before">
+/* <![CDATA[ */
+var smushLazyLoadOptions = {"autoResizingEnabled":false,"autoResizeOptions":{"precision":5,"skipAutoWidth":true}};
+/* ]]> */
+</script>
+<script type="text/javascript" src="https://livingceramics.com/wp-content/plugins/wp-smushit/app/assets/js/smush-lazy-load.min.js?ver=3.24.0" id="smush-lazy-load-js"></script>
+<script type="text/javascript">
+(function() {
+				var expirationDate = new Date();
+				expirationDate.setTime( expirationDate.getTime() + 31536000 * 1000 );
+				document.cookie = "pll_language=es; expires=" + expirationDate.toUTCString() + "; path=/; secure; SameSite=Lax";
+			}());
+
+</script>
+        <script data-cfasync="false">
+            window.dFlipLocation = 'https://livingceramics.com/wp-content/plugins/3d-flipbook-dflip-lite/assets/';
+            window.dFlipWPGlobal = {"text":{"toggleSound":"Turn on\/off Sound","toggleThumbnails":"Toggle Thumbnails","toggleOutline":"Toggle Outline\/Bookmark","previousPage":"Previous Page","nextPage":"Next Page","toggleFullscreen":"Toggle Fullscreen","zoomIn":"Zoom In","zoomOut":"Zoom Out","toggleHelp":"Toggle Help","singlePageMode":"Single Page Mode","doublePageMode":"Double Page Mode","downloadPDFFile":"Download PDF File","gotoFirstPage":"Goto First Page","gotoLastPage":"Goto Last Page","share":"Share","mailSubject":"I wanted you to see this FlipBook","mailBody":"Check out this site {{url}}","loading":"DearFlip: Loading "},"viewerType":"flipbook","moreControls":"download,pageMode,startPage,endPage,sound","hideControls":"","scrollWheel":"false","backgroundColor":"#777","backgroundImage":"","height":"auto","paddingLeft":"20","paddingRight":"20","controlsPosition":"bottom","duration":800,"soundEnable":"true","enableDownload":"true","showSearchControl":"false","showPrintControl":"false","enableAnnotation":false,"enableAnalytics":"false","webgl":"true","hard":"none","maxTextureSize":"1600","rangeChunkSize":"524288","zoomRatio":1.5,"stiffness":3,"pageMode":"0","singlePageMode":"0","pageSize":"0","autoPlay":"false","autoPlayDuration":5000,"autoPlayStart":"false","linkTarget":"2","sharePrefix":"flipbook-"};
+        </script>
+      
+                <script type="text/javascript">
+                    jQuery(document).ready(function ($) {
+                        if (catapultReadCookie('catAccCookies') || catapultReadCookie("catAccCookiesDeny") /*|| catapultReadCookie("catAccCookiesUnan")*/) {
+
+                        } else {
+                            $("body").addClass("has-cookie-bar");
+                            $("body").addClass("cookie-bar-block");
+                        }
+
+//                        if (catapultReadCookie('catAccCookies') || catapultReadCookie("catAccCookiesDeny")) {
+//
+//                        } else {
+//                            setTimeout("cookiesinaceptarnirechazar()", 30000);
+//                        }
+//
+//                        if (catapultReadCookie("catAccCookiesUnan")) {
+//                            setTimeout(function () {
+//                                $("body").addClass("has-cookie-bar");
+//                                $("body").addClass("cookie-bar-");
+//                                setTimeout("cookiesinaceptarnirechazar()", 30000);
+//                            }, 300000);
+//                        }
+                    });
+                </script>
+
+
+                <div id="catapult-cookie-bar" class=" rounded-corners drop-shadowfloat-accept"><span>Política de Cookies</span><span class="cdlopd-left-side">Esta página utiliza cookies y otras tecnologías para que podamos mejorar su experiencia en nuestros sitios: <a class="cdlopd-more-info-link" id="pag_informacion" tabindex=0 target="_blank" href="https://livingceramics.com/politica-de-cookies/">Más información.</a></span><span class="cdlopd-right-side">  </span></div><!-- #catapult-cookie-bar -->
+</body>
+</html>

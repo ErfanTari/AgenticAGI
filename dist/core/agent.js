@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { sessionApproveLevel } from './permission.js';
 import { localDatePlusDays } from './utils/date.js';
 import { resolveQuery } from './resolver.js';
 import { buildContext } from './context.js';
@@ -10,7 +11,7 @@ import { assessComplexity } from './planner.js';
 import { runQueryLoop } from './query-loop.js';
 import { searchMemoryForUnits } from './memory/unit-search.js';
 import { runWithRetry } from './react.js';
-import { addRelationship, fetchByCode, getEntryByCode, hybridSearch, upsertEntry, savePendingPlan, clearPendingPlan, loadPendingUserInput, clearPendingUserInput, } from './memory/mod.js';
+import { addRelationship, fetchByCode, getEntryByCode, hybridSearch, upsertEntry, savePendingPlan, clearPendingPlan, loadPendingUserInput, clearPendingUserInput, loadPendingPermissionRequest, clearPendingPermissionRequest, } from './memory/mod.js';
 import { startHeartbeat, stopHeartbeat, recordActivity } from './heartbeat.js';
 import { getDb } from './memory/index.js';
 import { classifyFailure } from './executor.js';
@@ -344,7 +345,8 @@ function buildSkillCompatibilityClassification(message) {
             : message.trim();
         return { intent: 'skill', codes: [], skill: 'run_bash', skillInput: { command } };
     }
-    if (matchesAny(message, WEB_SEARCH_PATTERNS)) {
+    const WEB_SEARCH_AGENTIC_GUARD = /\b(download|save|fetch|catalog|catalogue|collect|scrape|store|grab)\b/i;
+    if (matchesAny(message, WEB_SEARCH_PATTERNS) && !WEB_SEARCH_AGENTIC_GUARD.test(message)) {
         return {
             intent: 'skill',
             codes: [],
@@ -1120,6 +1122,60 @@ async function _processMessageImpl(message, history, options, rootCtx) {
                 intent: 'general',
                 resolved: null,
             };
+        }
+        // === Permission Escalation Intercept (step [0b-perm]) ===
+        // If a prior skill called request_permission, the next message IS the user's approve/deny.
+        // Only consume the pending request if the message clearly looks like a yes/no response.
+        // Otherwise clear it silently and proceed with normal handling — the user moved on.
+        const pendingPerm = loadPendingPermissionRequest();
+        if (pendingPerm) {
+            const msg = message.trim().toLowerCase();
+            const isYesToAll = msg === 'yes_to_all' || msg === 'yes to all';
+            const isYes = isYesToAll || /^(yes|approve|allow|grant|ok|okay|sure|go ahead|do it|confirm)$/i.test(msg);
+            const isNo = /^(no|deny|reject|cancel|stop|don'?t|do not)$/i.test(msg);
+            const isResponse = isYes || isNo;
+            if (!isResponse) {
+                // User sent something unrelated — abandon the stale request, fall through to normal handling
+                clearPendingPermissionRequest();
+            }
+            else {
+                clearPendingPermissionRequest();
+                if (isYes) {
+                    // Elevate env mode for this turn's skill runner calls
+                    process.env.PERMISSION_MODE = pendingPerm.required;
+                    if (isYesToAll) {
+                        // Also store in session set so future requests auto-approve without asking
+                        sessionApproveLevel(pendingPerm.required);
+                    }
+                    transparency.emit({ type: 'permission_escalation_granted', data: { skill: pendingPerm.skill, newMode: pendingPerm.required } });
+                    const findingsPrefix = await buildFindingsPrefix();
+                    // Auto-resume the query-loop if the original goal was saved with the permission request
+                    if (pendingPerm.goal) {
+                        const loopResult = await runQueryLoop(pendingPerm.goal, handler, undefined, history, undefined, undefined, rootCtx, signal);
+                        return {
+                            reply: findingsPrefix + loopResult.reply,
+                            intent: 'planned_workflow',
+                            resolved: null,
+                        };
+                    }
+                    // Fallback: no goal saved (edge case / old permission requests without goal context)
+                    const toAllNote = isYesToAll ? ' (auto-approved for all similar requests this session)' : '';
+                    return {
+                        reply: findingsPrefix + `Permission granted${toAllNote}. Mode elevated to '${pendingPerm.required}'. Please resend your request and I'll continue.`,
+                        intent: 'general',
+                        resolved: null,
+                    };
+                }
+                else {
+                    transparency.emit({ type: 'permission_escalation_denied', data: { skill: pendingPerm.skill } });
+                    const findingsPrefix = await buildFindingsPrefix();
+                    return {
+                        reply: findingsPrefix + `Understood — permission for '${pendingPerm.skill}' was not granted. I'll find an alternative approach within the current permission level.`,
+                        intent: 'general',
+                        resolved: null,
+                    };
+                }
+            } // end isResponse branch
         }
         // === User Input Intercept (step [0b]) ===
         // If a prior skill called request_user_input, the next message IS the answer.

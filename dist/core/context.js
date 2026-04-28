@@ -251,6 +251,11 @@ function formatSkills(skills) {
         return '';
     return 'Available capabilities: ' + skills.map(s => s.description).join('; ');
 }
+/** Returns the stable, never-changing portion of the system prompt.
+ *  Used as the KV cache anchor: identical for every processMessage call. */
+export function buildStablePrelude() {
+    return SYSTEM_PROMPT;
+}
 export async function buildContext(userMessage, resolved, history, skills, intent, skillOutput, llmHandler, contextMode, signals) {
     // Phase 18 — contextMode overrides token limits for coding tasks
     const effectiveMaxTokens = contextMode === 'agentic_coding' ? 8000 : MAX_TOKENS;

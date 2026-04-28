@@ -20,6 +20,8 @@ export const writeEntryJsonSchema = z.toJSONSchema(WriteEntrySchema) as Record<s
 
 // --- Task Plan schemas (Phase 9: Planner + Executor) ---
 
+export const MAX_TASK_PLAN_STEPS = 30;
+
 export const TaskStepSchema = z.object({
   id: z.string(),
   description: z.string(),
@@ -60,7 +62,7 @@ export type TaskMilestone = z.infer<typeof TaskMilestoneSchema>;
 
 export const TaskPlanSchema = z.object({
   goal: z.string(),
-  steps: z.array(TaskStepSchema).min(1).max(8),
+  steps: z.array(TaskStepSchema).min(1).max(MAX_TASK_PLAN_STEPS),
   goals: z.array(TaskGoalSchema).default([]),
   milestones: z.array(TaskMilestoneSchema).default([]),
   complexity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'MAX', 'simple', 'complex']).default('LOW'),

@@ -1,5 +1,5 @@
 import type { Classification, LLMHandler, Message } from './types.js';
-import { TaskPlanSchema, taskPlanJsonSchema, planAssertionJsonSchema, validatePlanIntegrity } from './schemas.js';
+import { MAX_TASK_PLAN_STEPS, TaskPlanSchema, taskPlanJsonSchema, planAssertionJsonSchema, validatePlanIntegrity } from './schemas.js';
 import type { TaskGoal, TaskMilestone, TaskPlan, TaskStep } from './schemas.js';
 import { transparency, withSpan, getCurrentRequestId } from './transparency.js';
 import { queryEntries } from './memory/index.js';
@@ -872,7 +872,7 @@ function normalizePlanPayload(
     );
   }
   const milestones = normalizeMilestones(raw.milestones, steps, goals, complexity);
-  let flattenedSteps = flattenMilestones(milestones).slice(0, 8);
+  let flattenedSteps = flattenMilestones(milestones).slice(0, MAX_TASK_PLAN_STEPS);
 
   if (flattenedSteps.length === 0) return null;
 
@@ -1001,6 +1001,81 @@ export function normalizePlanDefaults(raw: Record<string, unknown>): Record<stri
   }
 
   return raw;
+}
+
+export function applyPlanIntegrityPolicy(
+  plan: TaskPlan,
+  integrity: ReturnType<typeof validatePlanIntegrity>,
+): void {
+  if (!integrity.valid) {
+    console.warn(
+      `[zaraban][planner] Plan has referential integrity issues:`,
+      {
+        orphaned: integrity.orphanedSteps,
+        missing: integrity.missingSteps,
+        brokenDeps: integrity.brokenDependencies,
+      }
+    );
+    transparency.emit({
+      type: 'plan_integrity_warning',
+      data: {
+        orphanedSteps: integrity.orphanedSteps,
+        missingSteps: integrity.missingSteps,
+        brokenDependencies: integrity.brokenDependencies,
+      },
+    });
+
+    if (integrity.missingSteps.length >= 3) {
+      transparency.emit({
+        type: 'complexity_escalation',
+        data: {
+          reason: 'plan_integrity_missing_steps',
+          missing: integrity.missingSteps.length,
+        },
+      });
+      plan.complexity = 'HIGH';
+    }
+
+    // FIX 3: Auto-repair orphaned steps by assigning them to the correct milestone
+    if (integrity.orphanedSteps.length > 0 && integrity.missingSteps.length === 0) {
+      for (const orphanId of integrity.orphanedSteps) {
+        const step = plan.steps.find(s => s.id === orphanId);
+        if (!step) continue;
+
+        // Find which milestone contains the step this one depends on
+        let targetMilestone = plan.milestones && plan.milestones.length > 0
+          ? plan.milestones[plan.milestones.length - 1]
+          : null;
+
+        if (step.dependsOn && step.dependsOn.length > 0 && plan.milestones) {
+          for (const milestone of plan.milestones) {
+            if (milestone.steps?.some(mstep => step.dependsOn!.includes((mstep as any).id))) {
+              targetMilestone = milestone;
+              break;
+            }
+          }
+        }
+
+        // Add the orphaned step to the target milestone
+        if (targetMilestone) {
+          if (!targetMilestone.steps) targetMilestone.steps = [];
+          targetMilestone.steps.push(step);  // milestone.steps contains TaskStep objects
+          console.warn(
+            `[zaraban][planner] Auto-assigned orphaned step ${orphanId} to milestone ${targetMilestone.id}`
+          );
+        }
+      }
+    }
+
+    // If steps are missing from root (referenced in milestones but don't exist),
+    // log loudly but don't crash
+    if (integrity.missingSteps.length > 0) {
+      console.error(
+        `[zaraban][planner] CRITICAL: Milestone references non-existent steps: ` +
+        integrity.missingSteps.join(', ')
+      );
+    }
+  }
 }
 
 const IMAGE_ACQUISITION_PATTERNS = /\b(use|include|add|embed)\s+(?:real\s+)?(?:images?|pictures?|photos?)\s+(?:on|from)\s+(?:the\s+)?(?:internet|web|online)\b/i;
@@ -1218,7 +1293,7 @@ export async function decomposeTask(
 
     try {
       const raw = JSON.parse(jsonString) as Record<string, unknown>;
-      // Parse without max constraint, then enforce 8-step limit
+      // Parse without max constraint, then enforce the bounded step limit.
       if (
         raw.goal &&
         (
@@ -1231,7 +1306,7 @@ export async function decomposeTask(
           retryFeedback = 'Your plan must include at least one valid step. Return corrected JSON only.';
           continue;
         }
-        const trimmed = { ...normalized, steps: normalized.steps.slice(0, 8) };
+        const trimmed = { ...normalized, steps: normalized.steps.slice(0, MAX_TASK_PLAN_STEPS) };
 
         // DEBUG_DEEP: emit the full accepted plan JSON
         if (process.env.DEBUG_DEEP === 'true') {
@@ -1298,64 +1373,7 @@ export async function decomposeTask(
 
           // FIX 3: Validate plan referential integrity (orphaned steps, missing steps, broken deps)
           const integrity = validatePlanIntegrity(plan);
-          if (!integrity.valid) {
-            console.warn(
-              `[zaraban][planner] Plan has referential integrity issues:`,
-              {
-                orphaned: integrity.orphanedSteps,
-                missing: integrity.missingSteps,
-                brokenDeps: integrity.brokenDependencies,
-              }
-            );
-            transparency.emit({
-              type: 'plan_integrity_warning',
-              data: {
-                orphanedSteps: integrity.orphanedSteps,
-                missingSteps: integrity.missingSteps,
-                brokenDependencies: integrity.brokenDependencies,
-              },
-            });
-
-            // FIX 3: Auto-repair orphaned steps by assigning them to the correct milestone
-            if (integrity.orphanedSteps.length > 0 && integrity.missingSteps.length === 0) {
-              for (const orphanId of integrity.orphanedSteps) {
-                const step = plan.steps.find(s => s.id === orphanId);
-                if (!step) continue;
-
-                // Find which milestone contains the step this one depends on
-                let targetMilestone = plan.milestones && plan.milestones.length > 0
-                  ? plan.milestones[plan.milestones.length - 1]
-                  : null;
-
-                if (step.dependsOn && step.dependsOn.length > 0 && plan.milestones) {
-                  for (const milestone of plan.milestones) {
-                    if (milestone.steps?.some(mstep => step.dependsOn!.includes((mstep as any).id))) {
-                      targetMilestone = milestone;
-                      break;
-                    }
-                  }
-                }
-
-                // Add the orphaned step to the target milestone
-                if (targetMilestone) {
-                  if (!targetMilestone.steps) targetMilestone.steps = [];
-                  targetMilestone.steps.push(step);  // milestone.steps contains TaskStep objects
-                  console.warn(
-                    `[zaraban][planner] Auto-assigned orphaned step ${orphanId} to milestone ${targetMilestone.id}`
-                  );
-                }
-              }
-            }
-
-            // If steps are missing from root (referenced in milestones but don't exist),
-            // log loudly but don't crash
-            if (integrity.missingSteps.length > 0) {
-              console.error(
-                `[zaraban][planner] CRITICAL: Milestone references non-existent steps: ` +
-                integrity.missingSteps.join(', ')
-              );
-            }
-          }
+          applyPlanIntegrityPolicy(plan, integrity);
 
           validateImageAcquisition(plan, message);
           transparency.emit({ type: 'plan', data: plan });

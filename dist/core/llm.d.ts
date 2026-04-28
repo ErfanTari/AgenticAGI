@@ -1,4 +1,5 @@
 import type { Message } from './types.js';
+export declare function _resetSeenPrefixHashes(): void;
 export type ToolDefinition = {
     name: string;
     description?: string;
@@ -16,6 +17,8 @@ type LLMCallOptions = {
 };
 export type OpenAICompatibleLLMProfile = {
     kind: 'openai-compatible';
+    /** 'lmstudio' enables cache_prompt:true in request bodies for KV cache reuse. */
+    providerKind?: 'lmstudio' | 'openai' | 'gemini' | 'other';
     label: string;
     endpoint: string;
     model: string;
