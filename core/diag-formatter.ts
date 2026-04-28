@@ -160,17 +160,18 @@ export function startDiagSession(requestId: string): () => Promise<void> {
 
     switch (e.type) {
       case 'route': {
-        const d = e.data as { level?: string; path?: string; engine?: string; route?: string };
-        state.engine = d.engine ?? d.level ?? '';
-        state.route = d.route ?? d.path ?? '';
+        // level = complexity (LOW/MEDIUM/HIGH/MAX), path = route path description
+        const d = e.data as { level?: string; path?: string; reason?: string };
+        const parts = [d.level, d.path].filter(Boolean);
+        state.route = trunc(parts.join(' | '), 60);
         break;
       }
       case 'query_loop_start': {
         const d = e.data as { goal?: string };
-        // Always prefer the actual task goal over the span label (span may capture a permission reply)
+        // Always overwrite goal — query_loop_start carries the actual task, not the user's last message
         if (d.goal) state.goal = trunc(d.goal, 120);
-        // Auto-detect engine when route event is absent (e.g. permission-resume flows)
-        if (!state.engine) state.engine = 'query-loop';
+        // query-loop engine always wins (overrides any earlier default)
+        state.engine = 'query-loop';
         break;
       }
       case 'query_loop_iteration': {
@@ -223,6 +224,8 @@ export function startDiagSession(requestId: string): () => Promise<void> {
       }
       case 'milestone_start': {
         const d = e.data as { title?: string };
+        // executor engine: milestone_start fires for HIGH/MAX plans; only set if not already known
+        if (!state.engine) state.engine = 'executor';
         state.milestones.push({ title: d.title ?? '(untitled)', ok: false, stepsRun: 0 });
         break;
       }
@@ -263,8 +266,8 @@ export function startDiagSession(requestId: string): () => Promise<void> {
         const d = e.data as { spanId?: string; parentSpanId?: string; label?: string };
         if (!d.parentSpanId && d.label?.startsWith('request: ')) {
           state.rootSpanId = d.spanId ?? null;
-          const raw = d.label.slice('request: '.length);
-          if (!state.goal) state.goal = trunc(raw, 120);
+          // Only use span label as fallback — query_loop_start will overwrite with the real goal
+          if (state.goal === '') state.goal = trunc(d.label.slice('request: '.length), 120);
         }
         break;
       }

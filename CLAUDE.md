@@ -581,3 +581,4 @@ Execution is NOT blocked — the event is a regression sentinel for tests.
 | `queryloop-bash-split-complete` | Bash payload split (one run_bash per brand), json-repair circuit breaker (3-strike recovery injection), previous sprint Phase 2 rule corrected |
 | `diag-formatter-complete` | Passive diagnostic formatter: compact .diag file per request (~300–500 tokens), subscribes to transparency bus, covers QueryLoop iters, milestones, repairs, token totals, errors. Replaces 10k–220k trace dumps for AI-assisted diagnosis. |
 | `queryloop-download-hardened-complete` | Bash template hardened: no variables/substitution (Sprint-E blocklist compat), timeout → one-retry → TIMEOUT_SKIP rule, web_fetch-on-timeout blocked |
+| `diag-formatter-fixes-complete` | Diag formatter: goal priority fix (query_loop_start wins over span label), engine fallback chain (route → query_loop_start → milestone_start), route label formatting |

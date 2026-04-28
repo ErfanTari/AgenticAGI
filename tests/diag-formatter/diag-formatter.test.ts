@@ -135,4 +135,57 @@ describe('diag-formatter', () => {
     const text = readFileSync(getDiagPath(requestId), 'utf-8');
     expect(text).toContain('search for neolith catalogs');
   });
+
+  // ── Priority / fallback tests (tests 11–14) ──────────────────────────────────
+
+  it('query_loop_start goal overwrites span_start label (yes_to_all scenario)', async () => {
+    const requestId = randomUUID();
+    const flush = startDiagSession(requestId);
+    emit(requestId, () => {
+      // span_start fires first with permission reply as label
+      transparency.emit({ type: 'span_start', data: { spanId: 'root-1', label: 'request: yes_to_all', ts: Date.now() } });
+      // query_loop_start fires later with the real task goal
+      transparency.emit({ type: 'query_loop_start', data: { goal: 'download porcelain slab catalogs for 6 brands' } });
+    });
+    await flush();
+    const text = readFileSync(getDiagPath(requestId), 'utf-8');
+    expect(text).toContain('download porcelain slab catalogs for 6 brands');
+    expect(text).not.toContain('yes_to_all');
+  });
+
+  it('span_start label is used as fallback when query_loop_start never fires', async () => {
+    const requestId = randomUUID();
+    const flush = startDiagSession(requestId);
+    emit(requestId, () => {
+      transparency.emit({ type: 'span_start', data: { spanId: 'root-1', label: 'request: what is the capital of France', ts: Date.now() } });
+    });
+    await flush();
+    const text = readFileSync(getDiagPath(requestId), 'utf-8');
+    expect(text).toContain('what is the capital of France');
+  });
+
+  it('engine becomes query-loop when query_loop_start fires', async () => {
+    const requestId = randomUUID();
+    const flush = startDiagSession(requestId);
+    emit(requestId, () => {
+      transparency.emit({ type: 'query_loop_start', data: { goal: 'some task' } });
+    });
+    await flush();
+    const text = readFileSync(getDiagPath(requestId), 'utf-8');
+    expect(text).toContain('query-loop');
+  });
+
+  it('route event sets route label with level and path; engine set by query_loop_start', async () => {
+    const requestId = randomUUID();
+    const flush = startDiagSession(requestId);
+    emit(requestId, () => {
+      transparency.emit({ type: 'route', data: { level: 'MEDIUM', path: 'MultiTargetWebWork', reason: 'agentic' } });
+      transparency.emit({ type: 'query_loop_start', data: { goal: 'download catalogs' } });
+    });
+    await flush();
+    const text = readFileSync(getDiagPath(requestId), 'utf-8');
+    expect(text).toContain('query-loop');
+    expect(text).toContain('MEDIUM');
+    expect(text).toContain('MultiTargetWebWork');
+  });
 });
