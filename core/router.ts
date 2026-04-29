@@ -712,6 +712,57 @@ async function handleAgenticUnits(
         },
       };
     }
+    // Spec extraction failed — fall through to Tier 1b (file_batch_transform) then Tier 2 (QueryLoop)
+  }
+
+  // ── Pre-planner gate Tier 1b: file batch transform (Phase 25.1 deterministic engine) ──────
+  // Whitepaper: docs/one-call-engine.md §15. The LLM may produce candidates, the engine
+  // decides state transitions. This gate detects "convert/copy/rename a folder of files"
+  // intents and routes to a counter-driven engine instead of an LLM loop.
+  const FILE_BATCH_VERB_RE = /\b(convert|copy|rename|move|extract\s+text|batch[- ]?(?:transform|convert|process)|process\s+all|transform\s+(?:every|each|all))\b/i;
+  const FILE_BATCH_GLOB_RE = /\b(folder|directory|every|each|all)\b[\s\S]{0,80}?\b(\.pdf|\.png|\.jpe?g|\.csv|\.txt|\.md|\.html?|file|files)\b/i;
+
+  function detectFileBatchTransform(message: string): boolean {
+    return FILE_BATCH_VERB_RE.test(message) && FILE_BATCH_GLOB_RE.test(message);
+  }
+
+  if (detectFileBatchTransform(goalMessage)) {
+    transparency.emit({
+      type: 'route',
+      data: {
+        level: 'MEDIUM',
+        reason: 'file batch transform detected — routing to deterministic engine',
+        path: 'file_batch_transform_engine',
+      },
+    });
+
+    const { extractFileBatchTransformSpec } = await import('./skills/file-batch-transform-spec-extractor.js');
+    const { runFileBatchTransform, renderFinalMessage } = await import('./skills/file-batch-transform.js');
+    const { runSkill } = await import('./skills/runner.js');
+
+    const spec = await extractFileBatchTransformSpec(goalMessage, llmHandler);
+
+    if (spec) {
+      const report = await runFileBatchTransform(
+        spec,
+        (name, input) => runSkill(name, input, parentCtx, signal),
+        {
+          emit: (event) => transparency.emit(event as Parameters<typeof transparency.emit>[0]),
+        },
+      );
+      return {
+        parts: [{ order: minOrder, route: 'agentic', reply: renderFinalMessage(report, spec) }],
+        plan: {
+          goal: goalMessage,
+          steps: [],
+          milestones: [],
+          goals: [],
+          complexity: 'MEDIUM',
+          needsConfirmation: false,
+          createdAt: new Date().toISOString(),
+        },
+      };
+    }
     // Spec extraction failed — fall through to Tier 2 (QueryLoop)
   }
 

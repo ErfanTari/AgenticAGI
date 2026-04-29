@@ -252,3 +252,51 @@ export const webDownloadSpecSchema = z.object({
 
 export type WebDownloadSpec = z.infer<typeof webDownloadSpecSchema>;
 
+// ── Phase 25.1: File Batch Transform Spec ────────────────────────────────────
+
+/**
+ * Engine #2 in the One-Call Engine series. See docs/one-call-engine.md §5
+ * (step types as a DSL) and docs/phase-25-plan.md.
+ *
+ * Three transform kinds, each idempotent and self-validating:
+ *   - copy: copy file from source to destDir; validator = bytes match
+ *   - rename: move file to new name in same parent; validator = exists at dest, gone from src
+ *   - extract_text_from_pdf: read PDF, write .txt next to it; validator = output ≥ minBytes
+ */
+export const fileBatchTransformKindSchema = z.enum([
+  'copy',
+  'rename',
+  'extract_text_from_pdf',
+]);
+
+export type FileBatchTransformKind = z.infer<typeof fileBatchTransformKindSchema>;
+
+export const fileBatchTransformSpecSchema = z.object({
+  kind: z.literal('file_batch_transform'),
+  source: z.object({
+    glob: z.string().min(1),
+  }),
+  transform: z.object({
+    kind: fileBatchTransformKindSchema,
+  }),
+  destDir: z.string().min(1),
+  /**
+   * Filename template applied to each input file. Tokens:
+   *   {stem} → input basename without extension
+   *   {ext}  → input extension (with leading dot)
+   *   {idx}  → zero-padded 1-based index of file in batch
+   */
+  filenameTemplate: z.string().min(1),
+  validation: z.object({
+    minBytes: z.number().int().min(0).default(1),
+    requireExtension: z.string().optional(),
+  }).default({ minBytes: 1 }),
+  /**
+   * if-missing: skip when destination exists (idempotent re-run is a no-op).
+   * always:     overwrite even if destination exists.
+   */
+  overwrite: z.enum(['if-missing', 'always']).default('if-missing'),
+});
+
+export type FileBatchTransformSpec = z.infer<typeof fileBatchTransformSpecSchema>;
+

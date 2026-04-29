@@ -649,6 +649,41 @@ Keyed by `${skillName}::${JSON.stringify(args)}` scoped per `requestId`. Emits `
 
 ---
 
+## 22. One-Call Engine (Phase 24+25)
+
+**Whitepaper:** `docs/one-call-engine.md` (production whitepaper, ~5,200 words)
+**Sprint plan:** `docs/phase-25-plan.md`
+
+**Thesis.** Agents are compilers. The LLM compiles a goal into a typed `TaskSpec`; a deterministic engine is the runtime; the ledger is the program counter. State lives in a struct, not in conversation history. **The LLM may produce candidates. The engine decides state transitions.**
+
+**Discipline.** Build three concrete engines before extracting the universal `TaskSpec` runtime. Universal abstractions extracted from one example are vague.
+
+| # | Engine | Spec schema | Status |
+|---|--------|-------------|--------|
+| 1 | `web_download_multi_target` | `webDownloadSpecSchema` (`core/schemas.ts`) | shipped Phase 24 |
+| 2 | `file_batch_transform` | `fileBatchTransformSpecSchema` (`core/schemas.ts`) | shipped Phase 25.1 |
+| 3 | `api_paginated_collect` | (next sprint) | Phase 25.2 |
+
+After #3, Phase 25.3 extracts `TaskSpec<K, I>` + `engineRegistry` + side-effect approval gates + escalation protocol + `RunRecord` memory loop.
+
+**Per-engine pattern (apply when adding a new kind):**
+1. Add `<kind>SpecSchema` to `core/schemas.ts` (Zod, with discriminant `kind: z.literal(...)`).
+2. Implement `core/skills/<kind>.ts` with: typed ledger, counter-driven loop, self-validating outputs, transparency events, `renderFinalMessage(report, spec)`.
+3. Implement `core/skills/<kind>-spec-extractor.ts` with a single bounded LLM call (~400 tokens) and `parseStructured` against the schema.
+4. Tests in `tests/phase-25/<kind>.test.ts` covering schema, helpers, validators, integration, transparency events, extractor.
+5. Wire as a Tier-1x gate in `core/router.ts` between existing tiers (regex detect → spec extract → engine run → fall through to QueryLoop on extractor failure).
+
+**Constants for engine #2 (`file_batch_transform`):**
+```typescript
+MAX_RETRIES_PER_FILE = 1;
+MAX_TOTAL_MS = 600_000;
+MAX_FILES_PER_BATCH = 1000;
+```
+
+**Side-effect classification (whitepaper §8).** Engine #2 is `local_write`. Workspace-relative `destDir` enforced at extraction; paths escaping the workspace root cause refused starts. The full taxonomy (`none` / `local_write` / `external_write` / `destructive`) lifts to the runtime layer in Phase 25.3.
+
+---
+
 ## Phase Index (summary — see CLAUDE.legacy.md for full detail)
 
 | Tag | Sprint |
@@ -692,3 +727,4 @@ Keyed by `${skillName}::${JSON.stringify(args)}` scoped per `requestId`. Emits `
 | `phase-23-schema-hardening-complete` | 3-layer parse chain (direct→jsonrepair→Zod retry+correction prompt), tool-level circuit breaker (2 consecutive identical-arg failures), 5 new transparency events |
 | `web-search-upgrade-complete` | UA rotation (5-agent pool, round-robin) in web_fetch + download_file; Brave ×10 results, snippet_only param, DDG fallback removed; read_pdf (pdf-parse v2), fetch_feed (rss-parser), browser_fetch (Playwright headless Chromium) |
 | `phase-24-download-engine-complete` | Deterministic multi-target web download engine: TargetLedger state outside LLM, counter-driven retry (maxSearches=2, maxPages=3, maxDownloads=3), spec extracted via 1 structured LLM call, replaces QueryLoop C3 guard system for catalog downloads |
+| `phase-25-1-file-batch-transform-complete` | Engine #2 in the One-Call Engine series. Three transform kinds (copy / rename / extract_text_from_pdf), per-file ledger, idempotent re-runs (overwrite=if-missing default), self-validating outputs (minBytes + extension check), workspace-sandboxed destDir. Router Tier 1b gate. 33 tests in `tests/phase-25/`. Whitepaper: `docs/one-call-engine.md`. Sprint plan: `docs/phase-25-plan.md`. Discipline: build engine #3 (api_paginated_collect) before extracting universal `TaskSpec`. |
