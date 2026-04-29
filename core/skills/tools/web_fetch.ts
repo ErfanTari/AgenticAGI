@@ -142,15 +142,55 @@ const webFetchSkill: MCPSkill = {
         return { success: false, output: '', error: `HTTP ${response.status}: ${response.statusText}` };
       }
 
-      // Guard against oversized responses
+      // Guard against oversized responses — on Content-Length hit, return partial with advisory
       const contentLength = response.headers.get('content-length');
       if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_BYTES) {
-        return { success: false, output: '', error: `Response too large (${contentLength} bytes, max 2MB)` };
+        // Strategy A: read first 512KB and extract links — more useful than a hard error
+        const PARTIAL_BYTES = 512 * 1024;
+        const reader = response.body?.getReader();
+        let partialHtml = '';
+        if (reader) {
+          const chunks: Uint8Array[] = [];
+          let total = 0;
+          while (total < PARTIAL_BYTES) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            total += value.byteLength;
+            chunks.push(value);
+          }
+          await reader.cancel().catch(() => {});
+          partialHtml = Buffer.concat(chunks).toString('utf-8');
+        }
+        const finalUrl = response.url || url;
+        const allLinks = extractLinks(partialHtml, finalUrl);
+        const filterPattern = input.extract_links_matching ? String(input.extract_links_matching).toLowerCase() : null;
+        const filteredLinks = filterPattern ? allLinks.filter(l => l.toLowerCase().includes(filterPattern)) : allLinks;
+        const directLinks = allLinks.filter(isDirectDownload);
+        const linkSection = filteredLinks.length > 0
+          ? `Links found (${filteredLinks.length}${filterPattern ? `, matching "${filterPattern}"` : ''}):\n${filteredLinks.slice(0, 20).join('\n')}`
+          : 'Links found (0)';
+        const directSection = directLinks.length > 0
+          ? `Direct download links:\n${directLinks.slice(0, 20).join('\n')}`
+          : 'Direct download links: none';
+        return {
+          success: true,
+          output: `[PARTIAL — response ${contentLength} bytes exceeds 2MB cap; extracted links from first 512KB]\nURL: ${finalUrl}\n${linkSection}\n${directSection}\nHint: if you see a .pdf link above, call download_file on it directly.`,
+        };
       }
 
       const html = await response.text();
       if (html.length > MAX_RESPONSE_BYTES) {
-        return { success: false, output: '', error: `Response body too large (${html.length} bytes, max 2MB)` };
+        // Body arrived larger than declared — same partial extraction
+        const partialHtml = html.slice(0, 512 * 1024);
+        const finalUrl = response.url || url;
+        const allLinks = extractLinks(partialHtml, finalUrl);
+        const filterPattern = input.extract_links_matching ? String(input.extract_links_matching).toLowerCase() : null;
+        const filteredLinks = filterPattern ? allLinks.filter(l => l.toLowerCase().includes(filterPattern)) : allLinks;
+        const directLinks = allLinks.filter(isDirectDownload);
+        return {
+          success: true,
+          output: `[PARTIAL — body ${html.length} bytes exceeds 2MB cap; extracted links from first 512KB]\nURL: ${finalUrl}\nLinks found (${filteredLinks.length}):\n${filteredLinks.slice(0, 20).join('\n')}\nDirect download links:\n${directLinks.slice(0, 10).join('\n') || 'none'}\nHint: if you see a .pdf link above, call download_file on it directly.`,
+        };
       }
 
       const finalUrl = response.url || url;

@@ -497,6 +497,11 @@ export async function runQueryLoop(
   let sessionArtifact: ArtifactContext | null = lastArtifactContext ?? null;
   let lastReply = '';
 
+  // Duplicate web_search nudge: track normalized query counts to detect loops
+  const searchQueryCounts = new Map<string, number>();
+  const SEARCH_DUPE_THRESHOLD = 3; // same query 3× → inject nudge
+  const DOWNLOAD_LOOP_KEYWORDS = /\b(catalog|pdf|brand|download|catalog|catalogue)\b/i;
+
   // Multi-call queue: when the model emits multiple tool calls in one response,
   // they are buffered here and drained one per iteration without re-calling the LLM.
   const pendingToolQueue: ToolCall[] = [];
@@ -803,6 +808,27 @@ export async function runQueryLoop(
       // This prevents wasting an iteration on an error the model can't resolve without regenerating.
       toolCall.input = { ...toolCall.input, overwrite: true };
       transparency.emit({ type: 'query_loop_skill_result', data: { skill: toolCall.action, success: true, error: 'dedup: auto-overwrite applied' } });
+    }
+
+    // Duplicate web_search nudge: track repeated queries and inject a reminder
+    if (toolCall.action === 'web_search' && typeof toolCall.input.query === 'string') {
+      const normalizedQuery = toolCall.input.query.toLowerCase().trim();
+      const count = (searchQueryCounts.get(normalizedQuery) ?? 0) + 1;
+      searchQueryCounts.set(normalizedQuery, count);
+      if (count >= SEARCH_DUPE_THRESHOLD) {
+        const nudge = `[SYSTEM] Duplicate web_search detected (same query ×${count}). Per C3 rules, do NOT re-search a resolved target. Move to Phase 2 downloads, or mark the target SKIPPED and emit FINAL_STATUS.`;
+        transparency.emit({ type: 'query_loop_narration', data: { narration: nudge, iteration } });
+        messages.push({ role: 'user', content: nudge });
+      }
+    }
+
+    // Late-loop download nudge: after iteration 15 on a download-oriented goal, remind about FINAL_STATUS
+    if (iteration > 15 && DOWNLOAD_LOOP_KEYWORDS.test(goal)) {
+      const pendingSearches = [...searchQueryCounts.entries()].filter(([, c]) => c >= 2).length;
+      if (pendingSearches > 0 && iteration % 5 === 0) {
+        const nudge = `[SYSTEM] Iteration ${iteration}/${effectiveMaxIterations}. Multiple repeated searches detected. Per C3: stop re-searching, emit FINAL_STATUS: ok=[...] invalid=[...] skipped=[...] for all targets and finish.`;
+        messages.push({ role: 'user', content: nudge });
+      }
     }
 
     // Execute the skill

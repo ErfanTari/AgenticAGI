@@ -74,6 +74,8 @@ describe('download_file', () => {
     expect(result.success).toBe(true);
     expect(result.output).toContain('.downloads');
     expect(result.output).toContain('magic=true');
+    // Phase 3: output must contain WORKSPACE_PATH for model path grounding
+    expect(result.output).toContain('WORKSPACE_PATH:');
   });
 
   it('size cap enforced — streaming cut off', async () => {

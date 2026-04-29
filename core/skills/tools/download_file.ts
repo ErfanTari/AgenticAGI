@@ -147,9 +147,18 @@ const downloadFileSkill: MCPSkill = {
 
       await writeFile(finalPath, buffer);
 
+      // Compute workspace-relative path so the model can reference it without guessing
+      const relativePath = finalPath.startsWith(PATHS.workspace)
+        ? finalPath.slice(PATHS.workspace.length).replace(/^\//, '')
+        : finalPath;
+
       return {
         success: true,
-        output: `Downloaded ${buffer.length} bytes to ${finalPath} (${effectiveMime}, magic=${detectedMime !== null})`,
+        output: [
+          `Downloaded ${buffer.length} bytes to ${finalPath}`,
+          `WORKSPACE_PATH: ${relativePath}`,
+          `MIME: ${effectiveMime} (magic=${detectedMime !== null})`,
+        ].join('\n'),
         display: `Downloaded: ${finalName} (${Math.round(buffer.length / 1024)}KB, ${effectiveMime})`,
       };
     } catch (err: unknown) {

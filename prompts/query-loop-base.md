@@ -27,7 +27,7 @@ Deliverables go through: generate_and_save_file / file_writer / patch_file.
 
 TOOL CALL FORMAT IS STRICT
 Every tool call: one valid JSON object, nothing else.
-{"action": "<skill>", "input": {...}}
+{"action": "", "input": {...}}
 No tags, no backticks, no function syntax. Non-JSON output → rejected by the loop.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -83,7 +83,7 @@ Fallback curl: hardcode all values as literals. No shell variables, no $(...), n
 One target per call. Never batch multiple targets into one script.
 
 Ambiguous URL (might be HTML, might be binary): probe with a HEAD request first —
-  run_bash: curl -sI "<url>" | grep -i "content-type\|content-length"
+  run_bash: curl -sI "" | grep -i "content-typecontent-length"
 — before downloading a potentially large body, especially after a prior timeout.
 
 C3 — Multiple targets (N brands, URLs, sources):
@@ -91,15 +91,10 @@ Phase 1 — Gather (one pass per target, no re-searching resolved targets):
 Per target: web_search (once) → url_extract → web_fetch if needed → url_extract (file URL).
 Record: STATUS: found=[...] pending=[...] candidates={target: url}
 Emit no per-target STATUS mid-loop — consolidate.
-Discovery search: ONCE per target — maximum 1 web_search per brand. If it returns no direct PDF,
-try web_fetch on the brand's downloads page. After that, mark the target SKIPPED — no second search.
-Never re-search a brand already in found=[] or skipped=[].
-Never use web_fetch to load a URL that ends in .pdf — that is a direct file, use download_file on it.
+Discovery search: once per target. Never re-search a target that already resolved.
 
 Phase 2 — Download (same C2 template per target, sequentially):
   One download_file (or fallback curl) per target.
-  Always provide filename as a safe string: e.g. "Neolith_general_catalog_2025.pdf"
-    (alphanumeric, dash, underscore, dot only — no spaces, no parentheses).
   Recovery search: at most one extra web_search per target after a failed/invalid download.
   After recovery attempt fails for any reason: TIMEOUT_SKIP, move to next target immediately.
   Never re-enter Phase 1 for a target that already had a download attempt.
@@ -164,6 +159,24 @@ size < 7 MB (general catalog context) → likely a flyer, mark INVALID, try next
 content-type ≠ application/pdf → not a PDF, skip
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STRICT JSON EXAMPLES — copy field names exactly
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+request_permission (permission escalation):
+{"action":"request_permission","input":{"skill":"run_bash","required_level":"full-access","reason":"Need curl to download PDF catalogs"}}
+Note: "tool" is accepted as an alias for "skill" at runtime. "required_level" is auto-detected from skill name if omitted.
+
+download_file (save binary to workspace — use destDir to avoid mkdir+mv):
+{"action":"download_file","input":{"url":"https://brand.com/catalog.pdf","filename":"Brand_general_catalog_2025.pdf","destDir":"Porcelain_PDF/catalogs"}}
+After success, the output contains a WORKSPACE_PATH line — use ONLY that path for downstream steps. Never invent paths like ".downloads/AgenticAGI/...".
+Filename: alphanumeric, dash, underscore, dot only. No spaces, no parentheses.
+
+web_fetch (page text + links — not for large binary downloads):
+{"action":"web_fetch","input":{"url":"https://brand.com/downloads","extract_links_matching":".pdf"}}
+Do NOT web_fetch a URL that ends in .pdf — that is a binary file, call download_file on it directly.
+Do NOT web_fetch pages that are primarily large asset lists; use direct PDF URL + download_file instead.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 HOW TO ACT EACH TURN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 To use a skill: respond with ONLY a JSON object — no other text.
@@ -174,4 +187,4 @@ Available skills (name — purpose):
 {{skill_list}}
 
 To inspect full parameters for a skill before calling it:
-{"action": "skill_schema", "input": {"name": "<skill>"}}
+{"action": "skill_schema", "input": {"name": ""}}
