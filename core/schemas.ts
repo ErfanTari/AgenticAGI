@@ -238,3 +238,17 @@ export const PostFlightSchema = z.object({
 
 export type PostFlightResult = z.infer<typeof PostFlightSchema>;
 export const postFlightJsonSchema = z.toJSONSchema(PostFlightSchema) as Record<string, unknown>;
+
+// ── Phase 24: Web Download Multi-Target Spec ─────────────────────────────────
+
+export const webDownloadSpecSchema = z.object({
+  kind: z.literal('web_download_multi_target'),
+  targets: z.array(z.string().min(1)).min(1),
+  artifact: z.string().min(3),
+  minBytes: z.number().int().min(0).default(200_000),
+  destDir: z.string().min(1),
+  filenameTemplate: z.string().min(1),
+});
+
+export type WebDownloadSpec = z.infer<typeof webDownloadSpecSchema>;
+

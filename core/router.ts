@@ -669,16 +669,58 @@ async function handleAgenticUnits(
   const goalMessage = units.map(unit => unit.content).join('\n');
   const minOrder = Math.min(...units.map(unit => unit.order));
 
-  // Pre-planner gate: tasks that involve downloading/saving files go straight to query-loop.
-  // The planner model generates 25-30KB plans for multi-target download tasks, hits truncation,
-  // and fails parse 3 times — wasting 5+ minutes and $1+. Query-loop handles these natively
-  // via Phase 1/Phase 2 download rules.
+  // ── Pre-planner gate Tier 1: multi-target catalog/PDF download → deterministic engine ──────
+  const MULTI_TARGET_DOWNLOAD_RE = /\b(download|find|fetch|get|grab)\b[\s\S]{0,200}?\b(catalogs?|catalogues?|brochures?|lookbooks?|pdf)\b/i;
+  const CATALOG_TARGET_LIST_RE = /[A-Z][a-zA-Z]+(?:\s*,\s*[A-Z][a-zA-Z]+){1,}/;
+
+  function detectMultiTargetDownload(message: string): boolean {
+    return MULTI_TARGET_DOWNLOAD_RE.test(message) && CATALOG_TARGET_LIST_RE.test(message);
+  }
+
+  if (detectMultiTargetDownload(goalMessage)) {
+    transparency.emit({
+      type: 'route',
+      data: {
+        level: 'MEDIUM',
+        reason: 'multi-target download detected — routing to deterministic engine',
+        path: 'web_download_engine',
+      },
+    });
+
+    const { extractWebDownloadSpec } = await import('./skills/web-download-spec-extractor.js');
+    const { runWebDownloadMultiTarget, renderFinalMessage } = await import('./skills/web-download-multi-target.js');
+    const { runSkill } = await import('./skills/runner.js');
+
+    const spec = await extractWebDownloadSpec(goalMessage, llmHandler);
+
+    if (spec) {
+      const report = await runWebDownloadMultiTarget(
+        spec,
+        (name, input) => runSkill(name, input, parentCtx, signal),
+        (event) => transparency.emit(event as Parameters<typeof transparency.emit>[0]),
+      );
+      return {
+        parts: [{ order: minOrder, route: 'agentic', reply: renderFinalMessage(report, spec) }],
+        plan: {
+          goal: goalMessage,
+          steps: [],
+          milestones: [],
+          goals: [],
+          complexity: 'MEDIUM',
+          needsConfirmation: false,
+          createdAt: new Date().toISOString(),
+        },
+      };
+    }
+    // Spec extraction failed — fall through to Tier 2 (QueryLoop)
+  }
+
+  // ── Pre-planner gate Tier 2: any file/download task → QueryLoop ───────────────────────────
   const FILE_INTENT_PATTERNS = /\b(download|save|fetch|catalog|pdf|export|backup|collect|scrape|grab|store)\b/i;
   const MULTI_TARGET_PATTERNS = /\b(brands?|companies|sites?|sources?|targets?|each|every|all|multiple|several)\b/i;
+  const DIRECT_DOWNLOAD_PATTERNS = /\b(download|save to workspace|save.*pdf|fetch.*pdf|download.*catalog)\b/i;
   const hasFileIntent = FILE_INTENT_PATTERNS.test(goalMessage);
   const hasMultiTarget = MULTI_TARGET_PATTERNS.test(goalMessage);
-  // Also trigger for any single explicit download/save goal
-  const DIRECT_DOWNLOAD_PATTERNS = /\b(download|save to workspace|save.*pdf|fetch.*pdf|download.*catalog)\b/i;
   const isDirectDownload = DIRECT_DOWNLOAD_PATTERNS.test(goalMessage);
 
   if (hasFileIntent && (hasMultiTarget || isDirectDownload)) {
@@ -686,7 +728,7 @@ async function handleAgenticUnits(
       type: 'route',
       data: {
         level: 'MEDIUM',
-        reason: 'file/download intent detected — skipping planner, routing directly to query-loop',
+        reason: 'file/download intent — routing to query-loop',
         path: 'query_loop',
       },
     });
