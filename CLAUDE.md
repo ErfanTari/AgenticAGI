@@ -377,7 +377,7 @@ Every agent action emits a `TransparencyEvent` stamped with a `requestId` (UUID 
 
 **Enable:** `TRANSPARENT=true npx tsx chat.ts`
 
-**Key event types:** `plan`, `step_start`, `step_result`, `route`, `llm_request`, `llm_raw`, `memory_write`, `memory_disabled_drop`, `heartbeat_skipped_memory_disabled`, `coding_route_selected`, `context_mode_applied`, `user_constraints_extracted`, `user_input_requested`, `plan_confirmation_pending`, `decomposition_repair`, `prompt_budget`, `prompt_budget_exceeded`, `memory_gate_opened`, `memory_gate_skipped`, `span_start`, `span_end`, `orphan_span`
+**Key event types:** `plan`, `step_start`, `step_result`, `route`, `llm_request`, `llm_raw`, `memory_write`, `memory_disabled_drop`, `heartbeat_skipped_memory_disabled`, `coding_route_selected`, `context_mode_applied`, `user_constraints_extracted`, `user_input_requested`, `plan_confirmation_pending`, `decomposition_repair`, `prompt_budget`, `prompt_budget_exceeded`, `memory_gate_opened`, `memory_gate_skipped`, `span_start`, `span_end`, `orphan_span`, `json_repair_succeeded`, `json_repair_failed`, `schema_validation_succeeded`, `schema_validation_failed`, `circuit_breaker_tripped`
 
 **UI:** Logs panel → `[Copy Trace]` for formatted text; `[Copy Details]` for full JSON envelopes (up to 2000 buffered in `window.__fullEnvelopes`).
 
@@ -608,6 +608,47 @@ ZARABAN rules file (`prompts/zaraban-rules.md`) carries the parallel-call direct
 
 ---
 
+## 21. Schema Hardening (Phase 23)
+
+Three-layer parse chain + tool circuit breaker to prevent JSON failures and death spirals.
+
+**`core/llm-helpers/json-repair.ts` — Layer 2:**
+```typescript
+tryJsonRepair(rawText: string): RepairResult
+// RepairResult: { repaired: true; value: unknown; bytesChanged: number }
+//             | { repaired: false; reason: string }
+// Strips markdown fences, runs jsonrepair npm, emits json_repair_succeeded/failed
+```
+
+**`core/llm-helpers/schema-retry.ts` — Layers 1–3:**
+```typescript
+parseWithRetry<T>(opts: SchemaRetryOptions<T>): Promise<SchemaRetryResult<T>>
+// Layer 1: direct JSON.parse + Zod parse → layer: 1, attempts: 1
+// Layer 2: jsonrepair + Zod parse on JSON failure → layer: 2, attempts: 1
+// Layer 3: retryFn(correctionPrompt) → parse again → layer: 3, attempts: 2
+// Hard fail: ok: false
+formatZodError(err: ZodError): string    // paths + messages
+buildCorrectionPrompt(rawOutput, schema, errorDetails): string
+```
+
+Emits `schema_validation_succeeded` `{ layer, attempts }` / `schema_validation_failed` `{ layer, error }`.
+
+**`core/skills/circuit-breaker.ts` — Tool-level circuit breaker:**
+```typescript
+CIRCUIT_BREAKER_THRESHOLD = 2  // consecutive identical-arg failures
+checkCircuitBreaker(requestId, skillName, args): { tripped, reason? }
+recordCallFailure(requestId, skillName, args): void
+recordCallSuccess(requestId, skillName, args): void  // clears state for that signature
+notifyRequestEnd(requestId): void                    // frees all per-request state
+```
+Keyed by `${skillName}::${JSON.stringify(args)}` scoped per `requestId`. Emits `circuit_breaker_tripped` on threshold hit. Wired in `core/skills/runner.ts` before the read-before-edit gate.
+
+**`core/structured.ts`:** `applyRepairPasses` upgraded — tries `jsonrepair` npm before manual regex passes. Returns the repaired string directly (no re-serialize).
+
+**Tests:** `tests/phase-23/` — 21 tests (json-repair: 8, schema-retry: 7, circuit-breaker: 5, integration: 1).
+
+---
+
 ## Phase Index (summary — see CLAUDE.legacy.md for full detail)
 
 | Tag | Sprint |
@@ -648,3 +689,4 @@ ZARABAN rules file (`prompts/zaraban-rules.md`) carries the parallel-call direct
 | `sprint-a-edit-reliability-complete` | Diff-fenced patches, layered matcher (Aider port, Apache-2.0), structured failure feedback, read-before-edit gate, thinking-strip (<thinking> added), response_format wired, task_tracker skill, zaraban-rules.md |
 | `sprint-b-internet-vision-complete` | fetch_url_clean (Readability+JSDOM), download_file (50MB cap, MIME/magic-number), screenshot_url (Playwright), view_image (1072 tiling, Qwen→Gemini routing), SSRF guard (IPv6-aware), VISION_CONFIG |
 | `sprint-c-explore-subagent-complete` | Sub-agent runtime: Plan(Qwen 3.6)/Explore/Task profiles, nesting cap 1, structured summaries, trigger criteria in router, Explore→Plan→Task pipeline |
+| `phase-23-schema-hardening-complete` | 3-layer parse chain (direct→jsonrepair→Zod retry+correction prompt), tool-level circuit breaker (2 consecutive identical-arg failures), 5 new transparency events |

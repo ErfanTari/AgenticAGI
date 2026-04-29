@@ -1,5 +1,6 @@
 import { ZodError, type ZodSchema } from 'zod';
 import type { LLMHandler, Message } from './types.js';
+import { jsonrepair } from 'jsonrepair';
 
 export interface StructuredResult<T> {
   success: boolean;
@@ -179,19 +180,22 @@ export function applyRepairPasses(raw: string): string {
     // Not valid JSON — apply repairs
   }
 
+  // Strip thinking/LM Studio tokens before attempting jsonrepair
   let s = raw;
-
-  // Remove thinking tags and LM Studio tokens (only on non-valid JSON)
   s = s.replace(/<\|im_start\|>/g, '').replace(/<\|im_end\|>/g, '');
   s = s.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-
-  // Fix escaped quotes outside string values
   s = fixEscapedQuotes(s);
 
-  // Fix trailing commas before } or ]
-  s = s.replace(/,(\s*[}\]])/g, '$1');
+  // Layer 2: try jsonrepair (npm package — handles trailing commas, unquoted keys,
+  // single quotes, comment blocks, markdown fences, and more)
+  try {
+    const repaired = jsonrepair(s);
+    JSON.parse(repaired); // validate
+    return repaired;
+  } catch { /* fall through to manual passes */ }
 
-  // Fix unquoted keys: {key: "value"} → {"key": "value"}
+  // Fallback: manual passes for cases jsonrepair can't handle
+  s = s.replace(/,(\s*[}\]])/g, '$1');
   s = s.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)(\s*:)/g, '$1"$2"$3');
 
   return s;

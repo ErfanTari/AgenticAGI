@@ -3,9 +3,10 @@ import { existsSync } from 'node:fs';
 import type { SkillResult } from './types.js';
 import { getSkill } from './registry.js';
 import { enforcePermission, getActivePermissionMode } from '../permission.js';
-import { transparency, type SpanContext } from '../transparency.js';
+import { transparency, type SpanContext, getCurrentRequestId } from '../transparency.js';
 import { savePendingPermissionRequest } from '../memory/index.js';
 import { sessionCache } from '../memory/session-cache.js';
+import { checkCircuitBreaker, recordCallFailure, recordCallSuccess } from './circuit-breaker.js';
 
 const SKILL_OUTPUT_LIMITS: Record<string, number> = {
   web_search: 3000,
@@ -124,6 +125,13 @@ export async function runSkill(
     return { success: false, output: '', error: check.error };
   }
 
+  // Phase 23: circuit breaker — reject repeated identical-args failures pre-dispatch
+  const requestId = parentCtx?.requestId ?? getCurrentRequestId() ?? 'unknown';
+  const breakerCheck = checkCircuitBreaker(requestId, name, input);
+  if (breakerCheck.tripped) {
+    return { success: false, output: '', error: breakerCheck.reason! };
+  }
+
   // Read-before-edit gate (patch_file and overwriting file_writer require a prior read)
   const gateRejection = preCallGate(name, input);
   if (gateRejection) return gateRejection;
@@ -152,12 +160,19 @@ export async function runSkill(
     if (outcome.success && (name === 'file_reader' || name === 'grep_workspace')) {
       sessionCache.recordSkillCall(name, cleanInput);
     }
+    // Circuit breaker tracking
+    if (outcome.success) {
+      recordCallSuccess(requestId, name, input);
+    } else {
+      recordCallFailure(requestId, name, input);
+    }
     return outcome;
   } catch (e) {
     transparency.emit({
       type: 'span_end',
       data: { spanId, durationMs: Date.now() - spanStart, status: 'error' },
     });
+    recordCallFailure(requestId, name, input);
     return { success: false, output: '', error: String(e) };
   }
 }

@@ -70,6 +70,11 @@ export type TransparencyEvent =
   | { type: 'query_loop_repair_loop_detected'; data: { consecutiveRepairCount: number; action: string } }
   | { type: 'diag_ready'; data: { requestId: string; path: string; content: string } }
   | { type: 'thinking_tag_stripped'; data: { bytesRemoved: number } }
+  | { type: 'json_repair_succeeded'; data: { layer: number; bytesChanged: number; originalSnippet: string; requestId: string } }
+  | { type: 'json_repair_failed'; data: { layer: number; reason: string; requestId: string } }
+  | { type: 'schema_validation_succeeded'; data: { layer: number; attempts: number; requestId: string } }
+  | { type: 'schema_validation_failed'; data: { layer: number; zodError: string; attempts: number; requestId: string } }
+  | { type: 'circuit_breaker_tripped'; data: { requestId: string; skillName: string; argsSignature: string; failedAttempts: number } }
   | { type: 'subagent_start'; data: { parentRequestId: string; subRequestId: string; profile: string; goal: string } }
   | { type: 'subagent_complete'; data: { parentRequestId: string; subRequestId: string; profile: string; iterations: number; summary: unknown } }
   | { type: 'subagent_failed'; data: { parentRequestId: string; subRequestId: string; profile: string; error: string } }

@@ -30,6 +30,7 @@
     "gpt-tokenizer": "^3.4.0",
     "ip-address": "^10.1.1",
     "jsdom": "^29.1.0",
+    "jsonrepair": "^3.14.0",
     "mathjs": "^15.1.1",
     "playwright": "^1.59.1",
     "sharp": "^0.34.5",
