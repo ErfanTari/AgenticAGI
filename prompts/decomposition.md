@@ -15,6 +15,7 @@ Rules:
 - Use "conversational" only for general knowledge questions with no named entity (e.g. "what is photosynthesis", "how does TCP work").
 - If the whole message is one unit, return one unit.
 - Set taskType: "coding" when the unit involves writing/editing/debugging/running code, creating or modifying files, or fixing errors in code. Otherwise omit taskType or set "general".
+- Do NOT set taskType: "coding" for web research, downloading files, or catalog/PDF acquisition tasks — even if those files are saved to disk. These are web/download tasks, not coding tasks. Leave taskType unset for them.
 
 EXAMPLE:
 User: "Create a calculator app and also remind me to call Sara tomorrow"

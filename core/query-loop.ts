@@ -339,6 +339,9 @@ function buildResetNote(goal: string, iteration: number, recentFailures: string[
 
 // ─── History Collapse ─────────────────────────────────────────────────────────
 
+// Max chars per kept message — truncate large tool outputs and injected SYSTEM blocks
+const MAX_KEPT_MSG_CHARS = 1200;
+
 function collapseOldHistory(messages: Message[], baseCount: number): void {
   // Keep system + priorTurns (baseCount) + last HISTORY_KEEP_PAIRS*2 tool turns
   const keepTail = HISTORY_KEEP_PAIRS * 2;
@@ -347,6 +350,15 @@ function collapseOldHistory(messages: Message[], baseCount: number): void {
   const collapsed = toolMessages.slice(0, toolMessages.length - keepTail);
   const summary = `[${collapsed.length} earlier turns collapsed to save context]`;
   messages.splice(baseCount, collapsed.length, { role: 'user', content: summary });
+
+  // Truncate any kept message that is unusually large (web_fetch HTML, injected SYSTEM blocks)
+  for (let i = baseCount; i < messages.length; i++) {
+    const msg = messages[i];
+    const content = typeof msg.content === 'string' ? msg.content : '';
+    if (content.length > MAX_KEPT_MSG_CHARS) {
+      (messages[i] as Message).content = content.slice(0, MAX_KEPT_MSG_CHARS) + `…[${content.length - MAX_KEPT_MSG_CHARS} chars truncated]`;
+    }
+  }
 }
 
 // ─── MEMORY.md Relevance Filtering ──────────────────────────────────────────
@@ -500,13 +512,18 @@ export async function runQueryLoop(
   // Duplicate web_search nudge: track normalized query counts to detect loops
   const searchQueryCounts = new Map<string, number>();
   const SEARCH_DUPE_THRESHOLD = 3; // same query 3× → inject nudge
-  const DOWNLOAD_LOOP_KEYWORDS = /\b(catalog|pdf|brand|download|catalog|catalogue)\b/i;
+  const DOWNLOAD_LOOP_KEYWORDS = /\b(catalog|pdf|brand|download|catalogue)\b/i;
 
-  // C3 state machine enforcement: track completed downloads so the model can't re-search them
-  const completedDownloads: string[] = []; // filenames of successfully downloaded files
-  // web_fetch URL attempt count (normalized host+path) to detect multi-URL loops on same domain
+  // ── C3 state machine (per-domain ledger + URL blocklist) ─────────────────────
+  type DomainRecord = { fetchCount: number; failedFetchCount: number; downloadSucceeded: boolean };
+  const domainLedger = new Map<string, DomainRecord>();
+  const blockedUrls = new Set<string>(); // URLs that returned 403 or repeated failure — never retry
+  const completedDownloads: string[] = []; // workspace-relative paths of successful downloads
+  // web_fetch URL attempt count (normalized host+path) — triggers block at threshold
   const webFetchUrlCounts = new Map<string, number>();
-  const WEB_FETCH_URL_THRESHOLD = 3; // same URL ×3 → inject hard stop
+  const WEB_FETCH_URL_THRESHOLD = 3;
+  // Consecutive HALT blocks: after 2, synthesize FINAL_STATUS and exit loop
+  let consecutiveHaltBlocks = 0;
 
   // Multi-call queue: when the model emits multiple tool calls in one response,
   // they are buffered here and drained one per iteration without re-calling the LLM.
@@ -828,15 +845,32 @@ export async function runQueryLoop(
       }
     }
 
-    // web_fetch URL repeat tracker: same URL ×3 → hard block and inject FINAL_STATUS directive
+    // URL blocklist check — block any fetch of a known-bad URL before dispatch
+    if ((toolCall.action === 'web_fetch' || toolCall.action === 'download_file') && typeof toolCall.input.url === 'string') {
+      if (blockedUrls.has(toolCall.input.url)) {
+        const blockMsg = `[SYSTEM BLOCK] URL ${toolCall.input.url} is on the blocked list (prior 403 or repeated failure). Do not retry it — mark that target SKIPPED and move on.`;
+        messages.push({ role: 'user', content: blockMsg });
+        transparency.emit({ type: 'query_loop_narration', data: { narration: blockMsg, iteration } });
+        continue; // skip dispatch
+      }
+    }
+
+    // web_fetch domain ledger + URL repeat tracker
     if (toolCall.action === 'web_fetch' && typeof toolCall.input.url === 'string') {
       try {
         const u = new URL(toolCall.input.url);
-        const normalizedUrl = u.hostname + u.pathname;
+        const domain = u.hostname;
+        const normalizedUrl = domain + u.pathname;
+        // Update domain record
+        const rec = domainLedger.get(domain) ?? { fetchCount: 0, failedFetchCount: 0, downloadSucceeded: false };
+        rec.fetchCount++;
+        domainLedger.set(domain, rec);
+        // URL-level repeat count
         const urlCount = (webFetchUrlCounts.get(normalizedUrl) ?? 0) + 1;
         webFetchUrlCounts.set(normalizedUrl, urlCount);
         if (urlCount >= WEB_FETCH_URL_THRESHOLD) {
-          const block = `[SYSTEM BLOCK] web_fetch on ${normalizedUrl} has been called ${urlCount} times — this URL is not yielding a downloadable PDF. Stop fetching it. For any brand that has been attempted 2+ times with no successful download: mark SKIPPED. Emit FINAL_STATUS now with all brands accounted for.`;
+          const block = `[SYSTEM BLOCK] ${normalizedUrl} fetched ${urlCount} times with no downloadable PDF found. Adding to blocked list. Mark this target SKIPPED. Emit FINAL_STATUS for all brands now.`;
+          blockedUrls.add(toolCall.input.url);
           messages.push({ role: 'user', content: block });
           transparency.emit({ type: 'query_loop_narration', data: { narration: block, iteration } });
         }
@@ -844,18 +878,38 @@ export async function runQueryLoop(
     }
 
     // Hard enforcement at ≥80% of iteration cap on download-oriented goals:
-    // Block web_search / web_fetch and force FINAL_STATUS output
+    // Block web_search / web_fetch and force FINAL_STATUS output.
+    // After 2 consecutive blocks, synthesize FINAL_STATUS from internal state and exit.
     const hardCutoff = Math.floor(effectiveMaxIterations * 0.8);
     if (iteration >= hardCutoff && DOWNLOAD_LOOP_KEYWORDS.test(goal)) {
       if (toolCall.action === 'web_search' || toolCall.action === 'web_fetch') {
+        consecutiveHaltBlocks++;
+        if (consecutiveHaltBlocks >= 2) {
+          // Model keeps emitting tool calls after HALT — synthesize FINAL_STATUS and exit
+          const okList = completedDownloads.length > 0 ? completedDownloads.join(', ') : 'none';
+          const skippedDomains = [...domainLedger.entries()]
+            .filter(([, r]) => !r.downloadSucceeded)
+            .map(([d]) => d)
+            .join(', ') || 'none';
+          const synthesized = `FINAL_STATUS: ok=[${okList}] skipped=[${skippedDomains}]\n\n[Runtime-synthesized after ${consecutiveHaltBlocks} blocked tool calls at iteration ${iteration}/${effectiveMaxIterations}]`;
+          transparency.emit({ type: 'query_loop_end', data: { reason: 'c3_force_finalized', iterations: iteration } });
+          return {
+            reply: synthesized,
+            iterations: iteration,
+            skillsUsed,
+            stoppedBecause: 'c3_force_finalized' as 'max_iterations',
+            artifactContext: sessionArtifact ?? undefined,
+          };
+        }
         const completed = completedDownloads.length > 0
-          ? `Completed downloads: ${completedDownloads.join(', ')}.`
-          : 'No downloads completed yet.';
-        const block = `[SYSTEM HALT] Iteration ${iteration}/${effectiveMaxIterations} — 80% of budget used. No more web_search or web_fetch calls are permitted. ${completed} You MUST emit a plain-text FINAL_STATUS now (no JSON, no tool call): FINAL_STATUS: ok=[...] skipped=[...] for every target. This is your final action.`;
+          ? `Downloaded so far: ${completedDownloads.join(', ')}.`
+          : 'No successful downloads yet.';
+        const block = `[SYSTEM HALT] Iteration ${iteration}/${effectiveMaxIterations} — 80% of iteration budget used. web_search and web_fetch are now BLOCKED. ${completed} You MUST output plain text FINAL_STATUS right now (no JSON, no tool calls): FINAL_STATUS: ok=[...] skipped=[...] for every target. Failure to comply will force-terminate the loop.`;
         messages.push({ role: 'user', content: block });
         transparency.emit({ type: 'query_loop_narration', data: { narration: block, iteration } });
-        // Skip executing the blocked tool call — force the model to reply with FINAL_STATUS text
         continue;
+      } else {
+        consecutiveHaltBlocks = 0; // model complied with a non-search/fetch action — reset
       }
     }
 
@@ -886,13 +940,21 @@ export async function runQueryLoop(
       recentFailures.length = 0;
 
       // C3 state machine: after a successful download_file, record it and inject a DONE marker.
-      // This prevents the model from re-searching or re-fetching the same brand.
+      // Also update domain ledger so the model has explicit external state.
       if (toolCall.action === 'download_file') {
         const filename = typeof toolCall.input.filename === 'string' ? toolCall.input.filename : '';
         const destDir = typeof toolCall.input.destDir === 'string' ? toolCall.input.destDir : '.downloads';
         const savedPath = filename ? `${destDir}/${filename}` : destDir;
         completedDownloads.push(savedPath);
-        const doneMsg = `[SYSTEM] ✓ DOWNLOAD COMPLETE: ${savedPath}. This target is DONE. Do NOT search, fetch, or attempt to download it again. Move to the next pending brand, or emit FINAL_STATUS if all brands are accounted for.`;
+        consecutiveHaltBlocks = 0; // successful action resets halt counter
+        // Mark domain as downloaded in ledger
+        try {
+          const domain = new URL(String(toolCall.input.url ?? '')).hostname;
+          const rec = domainLedger.get(domain) ?? { fetchCount: 0, failedFetchCount: 0, downloadSucceeded: false };
+          rec.downloadSucceeded = true;
+          domainLedger.set(domain, rec);
+        } catch { /* ignore parse errors */ }
+        const doneMsg = `[SYSTEM] ✓ DOWNLOAD COMPLETE: ${savedPath}. This target is DONE — do NOT search, fetch, or download it again. Move to the next pending brand, or emit FINAL_STATUS if all brands are accounted for.`;
         messages.push({ role: 'user', content: doneMsg });
         transparency.emit({ type: 'query_loop_narration', data: { narration: doneMsg, iteration } });
       }
@@ -1003,6 +1065,23 @@ export async function runQueryLoop(
       // Fix 4: Per-skill failure count
       const prevSkillFailures = skillFailureCounts.get(toolCall.action) ?? 0;
       skillFailureCounts.set(toolCall.action, prevSkillFailures + 1);
+
+      // Circuit breaker escalation: 403 or repeated failure → add URL to blocklist
+      if ((toolCall.action === 'web_fetch' || toolCall.action === 'download_file') && typeof toolCall.input.url === 'string') {
+        const is403 = errMsg.includes('403') || errMsg.includes('Forbidden');
+        const currentCircuitCount = (circuitFailures.get(ck) ?? 0);
+        if (is403 || currentCircuitCount >= 1) {
+          // 403 = permanent block; 2+ failures on same signature = block
+          blockedUrls.add(toolCall.input.url);
+          // Also update domain ledger
+          try {
+            const domain = new URL(toolCall.input.url).hostname;
+            const rec = domainLedger.get(domain) ?? { fetchCount: 0, failedFetchCount: 0, downloadSucceeded: false };
+            rec.failedFetchCount++;
+            domainLedger.set(domain, rec);
+          } catch { /* ignore */ }
+        }
+      }
 
       // Increment circuit failures on error
       circuitFailures.set(ck, ckFailures + 1);
