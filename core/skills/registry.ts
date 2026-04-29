@@ -33,6 +33,9 @@ import fetchUrlCleanSkill from './tools/fetch_url_clean.js';
 import downloadFileSkill from './tools/download_file.js';
 import screenshotUrlSkill from './tools/screenshot_url.js';
 import viewImageSkill from './tools/view_image.js';
+import readPdfSkill from './tools/read_pdf.js';
+import fetchFeedSkill from './tools/fetch_feed.js';
+import browserFetchSkill from './tools/browser_fetch.js';
 
 // --- MCP Skill Registry (Map-based) ---
 
@@ -206,6 +209,9 @@ registerSkill(fetchUrlCleanSkill);
 registerSkill(downloadFileSkill);
 registerSkill(screenshotUrlSkill);
 registerSkill(viewImageSkill);
+registerSkill(readPdfSkill);
+registerSkill(fetchFeedSkill);
+registerSkill(browserFetchSkill);
 
 // Freeze the registry after all built-in skills are registered
 freezeRegistry();

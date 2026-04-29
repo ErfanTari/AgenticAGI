@@ -47,7 +47,10 @@
       "fetch_url_clean",
       "download_file",
       "screenshot_url",
-      "view_image"
+      "view_image",
+      "read_pdf",
+      "fetch_feed",
+      "browser_fetch"
     ],
     "planning": {
       "max_steps": 8,

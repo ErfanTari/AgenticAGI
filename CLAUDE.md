@@ -235,11 +235,11 @@ emits `memory_gate_opened` / `memory_gate_skipped` transparency events according
 
 ## 9. Skills System
 
-**27+ skills registered, all annotated with `permissionLevel`:**
+**30 skills registered, all annotated with `permissionLevel`:**
 
 | Level | Skills |
 |-------|--------|
-| `read-only` | calculator, file_reader, web_search, web_fetch, url_extract, memory_read, memory_history, content_writer, verify_state, grep_workspace, list_dir, glob, skill_schema, request_user_input, fetch_url_clean, view_image |
+| `read-only` | calculator, file_reader, web_search, web_fetch, url_extract, memory_read, memory_history, content_writer, verify_state, grep_workspace, list_dir, glob, skill_schema, request_user_input, fetch_url_clean, view_image, fetch_feed, read_pdf, browser_fetch |
 | `workspace-write` | file_writer, patch_file, memory_write, relationship_write, generate_and_save_file, confirm_plan, task_tracker, download_file, screenshot_url |
 | `full-access` | run_bash, implement_and_test |
 
@@ -690,3 +690,4 @@ Keyed by `${skillName}::${JSON.stringify(args)}` scoped per `requestId`. Emits `
 | `sprint-b-internet-vision-complete` | fetch_url_clean (Readability+JSDOM), download_file (50MB cap, MIME/magic-number), screenshot_url (Playwright), view_image (1072 tiling, Qwen→Gemini routing), SSRF guard (IPv6-aware), VISION_CONFIG |
 | `sprint-c-explore-subagent-complete` | Sub-agent runtime: Plan(Qwen 3.6)/Explore/Task profiles, nesting cap 1, structured summaries, trigger criteria in router, Explore→Plan→Task pipeline |
 | `phase-23-schema-hardening-complete` | 3-layer parse chain (direct→jsonrepair→Zod retry+correction prompt), tool-level circuit breaker (2 consecutive identical-arg failures), 5 new transparency events |
+| `web-search-upgrade-complete` | UA rotation (5-agent pool, round-robin) in web_fetch + download_file; Brave ×10 results, snippet_only param, DDG fallback removed; read_pdf (pdf-parse v2), fetch_feed (rss-parser), browser_fetch (Playwright headless Chromium) |

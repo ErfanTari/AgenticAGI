@@ -2,7 +2,20 @@ import type { MCPSkill, SkillResult } from '../types.js';
 
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024; // 2MB
 const TIMEOUT_MS = 10_000;
-const USER_AGENT = 'Mozilla/5.0 (compatible; AgenticAGI/1.0)';
+
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+];
+
+let _uaIndex = 0;
+export function _getNextUserAgent(): string {
+  return USER_AGENTS[_uaIndex++ % USER_AGENTS.length];
+}
+export function _resetUaIndex(): void { _uaIndex = 0; }
 
 function resolveUrl(href: string, base: string): string | null {
   try {
@@ -111,11 +124,14 @@ const webFetchSkill: MCPSkill = {
       userSignal?.addEventListener('abort', () => controller.abort(userSignal.reason), { once: true });
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
+      const FETCH_DELAY_MS = 200 + Math.floor(Math.random() * 300);
+      await new Promise(r => setTimeout(r, FETCH_DELAY_MS));
+
       const response = await fetch(url, {
         signal: controller.signal,
         redirect: 'follow',
         headers: {
-          'User-Agent': USER_AGENT,
+          'User-Agent': _getNextUserAgent(),
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.5',
         },

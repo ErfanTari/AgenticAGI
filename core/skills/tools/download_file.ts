@@ -6,6 +6,18 @@ import { PATHS } from '../../../config/agent.config.js';
 
 const DEFAULT_MAX_BYTES = 50_000_000; // 50 MB
 
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+];
+let _dlUaIndex = 0;
+function getNextUserAgent(): string {
+  return USER_AGENTS[_dlUaIndex++ % USER_AGENTS.length];
+}
+
 const MIME_ALLOWLIST = [
   'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml',
   'application/pdf',
@@ -71,16 +83,23 @@ const downloadFileSkill: MCPSkill = {
 
     try {
       // HEAD check for Content-Length
-      const head = await safeFetch(url, { method: 'HEAD' }).catch(() => null);
+      const head = await safeFetch(url, { method: 'HEAD', headers: { 'User-Agent': getNextUserAgent() } }).catch(() => null);
       const contentLength = head?.headers.get('content-length');
       if (contentLength && parseInt(contentLength) > maxBytes) {
         return { success: false, output: '', error: `Content-Length ${contentLength} exceeds cap of ${maxBytes} bytes` };
       }
 
       const response = await safeFetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AgenticAGI/1.0)' },
+        headers: { 'User-Agent': getNextUserAgent() },
       });
-      if (!response.ok) return { success: false, output: '', error: `HTTP ${response.status}` };
+      if (!response.ok) {
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('retry-after');
+          const waitMs = retryAfter ? parseInt(retryAfter) * 1000 : 5000;
+          return { success: false, output: '', error: `Rate limited. Retry after ${waitMs}ms.` };
+        }
+        return { success: false, output: '', error: `HTTP ${response.status}` };
+      }
 
       const reader = response.body?.getReader();
       if (!reader) return { success: false, output: '', error: 'No response body' };
