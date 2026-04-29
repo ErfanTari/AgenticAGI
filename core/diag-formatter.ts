@@ -21,12 +21,21 @@ interface DiagMilestone {
   stepsRun: number;
 }
 
+interface PhaseRecord {
+  name: string;
+  startTs: number;
+  durationMs: number;
+  detail: string;
+  warnings: string[];
+}
+
 interface DiagState {
   requestId: string;
   goal: string;
   startTs: number;
   engine: string;
   route: string;
+  phases: PhaseRecord[];
   iterations: DiagIter[];
   milestones: DiagMilestone[];
   errors: string[];
@@ -37,6 +46,9 @@ interface DiagState {
   outcome: string;
   durationMs: number;
   rootSpanId: string | null;
+  // track span durations by id for phase timing
+  spanStartTs: Map<string, number>;
+  spanLabels: Map<string, string>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -52,7 +64,6 @@ function pad(s: string | number, n: number): string {
 
 // ─── Path ─────────────────────────────────────────────────────────────────────
 
-// Exported so tests can override via the _diagBaseDir variable below.
 let _diagBaseDir: string | null = null;
 
 export function _setDiagBaseDir(dir: string | null): void {
@@ -72,7 +83,7 @@ export function getDiagPath(requestId: string): string {
 function render(s: DiagState): string {
   const lines: string[] = [];
 
-  lines.push('ZARABAN DIAG v1');
+  lines.push('ZARABAN DIAG v2');
   lines.push('===============');
   lines.push(`id:       ${s.requestId.slice(0, 8)}`);
   lines.push(`goal:     ${trunc(s.goal, 120)}`);
@@ -80,6 +91,22 @@ function render(s: DiagState): string {
   lines.push(`outcome:  ${s.outcome || '(unknown)'}`);
   lines.push(`duration: ${s.durationMs}ms`);
   lines.push(`tokens:   in=${s.finalTokensIn} out=${s.finalTokensOut} cost=$${s.finalCostUSD.toFixed(4)}`);
+  lines.push('');
+
+  // ── Phase Breakdown ──
+  lines.push('PHASE BREAKDOWN');
+  lines.push('───────────────');
+  if (s.phases.length === 0) {
+    lines.push('  (none recorded)');
+  } else {
+    for (const p of s.phases) {
+      const dur = p.durationMs > 0 ? `${p.durationMs}ms` : '?ms';
+      lines.push(`  ${pad(p.name, 18)} ${pad(dur, 10)} ${p.detail}`);
+      for (const w of p.warnings) {
+        lines.push(`    ⚠ ${w}`);
+      }
+    }
+  }
   lines.push('');
 
   lines.push(`ITERATIONS (${s.iterations.length} total)`);
@@ -129,6 +156,12 @@ function render(s: DiagState): string {
   return lines.join('\n');
 }
 
+// ─── Phase helpers ────────────────────────────────────────────────────────────
+
+function addPhase(s: DiagState, name: string, durationMs: number, detail: string, warnings: string[] = []): void {
+  s.phases.push({ name, startTs: 0, durationMs, detail, warnings });
+}
+
 // ─── Session ──────────────────────────────────────────────────────────────────
 
 const active = new Map<string, DiagState>();
@@ -140,6 +173,7 @@ export function startDiagSession(requestId: string): () => Promise<void> {
     startTs: Date.now(),
     engine: '',
     route: '',
+    phases: [],
     iterations: [],
     milestones: [],
     errors: [],
@@ -150,32 +184,102 @@ export function startDiagSession(requestId: string): () => Promise<void> {
     outcome: '',
     durationMs: 0,
     rootSpanId: null,
+    spanStartTs: new Map(),
+    spanLabels: new Map(),
   };
   active.set(requestId, state);
 
   const handler = (env: TransparencyEventEnvelope) => {
-    // Only process events for this request
     if (env.requestId !== requestId) return;
-    const e = env as TransparencyEventEnvelope;
 
-    switch (e.type) {
+    switch (env.type) {
+      // ── Routing ──────────────────────────────────────────────────────────
       case 'route': {
-        // level = complexity (LOW/MEDIUM/HIGH/MAX), path = route path description
-        const d = e.data as { level?: string; path?: string; reason?: string };
+        const d = env.data as { level?: string; path?: string; reason?: string };
         const parts = [d.level, d.path].filter(Boolean);
         state.route = trunc(parts.join(' | '), 60);
         break;
       }
+
+      // ── Intake ───────────────────────────────────────────────────────────
+      case 'intake_signals': {
+        const d = env.data as { personSignal?: string | null; projectSignal?: string | null; querySignal?: boolean; agenticSignal?: boolean };
+        const signals: string[] = [];
+        if (d.personSignal) signals.push(`person:${d.personSignal}`);
+        if (d.projectSignal) signals.push(`project:${d.projectSignal}`);
+        if (d.agenticSignal) signals.push('agentic');
+        if (d.querySignal) signals.push('query');
+        addPhase(state, 'Intake', 0, signals.join(', ') || '(no signals)');
+        break;
+      }
+
+      // ── Decomposition ─────────────────────────────────────────────────────
+      case 'decomposition': {
+        const d = env.data as { units?: unknown[] };
+        const count = Array.isArray(d.units) ? d.units.length : 0;
+        const existing = state.phases.find(p => p.name === 'Decomposition');
+        if (existing) {
+          existing.detail = `${count} unit(s)`;
+        } else {
+          addPhase(state, 'Decomposition', 0, `${count} unit(s)`);
+        }
+        break;
+      }
+      case 'decomposition_repair': {
+        const d = env.data as { reason?: string; repairCount?: number };
+        const p = state.phases.find(ph => ph.name === 'Decomposition');
+        if (p) p.warnings.push(`repair ×${d.repairCount ?? '?'}: ${d.reason ?? '?'}`);
+        state.repairEvents.push(`decomp-repair: ${d.reason ?? '?'}`);
+        break;
+      }
+
+      // ── Planning ──────────────────────────────────────────────────────────
+      case 'plan': {
+        const d = env.data as { steps?: unknown[] };
+        const stepCount = Array.isArray(d.steps) ? d.steps.length : 0;
+        const existing = state.phases.find(p => p.name === 'Planning');
+        if (existing) {
+          existing.detail = `${stepCount} step(s)`;
+        } else {
+          addPhase(state, 'Planning', 0, `${stepCount} step(s)`);
+        }
+        break;
+      }
+      case 'plan_integrity_warning': {
+        const d = env.data as { orphanedSteps?: string[]; missingSteps?: string[]; brokenDependencies?: string[] };
+        const orphaned = d.orphanedSteps?.length ?? 0;
+        const missing = d.missingSteps?.length ?? 0;
+        const broken = d.brokenDependencies?.length ?? 0;
+        const msg = `plan_integrity_warning: orphaned=${orphaned} missing=${missing} broken=${broken}`;
+        state.repairEvents.push(msg);
+        const p = state.phases.find(ph => ph.name === 'Planning');
+        if (p) {
+          if (missing > 0) p.warnings.push(`missingSteps: ${d.missingSteps?.slice(0, 5).join(', ')}${missing > 5 ? `… +${missing - 5}` : ''}`);
+          if (orphaned > 0) p.warnings.push(`orphanedSteps: ${d.orphanedSteps?.slice(0, 5).join(', ')}`);
+          if (broken > 0) p.warnings.push(`brokenDeps: ${d.brokenDependencies?.slice(0, 5).join(', ')}`);
+        } else {
+          addPhase(state, 'Planning', 0, '(integrity warning)', [msg]);
+        }
+        break;
+      }
+      case 'plan_repair_truncation': {
+        const d = env.data as { attempt?: number; expectedSteps?: number; actualSteps?: number };
+        const msg = `plan-repair attempt ${d.attempt ?? '?'}: expected ${d.expectedSteps ?? '?'} got ${d.actualSteps ?? '?'} steps`;
+        state.repairEvents.push(msg);
+        const p = state.phases.find(ph => ph.name === 'Planning');
+        if (p) p.warnings.push(msg);
+        break;
+      }
+
+      // ── Query Loop ────────────────────────────────────────────────────────
       case 'query_loop_start': {
-        const d = e.data as { goal?: string };
-        // Always overwrite goal — query_loop_start carries the actual task, not the user's last message
+        const d = env.data as { goal?: string };
         if (d.goal) state.goal = trunc(d.goal, 120);
-        // query-loop engine always wins (overrides any earlier default)
         state.engine = 'query-loop';
         break;
       }
       case 'query_loop_iteration': {
-        const d = e.data as { iteration?: number; reply?: string };
+        const d = env.data as { iteration?: number; reply?: string };
         state.iterations.push({
           n: d.iteration ?? state.iterations.length + 1,
           skill: '',
@@ -185,7 +289,7 @@ export function startDiagSession(requestId: string): () => Promise<void> {
         break;
       }
       case 'query_loop_skill_call': {
-        const d = e.data as { skill?: string; input?: Record<string, unknown> };
+        const d = env.data as { skill?: string; input?: Record<string, unknown> };
         const last = state.iterations[state.iterations.length - 1];
         if (last) {
           last.skill = d.skill ?? '';
@@ -194,7 +298,7 @@ export function startDiagSession(requestId: string): () => Promise<void> {
         break;
       }
       case 'query_loop_skill_result': {
-        const d = e.data as { skill?: string; success?: boolean; error?: string };
+        const d = env.data as { skill?: string; success?: boolean; error?: string };
         const last = state.iterations[state.iterations.length - 1];
         if (last) {
           last.ok = d.success ?? true;
@@ -203,7 +307,7 @@ export function startDiagSession(requestId: string): () => Promise<void> {
         break;
       }
       case 'query_loop_narration': {
-        const d = e.data as { narration?: string };
+        const d = env.data as { narration?: string };
         const narration = d.narration ?? '';
         const match = narration.match(/\[?(json-repair \d+\/\d+)\]?/);
         if (match) {
@@ -213,24 +317,25 @@ export function startDiagSession(requestId: string): () => Promise<void> {
         break;
       }
       case 'query_loop_repair_loop_detected': {
-        const d = e.data as { consecutiveRepairCount?: number; action?: string };
+        const d = env.data as { consecutiveRepairCount?: number; action?: string };
         state.repairEvents.push(`repair-loop: ${d.action ?? '?'} ×${d.consecutiveRepairCount ?? '?'}`);
         break;
       }
       case 'query_loop_end': {
-        const d = e.data as { reason?: string };
+        const d = env.data as { reason?: string };
         state.outcome = d.reason ?? 'ok';
         break;
       }
+
+      // ── Executor (HIGH/MAX) ───────────────────────────────────────────────
       case 'milestone_start': {
-        const d = e.data as { title?: string };
-        // executor engine: milestone_start fires for HIGH/MAX plans; only set if not already known
+        const d = env.data as { title?: string };
         if (!state.engine) state.engine = 'executor';
         state.milestones.push({ title: d.title ?? '(untitled)', ok: false, stepsRun: 0 });
         break;
       }
       case 'milestone_result': {
-        const d = e.data as { ok?: boolean; stepsRun?: number };
+        const d = env.data as { ok?: boolean; stepsRun?: number };
         const last = state.milestones[state.milestones.length - 1];
         if (last) {
           last.ok = d.ok ?? false;
@@ -238,44 +343,76 @@ export function startDiagSession(requestId: string): () => Promise<void> {
         }
         break;
       }
+
+      // ── Tokens / Cost ─────────────────────────────────────────────────────
       case 'token_usage': {
-        const d = e.data as { inputTokens?: number; outputTokens?: number; estimatedCostUSD?: number };
+        const d = env.data as { inputTokens?: number; outputTokens?: number; estimatedCostUSD?: number };
         state.finalTokensIn = d.inputTokens ?? state.finalTokensIn;
         state.finalTokensOut = d.outputTokens ?? state.finalTokensOut;
         state.finalCostUSD = d.estimatedCostUSD ?? state.finalCostUSD;
         break;
       }
+
+      // ── Errors ────────────────────────────────────────────────────────────
       case 'error': {
-        const d = e.data as { source?: string; error?: string };
+        const d = env.data as { source?: string; error?: string };
         state.errors.push(trunc(`${d.source ?? '?'}: ${d.error ?? '?'}`, 80));
         break;
       }
-      case 'plan_repair_truncation': {
-        const d = e.data as { attempt?: number; expectedSteps?: number; actualSteps?: number };
-        state.repairEvents.push(
-          `plan-repair attempt ${d.attempt ?? '?'}: expected ${d.expectedSteps ?? '?'} got ${d.actualSteps ?? '?'} steps`,
-        );
-        break;
-      }
-      case 'decomposition_repair': {
-        const d = e.data as { reason?: string };
-        state.repairEvents.push(`decomp-repair: ${d.reason ?? '?'}`);
-        break;
-      }
+
+      // ── Spans (for phase timing) ───────────────────────────────────────────
       case 'span_start': {
-        const d = e.data as { spanId?: string; parentSpanId?: string; label?: string };
+        const d = env.data as { spanId?: string; parentSpanId?: string; label?: string; ts?: number };
+        const spanId = d.spanId ?? '';
+        const ts = d.ts ?? Date.now();
+        state.spanStartTs.set(spanId, ts);
+        if (d.label) state.spanLabels.set(spanId, d.label);
+
         if (!d.parentSpanId && d.label?.startsWith('request: ')) {
-          state.rootSpanId = d.spanId ?? null;
-          // Only use span label as fallback — query_loop_start will overwrite with the real goal
+          state.rootSpanId = spanId;
           if (state.goal === '') state.goal = trunc(d.label.slice('request: '.length), 120);
         }
         break;
       }
       case 'span_end': {
-        const d = e.data as { spanId?: string; durationMs?: number };
-        if (state.rootSpanId && d.spanId === state.rootSpanId) {
-          state.durationMs = d.durationMs ?? 0;
+        const d = env.data as { spanId?: string; durationMs?: number };
+        const spanId = d.spanId ?? '';
+        const label = state.spanLabels.get(spanId) ?? '';
+        const dur = d.durationMs ?? 0;
+
+        if (state.rootSpanId && spanId === state.rootSpanId) {
+          state.durationMs = dur;
         }
+
+        // Map span labels → phase entries for timing
+        if (label.startsWith('Intake:')) {
+          const p = state.phases.find(ph => ph.name === 'Intake');
+          if (p) p.durationMs = dur;
+        } else if (label.startsWith('Decomposition:')) {
+          const p = state.phases.find(ph => ph.name === 'Decomposition');
+          if (p) p.durationMs = dur;
+        } else if (label.startsWith('Planner:')) {
+          const p = state.phases.find(ph => ph.name === 'Planning');
+          if (p) p.durationMs = dur;
+          else addPhase(state, 'Planning', dur, `(span: ${label})`);
+        } else if (label.startsWith('QueryLoop')) {
+          const p = state.phases.find(ph => ph.name === 'Execution');
+          if (p) p.durationMs += dur;
+          else addPhase(state, 'Execution', dur, `query-loop`);
+        } else if (label.startsWith('SimplePlan:')) {
+          addPhase(state, 'Execution', dur, 'simple-plan');
+        } else if (label.startsWith('Route:')) {
+          const p = state.phases.find(ph => ph.name === 'Routing');
+          if (p) p.durationMs = dur;
+          else addPhase(state, 'Routing', dur, label.slice('Route: '.length));
+        }
+        break;
+      }
+
+      // ── decomposition_retry ───────────────────────────────────────────────
+      case 'decomposition_retry': {
+        const d = env.data as { reason?: string; repairCount?: number };
+        state.repairEvents.push(`decomp-retry: ${d.reason ?? '?'}`);
         break;
       }
     }
@@ -293,7 +430,6 @@ export function startDiagSession(requestId: string): () => Promise<void> {
     await fs.mkdir(path.dirname(outPath), { recursive: true });
     await fs.writeFile(outPath, text, 'utf-8');
     active.delete(requestId);
-    // Notify any transparency subscribers (e.g. ui-server) that the diag is ready
     transparency.emit({ type: 'diag_ready', data: { requestId, path: outPath, content: text } });
   };
 }

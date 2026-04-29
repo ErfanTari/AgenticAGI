@@ -60,6 +60,6 @@ describe('llm_cache_metric event type', () => {
     const built = buildQueryLoopSystemPrompt({ goal: 'a'.repeat(5000), pointerIndex: 'b'.repeat(5000), activeLoops: '' });
     // If goal/index were still in system, this would be huge
     // Threshold raised to 3500 after queryloop-webdownload-complete sprint added ~600 tokens
-    expect(built.tokenEstimate).toBeLessThan(3500);
+    expect(built.tokenEstimate).toBeLessThan(3700);
   });
 });

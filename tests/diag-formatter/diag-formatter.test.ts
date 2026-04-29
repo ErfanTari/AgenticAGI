@@ -117,12 +117,12 @@ describe('diag-formatter', () => {
     expect(existsSync(expectedPath)).toBe(true);
   });
 
-  it('written file starts with ZARABAN DIAG v1', async () => {
+  it('written file starts with ZARABAN DIAG v2', async () => {
     const requestId = randomUUID();
     const flush = startDiagSession(requestId);
     await flush();
     const text = readFileSync(getDiagPath(requestId), 'utf-8');
-    expect(text.startsWith('ZARABAN DIAG v1')).toBe(true);
+    expect(text.startsWith('ZARABAN DIAG v2')).toBe(true);
   });
 
   it('written file contains goal string', async () => {

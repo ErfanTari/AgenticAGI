@@ -211,12 +211,19 @@ Rules:
 - **After marking a brand TIMEOUT_SKIP, move to the NEXT brand immediately. Never re-enter Phase 1 for a brand that already had a download attempt.**
 
 ### Direct URL Detection
-Before issuing any `curl` download, verify the URL is a direct file:
-- URL ends in `.pdf` → proceed
-- URL contains `/download/` or `/assets/` or `/files/` and no `.html` → likely direct, proceed with integrity check
-- URL leads to `issuu.com`, `pubhtml5.com`, `fliphtml5.com`, `yumpu.com`, `calameo.com` → these are JS flipbook viewers. `curl` cannot extract the PDF. Skip and search for an alternative source.
+Before issuing any download, verify the URL is a direct file:
+- URL ends in `.pdf` → proceed to size check below
+- URL contains `/download/` or `/assets/` or `/files/` and no `.html` → likely direct, proceed
+- URL leads to `issuu.com`, `pubhtml5.com`, `fliphtml5.com`, `yumpu.com`, `calameo.com` → JS flipbook viewer — cannot download. Skip and search for an alternative source.
 - URL contains `javascript:` → skip immediately
-- When in doubt: `curl -sI <URL> | grep -i content-type` to inspect headers before downloading
+- When in doubt, check headers first with a separate `run_bash`:
+  ```bash
+  curl -sI "https://example.com/file.pdf" | grep -i "content-type\|content-length"
+  ```
+  - `content-length` < 7000000 (7MB) → likely a product flyer, not a general catalog. Skip and try next URL.
+  - `content-type` not `application/pdf` → not a PDF. Skip.
+
+**Size heuristic for general catalogs:** Full general catalogs are typically 7MB or larger. If `content-length` is below 7MB, the URL points to a product flyer or brochure — mark `INVALID` without downloading.
 
 ### Context Discipline
 - After Phase 2 completes, emit one consolidated STATUS block covering all brands.
