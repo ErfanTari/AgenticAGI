@@ -70,6 +70,9 @@ export type TransparencyEvent =
   | { type: 'query_loop_repair_loop_detected'; data: { consecutiveRepairCount: number; action: string } }
   | { type: 'diag_ready'; data: { requestId: string; path: string; content: string } }
   | { type: 'thinking_tag_stripped'; data: { bytesRemoved: number } }
+  | { type: 'subagent_start'; data: { parentRequestId: string; subRequestId: string; profile: string; goal: string } }
+  | { type: 'subagent_complete'; data: { parentRequestId: string; subRequestId: string; profile: string; iterations: number; summary: unknown } }
+  | { type: 'subagent_failed'; data: { parentRequestId: string; subRequestId: string; profile: string; error: string } }
   // Phase 16 Usability — routing decision
   | { type: 'route'; data: { level: string; reason: string; path: string } }
   // Fix 5 — decomposition repair telemetry

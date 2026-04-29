@@ -228,6 +228,10 @@ export declare const EMBEDDING_CONFIG: {
     model: string;
     dimensions: number;
 } | null;
+export declare const SUBAGENT_CONFIG: {
+    readonly qwenPlanModel: string;
+    readonly enableSubAgents: boolean;
+};
 export declare const VISION_CONFIG: {
     readonly localModel: "qwen/qwen3-vl-8b";
     readonly cloudFallbackModel: "gemini-2.5-flash";

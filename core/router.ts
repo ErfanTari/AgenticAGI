@@ -16,7 +16,8 @@ import { isMemoryDisabled } from './memory-flag.js';
 import { runSkill } from './skills/runner.js';
 import { memoryAgent } from './memory/memory-agent.js';
 import { type ArtifactContext, runQueryLoop, COMPLEXITY_ITERATION_CAPS } from './query-loop.js';
-import { PATHS } from '../config/agent.config.js';
+import { PATHS, SUBAGENT_CONFIG } from '../config/agent.config.js';
+import { runSubAgentPipeline } from './subagents/runner.js';
 import { runWithRetry } from './react.js';
 import { resolveTemplates } from './planner.js';
 
@@ -797,6 +798,26 @@ async function handleAgenticUnits(
     };
   }
 
+  // Sub-agent pipeline: HIGH/MAX tasks with both explore + implement signals and >5 units
+  if (
+    SUBAGENT_CONFIG.enableSubAgents &&
+    (planComplexity === 'HIGH' || planComplexity === 'MAX') &&
+    hasExploreSignal(goalMessage) &&
+    hasImplementSignal(goalMessage) &&
+    (units.length > 5 || (plan.milestones ?? []).length > 5)
+  ) {
+    const requestId = getCurrentRequestId() ?? 'unknown';
+    try {
+      const pipelineResult = await runSubAgentPipeline(goalMessage, requestId, llmHandler);
+      return {
+        parts: [{ order: minOrder, route: 'agentic', reply: pipelineResult.reply }],
+        plan,
+      };
+    } catch {
+      // Fall through to standard executePlan on pipeline failure
+    }
+  }
+
   const execution = await executePlan(plan, llmHandler, workingMemory, parentCtx, signal);
   // Skip LLM synthesis call when executor already escalated (e.g. hard abort, too many failures)
   let verification: import('./schemas.js').VerificationResult;
@@ -925,4 +946,17 @@ export async function executeConfirmedPlan(
   }
   const reply = stripThinkingTags(buildUserReport(plan, execution, verification)).trim();
   return { reply, execution, verification };
+}
+
+// ─── Sub-agent trigger heuristics ───────────────────────────────────────────
+
+const EXPLORE_SIGNALS = /\b(find|search|look\s*up|explore|map|understand|analyze|identify|locate|discover|examine|investigate)\b/i;
+const IMPLEMENT_SIGNALS = /\b(build|create|implement|write|fix|add|refactor|modify|update|change|develop|generate)\b/i;
+
+export function hasExploreSignal(goal: string): boolean {
+  return EXPLORE_SIGNALS.test(goal);
+}
+
+export function hasImplementSignal(goal: string): boolean {
+  return IMPLEMENT_SIGNALS.test(goal);
 }

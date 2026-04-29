@@ -198,6 +198,12 @@ export const EMBEDDING_CONFIG = process.env.EMBEDDING_ENDPOINT
     }
   : null;
 
+// Sub-agent config (Sprint C)
+export const SUBAGENT_CONFIG = {
+  qwenPlanModel: process.env.QWEN_PLAN_MODEL ?? 'qwen/qwen3.6-35b-a3b',
+  enableSubAgents: process.env.ZARABAN_ENABLE_SUBAGENTS !== 'false',
+} as const;
+
 // Vision pipeline config (Sprint B)
 export const VISION_CONFIG = {
   localModel: 'qwen/qwen3-vl-8b',

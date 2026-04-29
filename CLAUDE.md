@@ -158,13 +158,14 @@ Follow this order strictly. Do not skip steps.
 
 ---
 
-## 7. Three Execution Engines
+## 7. Four Execution Engines
 
 | Engine | Trigger | What it does |
 |--------|---------|-------------|
 | `runQueryLoop` | `taskType=coding`, LOW/MEDIUM pre-check, LOW/MEDIUM agentic coding | while-loop; model picks skills. Complexity-scaled iteration cap. Circuit breaker. |
 | `runSimplePlan` | LOW/MEDIUM agentic (non-coding) | Calls `decomposeTask`, runs steps sequentially. No PLAN.EX overhead. |
-| `decomposeTask` + `executePlan` | HIGH/MAX agentic | Full milestone pipeline. Writes PLAN.EX. Post-flight synthesis. |
+| `decomposeTask` + `executePlan` | HIGH/MAX agentic (default) | Full milestone pipeline. Writes PLAN.EX. Post-flight synthesis. |
+| **Sub-agent pipeline** | **HIGH/MAX + explore+implement signals + >5 units** | **Explore (Gemma 4) → Plan (Qwen 3.6) → Task×N (Gemma 4). Each in fresh context. Nesting cap 1.** |
 
 **`runQueryLoop` options (`QueryLoopOptions`):**
 ```typescript
@@ -567,6 +568,36 @@ Vision config in `config/agent.config.ts` `VISION_CONFIG` constant.
 
 ---
 
+## 19. Sub-Agent Runtime
+
+Three profiles defined in `core/subagents/registry.ts`:
+
+| Profile | Tools | Context cap | Model | Iterations |
+|---------|-------|-------------|-------|------------|
+| Explore | grep_workspace, list_dir, glob, file_reader, memory_read | 8000 tk | Gemma 4 26B | 10 |
+| Plan | memory_read, memory_write, confirm_plan | 6000 tk | **Qwen 3.6 35B** (`qwen/qwen3.6-35b-a3b`) | 5 |
+| Task | file/edit/run/verify suite + Sprint B skills | 12000 tk | Gemma 4 26B | 20 |
+
+Trigger criteria (`core/router.ts`):
+1. `SUBAGENT_CONFIG.enableSubAgents` true (default; override: `ZARABAN_ENABLE_SUBAGENTS=false`).
+2. Complexity HIGH or MAX.
+3. Goal contains both explore-phase signals (`find`, `search`, `analyze`, `explore`…) AND implement-phase signals (`build`, `create`, `implement`, `fix`…).
+4. Decomposition produced >5 units OR planner emitted >5 milestones.
+
+Otherwise falls through to existing `decomposeTask + executePlan`.
+
+Nesting cap = 1, enforced via `process.env.ZARABAN_INSIDE_SUBAGENT` (`core/subagents/nesting-gate.ts`). Sub-agents cannot spawn sub-agents.
+
+Sub-agent prompts: `prompts/subagent-{explore,plan,task}.md`. Each requires `\`\`\`json ... \`\`\`` summary block at end; `core/subagents/summarizer.ts` parses and falls back to history-based summary.
+
+Execution uses existing `spawnSubAgent` primitive from `core/sub-agent.ts` with `allowedSkillsOverride`. Model override via `withLLMRuntime`.
+
+Transparency events: `subagent_start`, `subagent_complete`, `subagent_failed`.
+
+Config: `SUBAGENT_CONFIG` in `config/agent.config.ts`. Env: `QWEN_PLAN_MODEL` (default: `qwen/qwen3.6-35b-a3b`).
+
+---
+
 ## 20. Edit Format
 
 `patch_file` uses the diff-fenced format. The file path goes inside the opening fence immediately after the language tag. Layered matcher (exact → whitespace-normalised → leading-whitespace-flex → fuzzy ≥0.85). Ambiguity is failure, never guess. Failure returns a structured `PatchFailure` payload (JSON in `output` field) with `classification`, `nearestCandidates`, `surroundingLines`, and `hint`.
@@ -616,3 +647,4 @@ ZARABAN rules file (`prompts/zaraban-rules.md`) carries the parallel-call direct
 | `diag-formatter-fixes-complete` | Diag formatter: goal priority fix (query_loop_start wins over span label), engine fallback chain (route → query_loop_start → milestone_start), route label formatting |
 | `sprint-a-edit-reliability-complete` | Diff-fenced patches, layered matcher (Aider port, Apache-2.0), structured failure feedback, read-before-edit gate, thinking-strip (<thinking> added), response_format wired, task_tracker skill, zaraban-rules.md |
 | `sprint-b-internet-vision-complete` | fetch_url_clean (Readability+JSDOM), download_file (50MB cap, MIME/magic-number), screenshot_url (Playwright), view_image (1072 tiling, Qwen→Gemini routing), SSRF guard (IPv6-aware), VISION_CONFIG |
+| `sprint-c-explore-subagent-complete` | Sub-agent runtime: Plan(Qwen 3.6)/Explore/Task profiles, nesting cap 1, structured summaries, trigger criteria in router, Explore→Plan→Task pipeline |
