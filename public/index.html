@@ -373,6 +373,7 @@
 
     .plan-panel {
       min-height: 0;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
       border-left: 1px solid var(--border);
@@ -979,8 +980,9 @@
     .perm-btn-no { background: transparent; color: var(--text-muted); border-color: var(--border); }
 
     .plan-body {
+      flex: 1;
       min-height: 0;
-      overflow: auto;
+      overflow-y: auto;
       padding: var(--sp-4);
       display: flex;
       flex-direction: column;
@@ -2552,7 +2554,9 @@
     }
 
     function syncStarterSuggestions() {
-      elements.starterSuggestions.classList.remove('hidden');
+      // Only show when no messages have been exchanged yet
+      const hasMessages = elements.messageList.children.length > 0;
+      elements.starterSuggestions.classList.toggle('hidden', hasMessages);
     }
 
     function setConnected(connected) {
