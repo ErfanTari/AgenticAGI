@@ -128,7 +128,7 @@ function render(s: DiagState): string {
   lines.push('MILESTONES');
   lines.push('──────────');
   if (s.milestones.length === 0) {
-    lines.push('  (none)');
+    lines.push(s.engine === 'query-loop' ? '  (query-loop mode — iterations above are the execution record)' : '  (none)');
   } else {
     for (const m of s.milestones) {
       lines.push(`  [${m.ok ? 'OK' : 'FAIL'}] ${m.title} (${m.stepsRun} steps)`);

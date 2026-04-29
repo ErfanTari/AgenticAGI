@@ -91,10 +91,15 @@ Phase 1 — Gather (one pass per target, no re-searching resolved targets):
 Per target: web_search (once) → url_extract → web_fetch if needed → url_extract (file URL).
 Record: STATUS: found=[...] pending=[...] candidates={target: url}
 Emit no per-target STATUS mid-loop — consolidate.
-Discovery search: once per target. Never re-search a target that already resolved.
+Discovery search: ONCE per target — maximum 1 web_search per brand. If it returns no direct PDF,
+try web_fetch on the brand's downloads page. After that, mark the target SKIPPED — no second search.
+Never re-search a brand already in found=[] or skipped=[].
+Never use web_fetch to load a URL that ends in .pdf — that is a direct file, use download_file on it.
 
 Phase 2 — Download (same C2 template per target, sequentially):
   One download_file (or fallback curl) per target.
+  Always provide filename as a safe string: e.g. "Neolith_general_catalog_2025.pdf"
+    (alphanumeric, dash, underscore, dot only — no spaces, no parentheses).
   Recovery search: at most one extra web_search per target after a failed/invalid download.
   After recovery attempt fails for any reason: TIMEOUT_SKIP, move to next target immediately.
   Never re-enter Phase 1 for a target that already had a download attempt.

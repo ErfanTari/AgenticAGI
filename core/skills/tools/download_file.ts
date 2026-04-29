@@ -77,9 +77,8 @@ const downloadFileSkill: MCPSkill = {
     );
 
     const rawFilename = typeof input.filename === 'string' ? input.filename.trim() : '';
-    if (rawFilename && !/^[a-zA-Z0-9_.\-]+$/.test(rawFilename)) {
-      return { success: false, output: '', error: 'filename must only contain alphanumeric, dash, dot, or underscore characters' };
-    }
+    // Sanitize any provided filename — replace spaces and special chars rather than rejecting
+    const sanitizedFilename = rawFilename ? rawFilename.replace(/[^a-zA-Z0-9_.\-]/g, '_').replace(/_+/g, '_') : '';
 
     try {
       // HEAD check for Content-Length
@@ -138,7 +137,7 @@ const downloadFileSkill: MCPSkill = {
 
       const urlBasename = basename(new URL(url).pathname) || 'download';
       const safeBasename = urlBasename.replace(/[^a-zA-Z0-9_.\-]/g, '_');
-      const finalName = rawFilename || safeBasename;
+      const finalName = sanitizedFilename || safeBasename;
       const finalPath = join(destDir, finalName);
 
       // Path traversal guard on final path
