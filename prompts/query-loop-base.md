@@ -135,17 +135,31 @@ If you need the full parameter schema for a skill before calling it, use:
 
 Apply these rules whenever the goal contains multiple named targets that each require a web search AND a file download (e.g. "download catalogs for brand A, B, C, D").
 
-### Phase 1 — Gather (search only, no downloads yet)
-1. Issue one `web_search` per target using the query pattern:
-   `<brand> catalog filetype:pdf` OR `site:<brand-domain> catalog pdf`
-2. From each result set, extract the **best candidate direct PDF URL** — a URL that ends in `.pdf` or whose anchor text / description explicitly says "Download PDF".
-3. If no direct PDF URL found in first search, try one fallback search:
-   `intitle:"index of" "<brand>" catalog pdf`
+### Phase 1 — Gather (resolve a download URL for each brand)
+
+**STRICT PER-BRAND SEQUENCE — follow exactly this order for EACH brand before moving to the next:**
+
+**Step A — web_search (1 attempt):**
+Issue ONE `web_search` using: `site:<brand-domain> catalog pdf` OR `<brand> general catalog filetype:pdf`
+- If a direct `.pdf` URL appears in results → record it, done for this brand.
+- If no direct PDF URL found → go to Step B.
+
+**Step B — web_fetch the downloads/resources page (1 attempt):**
+Fetch the brand's catalog or downloads page directly:
+`{"action":"web_fetch","url":"https://www.<brand-domain>/en/downloads/"}`
+Try common paths: `/downloads/`, `/catalogs/`, `/resources/`, `/en/downloads/`.
+Scan the returned HTML for `href` values ending in `.pdf`. Use the first `.pdf` link found.
+- If a PDF link found → record it, done for this brand.
+- If no PDF link found → mark brand SKIPPED, move to next brand.
+
+**Step C — move on:**
+After Step A or B resolves (or exhausts) for a brand, immediately move to the next brand.
+**NEVER issue a second web_search for a brand that already had its Step A search.**
+
 4. Record all candidate URLs in a STATUS table:
-   `STATUS: found=[] pending=[...] candidates={brand: url}`
-5. Do NOT call `run_bash` during Phase 1. Do NOT call `web_fetch` on brand homepages — homepage fetches waste iterations without yielding download URLs.
-6. Move to Phase 2 only once you have a candidate URL for every target, OR have exhausted 2 searches per target.
-7. **Hard cap: maximum 2 `web_search` calls per brand across ALL phases (Phase 1 + Phase 2 retry combined).** Once 2 searches are used for a brand, accept whatever URL was found or mark it SKIPPED.
+   `STATUS: found=[...] pending=[...] candidates={brand: url}`
+5. Do NOT call `run_bash` during Phase 1.
+6. Move to Phase 2 only once every brand has been through Steps A+B, OR you have a URL for all targets.
 
 ### Phase 2 — Sequential Per-Brand Download
 **CRITICAL: Never generate one bash script for all brands at once. One `run_bash` call per brand.**
