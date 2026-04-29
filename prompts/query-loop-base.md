@@ -145,48 +145,56 @@ Apply these rules whenever the goal contains multiple named targets that each re
    `STATUS: found=[] pending=[...] candidates={brand: url}`
 5. Do NOT call `run_bash` during Phase 1. Do NOT call `web_fetch` on brand homepages — homepage fetches waste iterations without yielding download URLs.
 6. Move to Phase 2 only once you have a candidate URL for every target, OR have exhausted 2 searches per target.
+7. **Hard cap: maximum 2 `web_search` calls per brand across ALL phases (Phase 1 + Phase 2 retry combined).** Once 2 searches are used for a brand, accept whatever URL was found or mark it SKIPPED.
 
 ### Phase 2 — Sequential Per-Brand Download
 **CRITICAL: Never generate one bash script for all brands at once. One `run_bash` call per brand.**
 
-For each brand that has a confirmed candidate URL (from Phase 1), issue one `run_bash` call.
+For each brand with a confirmed candidate URL (from Phase 1), prefer `download_file` skill — it uses Node fetch (not subprocess curl), handles MIME verification, and avoids DNS/curl environment issues:
 
-Each `run_bash` call must be fully hardcoded — no bash variables, no `${}`, no `$()`.
-Use this exact pattern for each brand:
+```json
+{"action":"download_file","input":{"url":"<direct-pdf-url>","filename":"<BrandName>_catalog.pdf","destDir":"Catalogs_2026"}}
+```
+
+After a successful `download_file`, check the byte count in the output. If < 204800 bytes, mark `INVALID`.
+
+**Fallback:** If `download_file` fails (SSRF block, MIME rejection, or network error), use one `run_bash` curl call. Each `run_bash` call must be fully hardcoded — no bash variables, no `${}`, no `$()`:
 
 ```bash
 curl -s -L --max-time 30 \
   -H "User-Agent: Mozilla/5.0 (compatible)" \
-  -o "workspace/Catalogs/<BrandName>_catalog.pdf" \
+  -o "workspace/Catalogs_2026/<BrandName>_catalog.pdf" \
   "<direct-pdf-url>"
 ```
 
-Then in a separate `run_bash` call, check the file size:
+Then check the file size in a separate `run_bash`:
 
 ```bash
-wc -c < workspace/Catalogs/<BrandName>_catalog.pdf
+wc -c < workspace/Catalogs_2026/<BrandName>_catalog.pdf
 ```
 
-If the size returned is less than 204800, run:
+If the size is less than 204800, run:
 
 ```bash
-rm workspace/Catalogs/<BrandName>_catalog.pdf
+rm workspace/Catalogs_2026/<BrandName>_catalog.pdf
 ```
 
-And mark that brand as `INVALID`. Do NOT use shell variables, parameter substitution, or command substitution (`$(...)`, `${...}`) anywhere in these commands. Write the brand name and path literally each time.
+And mark that brand as `INVALID`. Do NOT use shell variables, parameter substitution, or command substitution (`$(...)`, `${...}`) anywhere. Write brand name and path literally each time.
 
 Rules:
 1. Hardcode brand name and path as literal strings — no shell variables.
-2. Do NOT repeat `mkdir -p workspace/Catalogs` inside each script. Create the directory once in a separate `run_bash` before starting downloads.
-3. Do NOT chain multiple brands with `&&` or `;` in one command. One brand per call.
-4. If the brand's URL was not confirmed in Phase 1, skip it and note it as `SKIPPED|BrandName|no direct PDF URL found`.
-5. After all per-brand scripts complete, emit one consolidated STATUS block:
+2. One brand per call (whether `download_file` or `run_bash`). Do not chain multiple brands.
+3. If the brand's URL was not confirmed in Phase 1, skip it and note it as `SKIPPED|BrandName|no direct PDF URL found`.
+4. After all per-brand downloads complete, emit one consolidated STATUS block:
    `FINAL_STATUS: ok=[...] invalid=[...] skipped=[...]`
 
-**Timeout handling:**
-- If a `curl` download fails with a timeout error: do one `web_search` for `"<brand> catalog pdf direct download"` and try the best new URL once.
-- If that also fails (timeout, 404, or size < 200KB): mark brand as `TIMEOUT_SKIP` and stop trying. Do not increase `--max-time`. Do not use `web_fetch` on a URL that previously timed out — large media sites will return 100MB+ bodies.
+**Download failure handling (all error types):**
+- curl exit code 6 (DNS failure), exit code 28 (timeout), HTTP 403/404, or size < 200KB all count as a download failure.
+- On ANY download failure: do at most ONE `web_search` for `"<brand> catalog pdf direct download"` and try the single best new URL once.
+- If that second attempt also fails for any reason: mark brand as `TIMEOUT_SKIP` and stop trying immediately. Do not search again. Do not increase `--max-time`.
+- Do not use `web_fetch` on a URL that previously timed out or failed — large media sites return 100MB+ bodies.
 - Report `TIMEOUT_SKIP` brands in the final `FINAL_STATUS` block.
+- **After marking a brand TIMEOUT_SKIP, move to the NEXT brand immediately. Never re-enter Phase 1 for a brand that already had a download attempt.**
 
 ### Direct URL Detection
 Before issuing any `curl` download, verify the URL is a direct file:

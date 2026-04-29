@@ -32,7 +32,7 @@ function detectMime(buf: Buffer): string | null {
 
 const downloadFileSkill: MCPSkill = {
   name: 'download_file',
-  description: 'Download a binary file from a URL to workspace/.downloads/. Enforces 50MB cap, MIME allowlist, and magic-number verification. SSRF-protected.',
+  description: 'Download a binary file from a URL to workspace. Enforces 50MB cap, MIME allowlist, and magic-number verification. SSRF-protected. Defaults to workspace/.downloads/ unless destDir is specified.',
   permissionLevel: 'workspace-write',
 
   inputSchema: {
@@ -42,6 +42,10 @@ const downloadFileSkill: MCPSkill = {
       filename: {
         type: 'string',
         description: 'Optional filename (alphanumeric/dash/dot/underscore only). Defaults to URL basename.',
+      },
+      destDir: {
+        type: 'string',
+        description: 'Optional destination directory relative to workspace root (e.g. "Catalogs_2026"). Must stay within workspace. Defaults to .downloads/',
       },
       maxBytes: {
         type: 'number',
@@ -103,16 +107,23 @@ const downloadFileSkill: MCPSkill = {
         return { success: false, output: '', error: `MIME type '${effectiveMime ?? 'unknown'}' not in allowlist` };
       }
 
-      const downloadsDir = join(PATHS.workspace, '.downloads');
-      await mkdir(downloadsDir, { recursive: true });
+      const rawDestDir = typeof input.destDir === 'string' ? input.destDir.trim() : '';
+      const destDir = rawDestDir
+        ? join(PATHS.workspace, rawDestDir.replace(/^\/+/, ''))
+        : join(PATHS.workspace, '.downloads');
+      // Path traversal guard on destDir
+      if (!destDir.startsWith(PATHS.workspace)) {
+        return { success: false, output: '', error: 'destDir must stay within workspace' };
+      }
+      await mkdir(destDir, { recursive: true });
 
       const urlBasename = basename(new URL(url).pathname) || 'download';
       const safeBasename = urlBasename.replace(/[^a-zA-Z0-9_.\-]/g, '_');
       const finalName = rawFilename || safeBasename;
-      const finalPath = join(downloadsDir, finalName);
+      const finalPath = join(destDir, finalName);
 
-      // Path traversal guard
-      if (!finalPath.startsWith(downloadsDir)) {
+      // Path traversal guard on final path
+      if (!finalPath.startsWith(destDir)) {
         return { success: false, output: '', error: 'Path traversal detected in filename' };
       }
 
