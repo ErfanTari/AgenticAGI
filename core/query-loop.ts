@@ -502,6 +502,12 @@ export async function runQueryLoop(
   const SEARCH_DUPE_THRESHOLD = 3; // same query 3× → inject nudge
   const DOWNLOAD_LOOP_KEYWORDS = /\b(catalog|pdf|brand|download|catalog|catalogue)\b/i;
 
+  // C3 state machine enforcement: track completed downloads so the model can't re-search them
+  const completedDownloads: string[] = []; // filenames of successfully downloaded files
+  // web_fetch URL attempt count (normalized host+path) to detect multi-URL loops on same domain
+  const webFetchUrlCounts = new Map<string, number>();
+  const WEB_FETCH_URL_THRESHOLD = 3; // same URL ×3 → inject hard stop
+
   // Multi-call queue: when the model emits multiple tool calls in one response,
   // they are buffered here and drained one per iteration without re-calling the LLM.
   const pendingToolQueue: ToolCall[] = [];
@@ -822,6 +828,37 @@ export async function runQueryLoop(
       }
     }
 
+    // web_fetch URL repeat tracker: same URL ×3 → hard block and inject FINAL_STATUS directive
+    if (toolCall.action === 'web_fetch' && typeof toolCall.input.url === 'string') {
+      try {
+        const u = new URL(toolCall.input.url);
+        const normalizedUrl = u.hostname + u.pathname;
+        const urlCount = (webFetchUrlCounts.get(normalizedUrl) ?? 0) + 1;
+        webFetchUrlCounts.set(normalizedUrl, urlCount);
+        if (urlCount >= WEB_FETCH_URL_THRESHOLD) {
+          const block = `[SYSTEM BLOCK] web_fetch on ${normalizedUrl} has been called ${urlCount} times — this URL is not yielding a downloadable PDF. Stop fetching it. For any brand that has been attempted 2+ times with no successful download: mark SKIPPED. Emit FINAL_STATUS now with all brands accounted for.`;
+          messages.push({ role: 'user', content: block });
+          transparency.emit({ type: 'query_loop_narration', data: { narration: block, iteration } });
+        }
+      } catch { /* unparseable URL — skip */ }
+    }
+
+    // Hard enforcement at ≥80% of iteration cap on download-oriented goals:
+    // Block web_search / web_fetch and force FINAL_STATUS output
+    const hardCutoff = Math.floor(effectiveMaxIterations * 0.8);
+    if (iteration >= hardCutoff && DOWNLOAD_LOOP_KEYWORDS.test(goal)) {
+      if (toolCall.action === 'web_search' || toolCall.action === 'web_fetch') {
+        const completed = completedDownloads.length > 0
+          ? `Completed downloads: ${completedDownloads.join(', ')}.`
+          : 'No downloads completed yet.';
+        const block = `[SYSTEM HALT] Iteration ${iteration}/${effectiveMaxIterations} — 80% of budget used. No more web_search or web_fetch calls are permitted. ${completed} You MUST emit a plain-text FINAL_STATUS now (no JSON, no tool call): FINAL_STATUS: ok=[...] skipped=[...] for every target. This is your final action.`;
+        messages.push({ role: 'user', content: block });
+        transparency.emit({ type: 'query_loop_narration', data: { narration: block, iteration } });
+        // Skip executing the blocked tool call — force the model to reply with FINAL_STATUS text
+        continue;
+      }
+    }
+
     // Late-loop download nudge: after iteration 15 on a download-oriented goal, remind about FINAL_STATUS
     if (iteration > 15 && DOWNLOAD_LOOP_KEYWORDS.test(goal)) {
       const pendingSearches = [...searchQueryCounts.entries()].filter(([, c]) => c >= 2).length;
@@ -847,6 +884,18 @@ export async function runQueryLoop(
       circuitFailures.delete(ck);
       consecutiveFailures = 0;
       recentFailures.length = 0;
+
+      // C3 state machine: after a successful download_file, record it and inject a DONE marker.
+      // This prevents the model from re-searching or re-fetching the same brand.
+      if (toolCall.action === 'download_file') {
+        const filename = typeof toolCall.input.filename === 'string' ? toolCall.input.filename : '';
+        const destDir = typeof toolCall.input.destDir === 'string' ? toolCall.input.destDir : '.downloads';
+        const savedPath = filename ? `${destDir}/${filename}` : destDir;
+        completedDownloads.push(savedPath);
+        const doneMsg = `[SYSTEM] ✓ DOWNLOAD COMPLETE: ${savedPath}. This target is DONE. Do NOT search, fetch, or attempt to download it again. Move to the next pending brand, or emit FINAL_STATUS if all brands are accounted for.`;
+        messages.push({ role: 'user', content: doneMsg });
+        transparency.emit({ type: 'query_loop_narration', data: { narration: doneMsg, iteration } });
+      }
 
       // Track files written so they appear in the goal block.
       // file_writer: only track if content is non-empty (empty = placeholder, not a real write).
