@@ -9,16 +9,16 @@ const queryLoopPath = resolve(process.cwd(), 'core/query-loop.ts');
 const queryLoop = readFileSync(queryLoopPath, 'utf-8');
 
 describe('queryloop-bash-split: per-brand download rules', () => {
-  it('prompt contains Sequential Per-Brand Download heading', () => {
-    expect(prompt).toContain('Sequential Per-Brand Download');
+  it('prompt contains Phase 2 sequential per-target download heading', () => {
+    expect(prompt).toContain('Phase 2 — Download');
   });
 
-  it('prompt contains never-one-script-for-all-brands rule', () => {
-    expect(prompt).toContain('Never generate one bash script for all brands at once');
+  it('prompt forbids batching multiple targets into one script', () => {
+    expect(prompt).toContain('Never batch multiple targets into one script');
   });
 
-  it('prompt contains one run_bash call per brand rule', () => {
-    expect(prompt).toContain('One `run_bash` call per brand');
+  it('prompt requires one download call per target', () => {
+    expect(prompt).toContain('One download_file (or fallback curl) per target');
   });
 
   it('prompt contains FINAL_STATUS consolidated output format', () => {
@@ -29,8 +29,8 @@ describe('queryloop-bash-split: per-brand download rules', () => {
     expect(prompt).not.toContain('Phase 2 — Batch Download');
   });
 
-  it('prompt still contains 204800 integrity threshold', () => {
-    expect(prompt).toContain('204800');
+  it('prompt contains post-download size sanity threshold', () => {
+    expect(prompt).toMatch(/200\s*KB/i);
   });
 
   it('query-loop.ts contains consecutiveRepairCount circuit breaker variable', () => {

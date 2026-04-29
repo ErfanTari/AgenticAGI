@@ -6,8 +6,8 @@ const promptPath = resolve(process.cwd(), 'prompts/query-loop-base.md');
 const prompt = readFileSync(promptPath, 'utf-8');
 
 describe('query-loop-base.md web-download hardening rules', () => {
-  it('contains Multi-Target Web-Work Rules section', () => {
-    expect(prompt).toContain('Multi-Target Web-Work Rules');
+  it('contains multi-target web branch (C3)', () => {
+    expect(prompt).toContain('C3 — Multiple targets');
   });
 
   it('contains Phase 1 Gather instruction', () => {
@@ -15,32 +15,33 @@ describe('query-loop-base.md web-download hardening rules', () => {
   });
 
   it('contains Phase 2 download instruction', () => {
-    // Heading was updated to Sequential Per-Brand Download in queryloop-bash-split sprint
-    expect(prompt).toContain('Phase 2 —');
+    expect(prompt).toContain('Phase 2 — Download');
   });
 
-  it('contains filetype:pdf search operator instruction', () => {
-    expect(prompt).toContain('filetype:pdf');
+  it('chains discovery before download (url_extract + web_fetch + download_file)', () => {
+    expect(prompt).toContain('url_extract');
+    expect(prompt).toContain('web_fetch');
+    expect(prompt).toContain('download_file');
   });
 
-  it('contains 204800 byte integrity threshold', () => {
-    expect(prompt).toContain('204800');
+  it('contains post-download size sanity (small file = invalid)', () => {
+    expect(prompt).toMatch(/200\s*KB/i);
   });
 
-  it('contains issuu.com flipbook blocklist entry', () => {
-    expect(prompt).toContain('issuu.com');
+  it('contains issuu flipbook blocklist entry', () => {
+    expect(prompt).toMatch(/issuu/i);
   });
 
-  it('contains pubhtml5.com flipbook blocklist entry', () => {
-    expect(prompt).toContain('pubhtml5.com');
+  it('contains pubhtml5 flipbook blocklist entry', () => {
+    expect(prompt).toMatch(/pubhtml5/i);
   });
 
-  it('contains User-Agent Mozilla/5.0 bot-bypass header', () => {
-    expect(prompt).toContain('User-Agent: Mozilla/5.0');
+  it('contains HEAD/probe guidance before large downloads', () => {
+    expect(prompt).toMatch(/curl\s+-sI/i);
   });
 
-  it('contains context discipline section', () => {
-    // "context ballooning" phrase moved; check for the discipline section header instead
-    expect(prompt).toContain('Context Discipline');
+  it('consolidates status after multi-target work (no mid-loop spam)', () => {
+    expect(prompt).toContain('Emit no per-target STATUS mid-loop');
+    expect(prompt).toContain('FINAL_STATUS:');
   });
 });
