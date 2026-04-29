@@ -228,3 +228,10 @@ export declare const EMBEDDING_CONFIG: {
     model: string;
     dimensions: number;
 } | null;
+export declare const VISION_CONFIG: {
+    readonly localModel: "qwen/qwen3-vl-8b";
+    readonly cloudFallbackModel: "gemini-2.5-flash";
+    readonly tileSize: 1072;
+    readonly maxImageBytes: 20000000;
+    readonly defaultMimeAllowlist: readonly ["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "application/pdf", "text/plain", "text/markdown", "text/csv", "application/json", "application/zip"];
+};

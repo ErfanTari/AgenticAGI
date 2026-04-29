@@ -43,7 +43,11 @@
       "request_user_input",
       "request_permission",
       "skill_schema",
-      "task_tracker"
+      "task_tracker",
+      "fetch_url_clean",
+      "download_file",
+      "screenshot_url",
+      "view_image"
     ],
     "planning": {
       "max_steps": 8,

@@ -234,12 +234,12 @@ emits `memory_gate_opened` / `memory_gate_skipped` transparency events according
 
 ## 9. Skills System
 
-**23 skills registered, all annotated with `permissionLevel`:**
+**27+ skills registered, all annotated with `permissionLevel`:**
 
 | Level | Skills |
 |-------|--------|
-| `read-only` | calculator, file_reader, web_search, web_fetch, url_extract, memory_read, memory_history, content_writer, verify_state, grep_workspace, list_dir, glob, skill_schema, request_user_input |
-| `workspace-write` | file_writer, patch_file, memory_write, relationship_write, generate_and_save_file, confirm_plan, task_tracker |
+| `read-only` | calculator, file_reader, web_search, web_fetch, url_extract, memory_read, memory_history, content_writer, verify_state, grep_workspace, list_dir, glob, skill_schema, request_user_input, fetch_url_clean, view_image |
+| `workspace-write` | file_writer, patch_file, memory_write, relationship_write, generate_and_save_file, confirm_plan, task_tracker, download_file, screenshot_url |
 | `full-access` | run_bash, implement_and_test |
 
 `task_tracker` uses an operation discriminated union (`add` / `list` / `update`) to keep schema surface small. Persists to `NOW.TD` notebook.
@@ -551,7 +551,23 @@ Execution is NOT blocked — the event is a regression sentinel for tests.
 
 ---
 
-## 18. Edit Format
+## 18. Internet & Vision Pipeline
+
+`fetch_url_clean` extracts article content via Mozilla Readability + JSDOM. Wraps output in `<!-- BEGIN UNTRUSTED WEB CONTENT -->` markers as a partial mitigation against indirect prompt injection.
+
+`download_file` enforces 50MB default cap, MIME allowlist (image/\*, PDF, text/\*, JSON, ZIP), magic-number verification, and writes to `workspace/.downloads/` (sandboxed, gitignored).
+
+`screenshot_url` uses Playwright headless Chromium, auto-dismisses dialogs, saves PNG to `.downloads/`. Returns path for downstream `view_image` calls.
+
+`view_image` tiles large images into 1072×1072 chunks (Qwen 3 VL 8B sweet spot) via sharp. Routes through `core/multimedia/vision-router.ts`: local `qwen/qwen3-vl-8b` first, cloud Gemini Flash escalation on low-confidence phrases.
+
+SSRF guard (`core/security/ssrf.ts`) used by `fetch_url_clean`, `download_file`, and `screenshot_url`. Validates pre-flight, re-validates on every redirect hop (max 5). IPv6-aware: blocks loopback, link-local (fe80::), ULA (fc00::/7), multicast, IPv4-mapped private ranges. DNS resolution required before any fetch.
+
+Vision config in `config/agent.config.ts` `VISION_CONFIG` constant.
+
+---
+
+## 20. Edit Format
 
 `patch_file` uses the diff-fenced format. The file path goes inside the opening fence immediately after the language tag. Layered matcher (exact → whitespace-normalised → leading-whitespace-flex → fuzzy ≥0.85). Ambiguity is failure, never guess. Failure returns a structured `PatchFailure` payload (JSON in `output` field) with `classification`, `nearestCandidates`, `surroundingLines`, and `hint`.
 
@@ -599,3 +615,4 @@ ZARABAN rules file (`prompts/zaraban-rules.md`) carries the parallel-call direct
 | `queryloop-download-hardened-complete` | Bash template hardened: no variables/substitution (Sprint-E blocklist compat), timeout → one-retry → TIMEOUT_SKIP rule, web_fetch-on-timeout blocked |
 | `diag-formatter-fixes-complete` | Diag formatter: goal priority fix (query_loop_start wins over span label), engine fallback chain (route → query_loop_start → milestone_start), route label formatting |
 | `sprint-a-edit-reliability-complete` | Diff-fenced patches, layered matcher (Aider port, Apache-2.0), structured failure feedback, read-before-edit gate, thinking-strip (<thinking> added), response_format wired, task_tracker skill, zaraban-rules.md |
+| `sprint-b-internet-vision-complete` | fetch_url_clean (Readability+JSDOM), download_file (50MB cap, MIME/magic-number), screenshot_url (Playwright), view_image (1072 tiling, Qwen→Gemini routing), SSRF guard (IPv6-aware), VISION_CONFIG |

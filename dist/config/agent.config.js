@@ -174,3 +174,17 @@ export const EMBEDDING_CONFIG = process.env.EMBEDDING_ENDPOINT
         dimensions: Number(process.env.EMBEDDING_DIMENSIONS ?? '768'),
     }
     : null;
+// Vision pipeline config (Sprint B)
+export const VISION_CONFIG = {
+    localModel: 'qwen/qwen3-vl-8b',
+    cloudFallbackModel: 'gemini-2.5-flash',
+    tileSize: 1072,
+    maxImageBytes: 20_000_000, // 20 MB
+    defaultMimeAllowlist: [
+        'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml',
+        'application/pdf',
+        'text/plain', 'text/markdown', 'text/csv',
+        'application/json',
+        'application/zip',
+    ],
+};
