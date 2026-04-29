@@ -788,6 +788,32 @@ async function handleAgenticUnits(
   // Route based on the plan's self-assessed complexity
   const isSimple = planComplexity === 'LOW' || planComplexity === 'MEDIUM';
   if (isSimple) {
+    // File/download tasks need query-loop retry logic, not SimplePlan's linear execution.
+    // Any plan step that writes or downloads a file gets upgraded to query-loop.
+    const FILE_WRITE_SKILLS = new Set(['download_file', 'file_writer', 'patch_file', 'run_bash', 'generate_and_save_file']);
+    const planSteps = plan.steps ?? [];
+    const hasFileWriteStep = planSteps.some(s => FILE_WRITE_SKILLS.has(s.skill));
+
+    if (hasFileWriteStep) {
+      transparency.emit({
+        type: 'route',
+        data: {
+          level: planComplexity,
+          reason: 'plan contains file/download steps — upgraded to query-loop for retry logic',
+          path: 'query_loop',
+        },
+      });
+      const cap = COMPLEXITY_ITERATION_CAPS[(planComplexity as keyof typeof COMPLEXITY_ITERATION_CAPS)] ?? COMPLEXITY_ITERATION_CAPS['LOW'];
+      const loopResult = await runQueryLoop(goalMessage, llmHandler, workingMemory, _history, undefined, { maxIterationsOverride: cap }, parentCtx, signal);
+      if (loopResult.artifactContext) {
+        _lastSessionArtifact = loopResult.artifactContext;
+      }
+      return {
+        parts: [{ order: minOrder, route: 'agentic', reply: loopResult.reply }],
+        plan,
+      };
+    }
+
     const simpleResult = await runSimplePlan(plan, llmHandler, parentCtx, signal);
     if (simpleResult.artifactContext) {
       _lastSessionArtifact = simpleResult.artifactContext;

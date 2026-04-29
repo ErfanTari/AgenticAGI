@@ -78,6 +78,7 @@ STRUCTURAL INTEGRITY RULES (FIX 4):
 COMPLEXITY SELF-ASSESSMENT — set "complexity" based on what the task actually requires:
 - "simple": 1–3 steps, bounded scope, single file or single memory target, no branching (fix a bug, change a style, add one feature, save a contact)
 - "complex": 4+ steps OR multiple interdependent outputs OR requires milestones/verification/memory writes (build an app, research + save + report, multi-file project)
+- ALWAYS "complex": tasks that involve downloading files for 2 or more targets/brands/URLs — each target requires its own search+fetch+download sequence and must not be collapsed into "simple"
 
 CONTINUATION RULE (FIX 2) — When "PRIOR EXECUTION STATE" appears above:
 - READ the prior milestones and completed steps carefully
@@ -353,40 +354,41 @@ WEB BROWSING / DOWNLOAD WORKFLOW:
 When a task requires actually visiting a website or downloading a file, ALWAYS follow this exact sequence.
 NEVER skip url_extract steps — they are MANDATORY between any search/fetch and the next URL-consuming step.
 
-STEP 1 — web_search: find relevant pages
-  input: { "query": "search terms" }
+STEP 1 — web_search: find the brand's downloads or catalog page
+  input: { "query": "BrandName general catalog 2025 2026 pdf download site:brandname.com" }
   storeResultAs: "search_results"
-STEP 2 — url_extract: MANDATORY — get a clean URL from search results (NEVER skip this)
+STEP 2 — url_extract: get the brand's download page URL from search results
   input: { "text": "{{search_results}}" }
-  storeResultAs: "target_url"
+  storeResultAs: "brand_page_url"
   dependsOn: [step1_id]
-STEP 3 — web_fetch: load the actual page to find download links
-  input: { "url": "{{target_url}}", "extract_links_matching": ".pdf" }
-  storeResultAs: "page_content"
+STEP 3 — web_fetch: MANDATORY for PDF downloads — load the brand page to find the direct PDF link
+  input: { "url": "{{brand_page_url}}", "extract_links_matching": ".pdf" }
+  storeResultAs: "page_with_links"
   dependsOn: [step2_id]
-STEP 4 — url_extract: MANDATORY — get the direct download link from the page (NEVER skip this)
-  input: { "text": "{{page_content}}", "filter": "pdf" }
-  storeResultAs: "download_url"
+  NOTE: url_extract from search gives a WEBSITE URL (HTML page), not a PDF. You MUST web_fetch it first.
+STEP 4 — url_extract: extract the direct .pdf URL from the fetched page
+  input: { "text": "{{page_with_links}}", "filter": "pdf" }
+  storeResultAs: "pdf_url"
   dependsOn: [step3_id]
-STEP 5 — run_bash: download the file
-  input: { "command": "mkdir -p downloads && curl -L -o downloads/filename.pdf '{{download_url}}'" }
+STEP 5 — download_file: save the PDF to workspace
+  input: { "url": "{{pdf_url}}", "filename": "BrandName_general_catalog.pdf", "destDir": "Porcelain_PDF/catalogs" }
   dependsOn: [step4_id]
 
-BAD EXAMPLE (DO NOT DO THIS — skips url_extract):
-  step1: web_search → step2: web_fetch(url="{{search_results}}") ← WRONG, never use raw search results as URL
+BAD EXAMPLE (WRONG — skips web_fetch, tries to download the search result page as a PDF):
+  step1: web_search → step2: url_extract → step3: download_file(url="{{brand_page_url}}")
+  ← WRONG: brand_page_url is an HTML page, NOT a PDF. download_file will fail with MIME error.
 
-GOOD EXAMPLE (correct pattern):
-  step1: web_search → step2: url_extract(text="{{search_results}}") → step3: web_fetch(url="{{target_url}}")
+GOOD EXAMPLE (correct 5-step pattern for PDF catalog downloads):
+  step1: web_search → step2: url_extract(homepage URL) → step3: web_fetch(extract_links_matching=".pdf") → step4: url_extract(filter=pdf) → step5: download_file
 
 WEB BROWSING RULES (NEVER BREAK THESE):
-- NEVER pass search result text directly as a URL to curl or web_fetch
-- NEVER use curl with a search query as the URL
-- ALWAYS use url_extract between web_search/web_fetch and any download step — NEVER skip url_extract
-- NEVER go from web_search directly to web_fetch or run_bash without url_extract in between
-- web_fetch loads pages and returns links; run_bash+curl downloads files
-- curl command MUST single-quote the URL: curl -L -o file '{{download_url}}'
-- Use -L flag with curl to follow redirects
-- url_extract output is a single clean URL string — use it directly in next step
+- NEVER pass search result text directly as a URL to web_fetch or download_file
+- ALWAYS use url_extract between web_search and web_fetch — NEVER skip it
+- NEVER go from web_search directly to download_file — the intermediate web_fetch step is MANDATORY for PDFs
+- web_fetch loads pages and returns links; download_file saves binary files to workspace
+- download_file is preferred over run_bash+curl for PDF downloads (handles MIME validation, size caps)
+- url_extract output is a single clean URL string — use it directly in the next step
+- For PDF catalog tasks: the 5-step sequence (search → extract URL → fetch page → extract PDF link → download) is REQUIRED
 
 IMAGE ACQUISITION RULE:
 When the user's request includes using images from the internet in the final artifact
