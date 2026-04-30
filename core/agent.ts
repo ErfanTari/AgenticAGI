@@ -1176,7 +1176,7 @@ function classifyConfirmationResponse(message: string): 'approve' | 'reject' | '
 export function processMessage(
   message: string,
   history: Message[],
-  options?: { llmHandler?: LLMHandler; signal?: AbortSignal },
+  options?: { llmHandler?: LLMHandler; signal?: AbortSignal; researchCollectEngine?: boolean },
 ): Promise<AgentResponse> {
   const requestId = randomUUID();
   const flushDiag = startDiagSession(requestId);
@@ -1191,7 +1191,7 @@ export function processMessage(
 async function _processMessageImpl(
   message: string,
   history: Message[],
-  options?: { llmHandler?: LLMHandler; signal?: AbortSignal },
+  options?: { llmHandler?: LLMHandler; signal?: AbortSignal; researchCollectEngine?: boolean },
   rootCtx?: SpanContext,
 ): Promise<AgentResponse> {
   isProcessingMessage = true;
@@ -1420,7 +1420,13 @@ async function _processMessageImpl(
     // HIGH/MAX   → fall through to full intake+decomposition pipeline.
     // Excluded: greetings, questions, memory entity ops, explicit skill patterns, memory query patterns.
     const startsWithQuestion = /^(what|who|when|where|how|why|which|is|are|can|does|do|tell\s+me\s+about|explain|describe|find|search|look|show|list|get|fetch|retrieve)\b/i.test(message.trim());
+    // UI "Research & collect" mode: skip the LOW/MEDIUM → QueryLoop shortcut so
+    // intake + decomposition + router run first. That lets dedicated one-call
+    // engines (web_download_multi_target, file_batch_transform,
+    // api_paginated_collect) match after the goal text is fully classified,
+    // instead of burning iterations in a premature QueryLoop.
     if (
+      !options?.researchCollectEngine &&
       !isLikelyCompoundMessage(message) &&
       !isCompoundEntityCreation(message) &&
       !GREETING_ONLY.test(message.trim()) &&

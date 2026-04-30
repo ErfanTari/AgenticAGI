@@ -922,16 +922,78 @@
       }
     }
 
-    .composer {
+    .composer-stack {
       border-top: 1px solid var(--border);
-      padding: var(--sp-3) var(--sp-4) var(--sp-4);
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: var(--sp-3);
+      padding: var(--sp-2) var(--sp-4) var(--sp-4);
       background: var(--bg-elevated);
     }
 
-    .composer textarea {
+    .composer-toolbar {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+      margin-bottom: var(--sp-2);
+      min-height: 28px;
+    }
+
+    .composer-toolbar-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-faint);
+      flex-shrink: 0;
+    }
+
+    .route-mode-switch {
+      display: inline-flex;
+      align-items: stretch;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      padding: 1px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .route-mode-btn {
+      font-family: var(--font-ui);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      padding: 5px 11px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
+      white-space: nowrap;
+      line-height: 1.35;
+    }
+
+    .route-mode-btn .route-mode-arrow {
+      opacity: 0.75;
+      margin: 0 1px;
+      font-size: 9px;
+    }
+
+    .route-mode-btn.active {
+      background: var(--bg-elevated);
+      color: var(--text);
+      box-shadow: var(--shadow-sm);
+    }
+
+    [data-theme="dark"] .route-mode-btn.active {
+      background: var(--bg-hover);
+      box-shadow: none;
+    }
+
+    .composer-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--sp-3);
+    }
+
+    .composer-form textarea {
       resize: none;
       min-height: 46px;
       max-height: 180px;
@@ -946,11 +1008,11 @@
       outline: none;
     }
 
-    .composer textarea:focus {
+    .composer-form textarea:focus {
       border-color: var(--border-strong);
     }
 
-    .composer button {
+    .composer-form button {
       align-self: end;
       min-width: 88px;
       height: 46px;
@@ -1645,10 +1707,19 @@
           <button class="perm-btn perm-btn-no" id="permNo" type="button">No</button>
         </div>
       </div>
-      <form id="composer" class="composer">
-        <textarea id="chatInput" placeholder="Message zaraban..." rows="1"></textarea>
-        <button id="sendButton" class="btn btn-primary" type="submit" data-mode="send">Send</button>
-      </form>
+      <div class="composer-stack">
+        <div class="composer-toolbar" id="composerToolbar">
+          <span class="composer-toolbar-label">Route</span>
+          <div class="route-mode-switch" role="radiogroup" aria-label="Execution route">
+            <button type="button" id="routeModeAuto" class="route-mode-btn active" data-route-mode="auto" title="Default routing. Simple agentic tasks may skip straight to QueryLoop when complexity is LOW or MEDIUM.">Auto</button>
+            <button type="button" id="routeModeEngine" class="route-mode-btn" data-route-mode="engine" title="Research and collect: skip that fast path so full intake and decomposition run first. One-call engines (multi-target downloads, batch file transforms, API pagination) can then own the task when they match.">Research <span class="route-mode-arrow">▸</span> collect</button>
+          </div>
+        </div>
+        <form id="composer" class="composer-form">
+          <textarea id="chatInput" placeholder="Message zaraban..." rows="1"></textarea>
+          <button id="sendButton" class="btn btn-primary" type="submit" data-mode="send">Send</button>
+        </form>
+      </div>
     </main>
 
     <aside class="panel plan-panel">
@@ -1965,6 +2036,7 @@
       errorCount: 0,
       successCount: 0,
       iterationCount: 0,
+      researchCollectEngine: Boolean(Storage.get('researchCollectEngine', false)),
     };
 
     const elements = {
@@ -1975,6 +2047,8 @@
       chatInput: document.getElementById('chatInput'),
       sendButton: document.getElementById('sendButton'),
       composer: document.getElementById('composer'),
+      routeModeAuto: document.getElementById('routeModeAuto'),
+      routeModeEngine: document.getElementById('routeModeEngine'),
       reconnectBanner: document.getElementById('reconnectBanner'),
       starterSuggestions: document.getElementById('starterSuggestions'),
       connectionDot: document.getElementById('connectionDot'),
@@ -2021,6 +2095,7 @@
     renderPlanEmpty();
     syncProviderUi();
     syncComposer();
+    syncRouteModeUi();
     syncStarterSuggestions();
     updateSettingsSummary();
     connect();
@@ -2118,6 +2193,19 @@
       } else {
         sendCurrentMessage();
       }
+    });
+
+    elements.routeModeAuto.addEventListener('click', () => {
+      if (!state.researchCollectEngine) return;
+      state.researchCollectEngine = false;
+      Storage.set('researchCollectEngine', false);
+      syncRouteModeUi();
+    });
+    elements.routeModeEngine.addEventListener('click', () => {
+      if (state.researchCollectEngine) return;
+      state.researchCollectEngine = true;
+      Storage.set('researchCollectEngine', true);
+      syncRouteModeUi();
     });
 
     elements.starterSuggestions.querySelectorAll('[data-prompt]').forEach(button => {
@@ -2285,6 +2373,13 @@
     function autoResize() {
       elements.chatInput.style.height = 'auto';
       elements.chatInput.style.height = Math.min(elements.chatInput.scrollHeight, 180) + 'px';
+    }
+
+    function syncRouteModeUi() {
+      if (!elements.routeModeAuto || !elements.routeModeEngine) return;
+      const on = state.researchCollectEngine;
+      elements.routeModeAuto.classList.toggle('active', !on);
+      elements.routeModeEngine.classList.toggle('active', on);
     }
 
     function syncComposer() {
@@ -2781,7 +2876,7 @@
       elements.chatInput.value = '';
       autoResize();
       syncComposer();
-      state.socket.send(JSON.stringify({ type: 'chat', text }));
+      state.socket.send(JSON.stringify({ type: 'chat', text, researchCollectEngine: state.researchCollectEngine }));
     }
 
     // ── Permission approval card ──
@@ -2801,7 +2896,7 @@
       state.processing = true;
       syncComposer();
       showTyping();
-      state.socket.send(JSON.stringify({ type: 'chat', text: answer }));
+      state.socket.send(JSON.stringify({ type: 'chat', text: answer, researchCollectEngine: state.researchCollectEngine }));
     }
     document.getElementById('permYes').addEventListener('click', () => sendPermissionReply('yes'));
     document.getElementById('permYesToAll').addEventListener('click', () => sendPermissionReply('yes_to_all'));

@@ -21,7 +21,7 @@ import type { TaskMilestone, TaskPlan, TaskStep } from '../core/schemas.js';
 import type { Message } from '../core/types.js';
 
 type ClientMessage =
-  | { type: 'chat'; text: string }
+  | { type: 'chat'; text: string; researchCollectEngine?: boolean }
   | { type: 'set_permission_mode'; mode: 'read-only' | 'workspace-write' | 'full-access' }
   | { type: 'set_provider_mode'; mode: ProviderMode }
   | { type: 'set_local_model'; model: string }
@@ -733,7 +733,7 @@ async function handleRefreshModels(connection: ClientConnection) {
   console.log(`[ui] Models refreshed: ${envModels.length} env, ${lmStudioModels.length} LM Studio`);
 }
 
-async function handleChat(connection: ClientConnection, text: string) {
+async function handleChat(connection: ClientConnection, text: string, researchCollectEngine = false) {
   if (connection.processing) {
     sendJson(connection, {
       type: 'error',
@@ -757,7 +757,10 @@ async function handleChat(connection: ClientConnection, text: string) {
     }
 
     const reply = await withLLMRuntime(runtime, async () =>
-      processMessage(trimmed, connection.history, { signal: controller.signal }),
+      processMessage(trimmed, connection.history, {
+        signal: controller.signal,
+        researchCollectEngine,
+      }),
     );
     connection.history.push({ role: 'user', content: trimmed });
     connection.history.push({ role: 'assistant', content: reply.reply });
@@ -875,7 +878,7 @@ function handleClientMessage(connection: ClientConnection, raw: string) {
   }
 
   if (parsed.type === 'chat') {
-    void handleChat(connection, parsed.text);
+    void handleChat(connection, parsed.text, Boolean(parsed.researchCollectEngine));
     return;
   }
 
