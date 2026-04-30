@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { open } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { PATHS } from '../../config/agent.config.js';
@@ -48,10 +49,9 @@ describe('read_pdf skill', () => {
 
   it('file too large returns error', async () => {
     const bigPath = path.join(tmpDir, 'big.pdf');
-    // Create a sparse-ish fake file by writing a header + claiming huge size via stat mock
-    // Instead: write a real file > 20MB threshold
-    const buf = Buffer.alloc(20_000_001, 0x25); // 0x25 = '%' — looks like PDF header
-    writeFileSync(bigPath, buf);
+    const fh = await open(bigPath, 'w');
+    await fh.truncate(100_000_001); // sparse file > 100MB cap; stat-based gate only
+    await fh.close();
     const result = await readPdfSkill.execute({ path: 'big.pdf' });
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/too large/i);

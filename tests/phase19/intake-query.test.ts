@@ -88,8 +88,15 @@ describe('Intake prompt suppression', () => {
     ).toBe(true);
   });
 
-  it('test 4: intake maxTokens is >= 400', () => {
-    expect(TOKEN_BUDGETS.INTAKE).toBeGreaterThanOrEqual(400);
+  // Phase 25.4 — TOKEN_BUDGETS.INTAKE was lowered from 600 to 200. Intake is
+  // a tiny JSON classification call and the prior 600-token cap masked a
+  // runaway bug where the model spent 23s and 791 output tokens on a single
+  // intake call. The summary field is now explicitly lossy and routing does
+  // not consume it. The lower bound still guards against accidentally setting
+  // it so low (e.g. 50) that the JSON output gets truncated.
+  it('test 4: intake maxTokens is between 100 and 400', () => {
+    expect(TOKEN_BUDGETS.INTAKE).toBeGreaterThanOrEqual(100);
+    expect(TOKEN_BUDGETS.INTAKE).toBeLessThanOrEqual(400);
   });
 
   it('test 5: intake timeout constant is >= 15000ms', () => {

@@ -662,9 +662,9 @@ Keyed by `${skillName}::${JSON.stringify(args)}` scoped per `requestId`. Emits `
 |---|--------|-------------|--------|
 | 1 | `web_download_multi_target` | `webDownloadSpecSchema` (`core/schemas.ts`) | shipped Phase 24 |
 | 2 | `file_batch_transform` | `fileBatchTransformSpecSchema` (`core/schemas.ts`) | shipped Phase 25.1 |
-| 3 | `api_paginated_collect` | (next sprint) | Phase 25.2 |
+| 3 | `api_paginated_collect` | `apiPaginatedCollectSpecSchema` (`core/schemas.ts`) | shipped Phase 25.2 |
 
-After #3, Phase 25.3 extracts `TaskSpec<K, I>` + `engineRegistry` + side-effect approval gates + escalation protocol + `RunRecord` memory loop.
+All three concrete engines have shipped. Phase 25.3 now extracts `TaskSpec<K, I>` + `engineRegistry` + side-effect approval gates + escalation protocol + `RunRecord` memory loop. The shared spine is now visible across the three engines and ready to lift.
 
 **Per-engine pattern (apply when adding a new kind):**
 1. Add `<kind>SpecSchema` to `core/schemas.ts` (Zod, with discriminant `kind: z.literal(...)`).
@@ -673,14 +673,51 @@ After #3, Phase 25.3 extracts `TaskSpec<K, I>` + `engineRegistry` + side-effect 
 4. Tests in `tests/phase-25/<kind>.test.ts` covering schema, helpers, validators, integration, transparency events, extractor.
 5. Wire as a Tier-1x gate in `core/router.ts` between existing tiers (regex detect → spec extract → engine run → fall through to QueryLoop on extractor failure).
 
-**Constants for engine #2 (`file_batch_transform`):**
-```typescript
-MAX_RETRIES_PER_FILE = 1;
-MAX_TOTAL_MS = 600_000;
-MAX_FILES_PER_BATCH = 1000;
-```
+**Engine constants:**
 
-**Side-effect classification (whitepaper §8).** Engine #2 is `local_write`. Workspace-relative `destDir` enforced at extraction; paths escaping the workspace root cause refused starts. The full taxonomy (`none` / `local_write` / `external_write` / `destructive`) lifts to the runtime layer in Phase 25.3.
+| Engine | File | Constants |
+|--------|------|-----------|
+| `web_download_multi_target` | `core/skills/web-download-multi-target.ts` | `MAX_SEARCHES_PER_TARGET=2`, `MAX_PAGES_PER_TARGET=3`, `MAX_DOWNLOADS_PER_TARGET=3`, `MAX_TOTAL_MS=120_000` |
+| `file_batch_transform` | `core/skills/file-batch-transform.ts` | `MAX_RETRIES_PER_FILE=1`, `MAX_TOTAL_MS=600_000`, `MAX_FILES_PER_BATCH=1000` |
+| `api_paginated_collect` | `core/skills/api-paginated-collect.ts` | `MAX_RETRIES_PER_PAGE=1`, `MAX_TOTAL_MS=300_000`, plus per-spec `maxRecords` and `maxPages` caps |
+
+**Engine #3 specifics (`api_paginated_collect`):**
+- Pagination kinds: `link_header` (RFC 5988), `offset`, `cursor` — all closed enums, no LLM judgment at runtime.
+- Auth kinds: `none`, `bearer`, `header`, `query` — credentials resolved from env vars, never echoed in logs.
+- Engine is `fetchFn`-injectable (production: global `fetch`; tests: mocks). Output is JSONL written to a workspace-sandboxed `destFile`.
+- Schema lesson: keep top-level fields flat. `parseStructured` runs `flattenSingleKeyObjects` before validation, which corrupts nested single-key objects. We learned this when `filter: { query: {...} }` was being mangled into the string `"query"` — flattened to top-level `queryParams` and `extraHeaders` instead.
+
+**Side-effect classification (whitepaper §8).** All three current engines are `local_write` — they only write inside the workspace root. Workspace-escape paths cause refused starts at the engine entry, never at runtime. The full taxonomy (`none` / `local_write` / `external_write` / `destructive`) lifts to the runtime layer in Phase 25.3.
+
+**Routing — dedicated-engine dispatcher (Phase 25.2.1).**
+
+The dispatcher in `core/router/dedicated-engine-dispatch.ts` is the single source of truth for "should this message fire one of the deterministic engines?". It exposes:
+
+- `detectMultiTargetDownload(msg)`, `detectFileBatchTransform(msg)`, `detectApiPaginatedCollect(msg)` — pure regex predicates (no I/O)
+- `detectAnyDedicatedEngine(msg)` — true iff any tier matches
+- `dispatchDedicatedEngine(msg, llmHandler, options)` — runs the matching engine end-to-end and returns `{ handled, kind, reply }` or `{ handled: false }`
+
+The dispatcher is called from TWO places:
+
+1. **`core/agent.ts` `_processMessageImpl`**, BEFORE the quick-complexity LLM call. This is the critical path. Without this hoisted call, a message like *"Download Neolith, SapienStone catalog PDFs to workspace/catalogs/"* would be assessed as MEDIUM by the complexity LLM and routed to QueryLoop, **never reaching the deterministic engine**. The hoist closes that bypass: dedicated > QueryLoop, always.
+2. **`core/router.ts` `handleAgenticUnits`**, as defense-in-depth after decomposition. If the upstream gate missed (e.g. decomposition rephrased the content), this catches it.
+
+When the regex matches but spec extraction fails (LLM returns garbage, schema validation fails), the dispatcher returns `{ handled: false }` so the caller falls through gracefully. Detection match must NEVER cascade through Tier 1 → 1b → 1c — that would mis-route a download message to the file engine. Each tier is exclusive once its regex fires.
+
+**Path normalization for spec fields.** All path fields in the three specs (`destDir`, `destFile`, `source.glob`) run through `stripWorkspacePrefix()` as a Zod transform at parse time. Why: users (and the CLAUDE.md guide) write workspace-relative paths as `workspace/X`, but the engines resolve paths INSIDE `PATHS.workspace`. Without normalization, the engine would write to `workspace/workspace/X` — a real bug we caught during cloud testing of the LLM extractor. The transform strips a leading `workspace/` (case-insensitive, also handles `./workspace/`), is idempotent, and is the one place to fix this for all engines.
+
+**Content-truth validator (Phase 25.2.2).** `validatePdf` now optionally takes `{ target, artifact }` and runs `checkContentRelevance` against the extracted PDF text. The PDF must mention the brand name AND a recognizable artifact keyword (`catalog`, `brochure`, `datasheet`, etc.) in the first 20k chars. This closes a real bug where the engine accepted random PDFs (school curriculum, Outlook email exports, personal portfolios) just because they were structurally valid PDFs of plausible size. Symptoms in the wild: `workspace/Porcelain_PDF/catalogs/Living_Ceramics_generalcatalog.pdf` was actually "25_26 Art only 4yr Roadmap Freshmen" by Melissa Ledesma.
+
+**Orphan cleanup.** When validation fails, `cleanupFailedDownload(filePath)` deletes the file (workspace-sandboxed; refuses to unlink anything outside `PATHS.workspace`) and emits a `web_download_validation_failed` event with `{ removed: bool }`. Without this, failed downloads accumulated across runs and `overwrite: 'if-missing'` semantics caused subsequent runs to skip them as "already done".
+
+**Audit framework (`docs/phase-25-4-artifact-class-engines.md`).** Stress-test corpus in `tests/phase-25/web-download-stress-corpus.test.ts` with adversarial cases drawn from real-world failures. The doc also defines the artifact-class taxonomy: each download class needs its own engine, search strategy, and content-truth validator. Implementing `software_install` and `repo_fetch` engines is tracked as Phase 25.4.
+
+**Tests.**
+- `tests/phase-25/dedicated-engine-dispatch.test.ts` — 21 tests: detection regexes, path normalization, dispatcher routing, fall-through, tier precedence
+- `tests/phase-25/processMessage-dedicated-routing.test.ts` — 4 e2e tests proving the dispatcher fires from `processMessage` for the real porcelain message AND short single-sentence forms (regression case)
+- `tests/phase-25/web-download-engine-scenarios.test.ts` — 4 behavior tests with realistic mocked skill chains: 3-brand mixed-outcome, flyer rejection, search retry caps, banned-domain ranking
+- `tests/phase-25/web-download-stress-corpus.test.ts` — 24 tests: 7 unit tests for `checkContentRelevance` against the exact garbage PDFs from the user's workspace (school curriculum, email-PDF, personal portfolio); 5 end-to-end adversarial scenarios; 9 generality-audit cases with explicit `in-scope`/`out-of-scope` labels (catalog, datasheet, brochure → in; software DMG, github clone, image, archive, single-target → out); 3 URL-filter contract tests proving `looksLikePdfUrl` is artifact-class-specific
+- `scripts/test-spec-extractor-cloud.ts` — manual cloud audit (forces cloud-primary). Tests 7 inputs: 5 must produce a valid spec (porcelain, short, alphanumeric datasheets, file batch, API), 2 must reject (DMG installers, github clone) so the router falls through. Latest cloud run: 6/7 correct (1 LLM-variance flake)
 
 ---
 
@@ -728,3 +765,4 @@ MAX_FILES_PER_BATCH = 1000;
 | `web-search-upgrade-complete` | UA rotation (5-agent pool, round-robin) in web_fetch + download_file; Brave ×10 results, snippet_only param, DDG fallback removed; read_pdf (pdf-parse v2), fetch_feed (rss-parser), browser_fetch (Playwright headless Chromium) |
 | `phase-24-download-engine-complete` | Deterministic multi-target web download engine: TargetLedger state outside LLM, counter-driven retry (maxSearches=2, maxPages=3, maxDownloads=3), spec extracted via 1 structured LLM call, replaces QueryLoop C3 guard system for catalog downloads |
 | `phase-25-1-file-batch-transform-complete` | Engine #2 in the One-Call Engine series. Three transform kinds (copy / rename / extract_text_from_pdf), per-file ledger, idempotent re-runs (overwrite=if-missing default), self-validating outputs (minBytes + extension check), workspace-sandboxed destDir. Router Tier 1b gate. 33 tests in `tests/phase-25/`. Whitepaper: `docs/one-call-engine.md`. Sprint plan: `docs/phase-25-plan.md`. Discipline: build engine #3 (api_paginated_collect) before extracting universal `TaskSpec`. |
+| `phase-25-2-api-paginated-collect-complete` | Engine #3 in the One-Call Engine series. Three pagination kinds (link_header / offset / cursor), four auth kinds (none / bearer / header / query), counter-driven page loop, per-page ledger, dedup by configurable key, JSONL append to workspace-sandboxed destFile, fetchFn-injectable for testability. Router Tier 1c gate. 47 tests in `tests/phase-25/api-paginated-collect.test.ts`. Schema lesson encoded: top-level `queryParams`/`extraHeaders` instead of nested `filter` (avoids `flattenSingleKeyObjects` corruption). All 3 concrete engines now shipped → Phase 25.3 extracts universal `TaskSpec` runtime. |

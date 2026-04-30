@@ -150,7 +150,14 @@ export const EXECUTOR_CONFIG = {
 // --- Token Budgets (Phase 18) ---
 export const TOKEN_BUDGETS = {
   // Structural LLM calls (JSON output required)
-  INTAKE:              600,
+  // Phase 25.4 — INTAKE was lowered from 600 to 200. Intake is meant to emit a
+  // tiny JSON shape (~6 fields) and a one-sentence summary; 200 tokens is
+  // plenty. The previous 600-token budget masked a runaway-output bug where
+  // intake spent 23 seconds and 791 output tokens on a classification call.
+  // The summary field is also explicitly LOSSY by design — it routinely drops
+  // enumerated items (e.g. "...for these 3 brands: A, B" misses C). NEVER
+  // consume `signals.summary` for routing decisions; use the full goalMessage.
+  INTAKE:              200,
   INTAKE_TIMEOUT_MS:   120000,  // Increased from 20s to allow local model time for JSON parsing
   DECOMPOSITION:      2000,
   PLANNER:            8192,

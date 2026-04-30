@@ -80,6 +80,18 @@ export type TransparencyEvent =
   | { type: 'subagent_failed'; data: { parentRequestId: string; subRequestId: string; profile: string; error: string } }
   // Phase 16 Usability — routing decision
   | { type: 'route'; data: { level: string; reason: string; path: string } }
+  // Phase 25.4 — routing transparency: emitted for EVERY tier the dispatcher
+  // evaluates, regardless of outcome. Together with the winning `route` event
+  // these form the routing decision tree the diag formatter renders.
+  | { type: 'route_consider'; data: { tier: string; matched: boolean; reason: string; details?: Record<string, unknown> } }
+  // Phase 25.4 — spec extraction telemetry. Fires whenever a dedicated-engine
+  // spec extractor runs, success or fail. On failure includes the raw LLM
+  // output (truncated) so the diag layer can surface what the model produced.
+  | { type: 'spec_extraction'; data: { engine: string; attempted: boolean; succeeded: boolean; reason?: string; rawLlmOutput?: string; attempts?: number } }
+  // Phase 25.4 — fallback path identifier. Distinguishes whose render produced
+  // the final reply (engine vs query-loop fallback vs llm mimicry) so we can
+  // attribute mimicry correctly.
+  | { type: 'final_reply_origin'; data: { origin: 'engine' | 'query_loop_fallback' | 'engine_synthesized_finalize' | 'simple_plan' | 'executor' | 'unknown'; engine?: string } }
   // Fix 5 — decomposition repair telemetry
   | { type: 'decomposition_repair'; data: { message: string; repairCount: number; reason: string } }
   | { type: 'decomposition_retry'; data: { message: string; repairCount: number; reason: string } }

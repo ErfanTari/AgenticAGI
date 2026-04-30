@@ -669,104 +669,48 @@ async function handleAgenticUnits(
   const goalMessage = units.map(unit => unit.content).join('\n');
   const minOrder = Math.min(...units.map(unit => unit.order));
 
-  // ── Pre-planner gate Tier 1: multi-target catalog/PDF download → deterministic engine ──────
-  const MULTI_TARGET_DOWNLOAD_RE = /\b(download|find|fetch|get|grab)\b[\s\S]{0,200}?\b(catalogs?|catalogues?|brochures?|lookbooks?|pdf)\b/i;
-  const CATALOG_TARGET_LIST_RE = /[A-Z][a-zA-Z]+(?:\s*,\s*[A-Z][a-zA-Z]+){1,}/;
-
-  function detectMultiTargetDownload(message: string): boolean {
-    return MULTI_TARGET_DOWNLOAD_RE.test(message) && CATALOG_TARGET_LIST_RE.test(message);
-  }
-
-  if (detectMultiTargetDownload(goalMessage)) {
-    transparency.emit({
-      type: 'route',
-      data: {
-        level: 'MEDIUM',
-        reason: 'multi-target download detected — routing to deterministic engine',
-        path: 'web_download_engine',
+  // ── Pre-planner gates (Tier 1/1b/1c) → deterministic one-call engines ──────
+  // The dispatcher in `core/router/dedicated-engine-dispatch.ts` is the single
+  // source of truth for these gates. It is also called UPSTREAM from
+  // `processMessage` BEFORE the quick-complexity check, so most messages that
+  // match a dedicated kind never reach this point. This is defense-in-depth
+  // for messages where decomposition first surfaced the relevant content.
+  // Whitepaper: docs/one-call-engine.md (Agents as Compilers).
+  //
+  // CRITICAL ORDERING (Phase 25.4 fix): the dispatcher MUST run before any
+  // "file/download intent → query-loop" classifier in this function. Earlier
+  // versions emitted a `route` event with `path: 'query_loop'` that won the
+  // race against the dedicated engine because the dispatcher's regex falsely
+  // returned false for mixed-case brand lists. The fix is twofold:
+  //   1. Widened CATALOG_TARGET_LIST_RE to allow lowercase first letters.
+  //   2. The file/download classifier below ONLY fires AFTER the dispatcher
+  //      reports `handled: false` — i.e. as a true fallback.
+  const { dispatchDedicatedEngine } = await import('./router/dedicated-engine-dispatch.js');
+  const dedicatedResult = await dispatchDedicatedEngine(goalMessage, llmHandler, {
+    parentCtx,
+    signal,
+  });
+  if (dedicatedResult.handled) {
+    return {
+      parts: [{ order: minOrder, route: 'agentic', reply: dedicatedResult.reply }],
+      plan: {
+        goal: goalMessage,
+        steps: [],
+        milestones: [],
+        goals: [],
+        complexity: 'MEDIUM',
+        needsConfirmation: false,
+        createdAt: new Date().toISOString(),
       },
-    });
-
-    const { extractWebDownloadSpec } = await import('./skills/web-download-spec-extractor.js');
-    const { runWebDownloadMultiTarget, renderFinalMessage } = await import('./skills/web-download-multi-target.js');
-    const { runSkill } = await import('./skills/runner.js');
-
-    const spec = await extractWebDownloadSpec(goalMessage, llmHandler);
-
-    if (spec) {
-      const report = await runWebDownloadMultiTarget(
-        spec,
-        (name, input) => runSkill(name, input, parentCtx, signal),
-        (event) => transparency.emit(event as Parameters<typeof transparency.emit>[0]),
-      );
-      return {
-        parts: [{ order: minOrder, route: 'agentic', reply: renderFinalMessage(report, spec) }],
-        plan: {
-          goal: goalMessage,
-          steps: [],
-          milestones: [],
-          goals: [],
-          complexity: 'MEDIUM',
-          needsConfirmation: false,
-          createdAt: new Date().toISOString(),
-        },
-      };
-    }
-    // Spec extraction failed — fall through to Tier 1b (file_batch_transform) then Tier 2 (QueryLoop)
+    };
   }
+  // No dedicated engine handled the message — fall through to Tier 2 (QueryLoop)
 
-  // ── Pre-planner gate Tier 1b: file batch transform (Phase 25.1 deterministic engine) ──────
-  // Whitepaper: docs/one-call-engine.md §15. The LLM may produce candidates, the engine
-  // decides state transitions. This gate detects "convert/copy/rename a folder of files"
-  // intents and routes to a counter-driven engine instead of an LLM loop.
-  const FILE_BATCH_VERB_RE = /\b(convert|copy|rename|move|extract\s+text|batch[- ]?(?:transform|convert|process)|process\s+all|transform\s+(?:every|each|all))\b/i;
-  const FILE_BATCH_GLOB_RE = /\b(folder|directory|every|each|all)\b[\s\S]{0,80}?\b(\.pdf|\.png|\.jpe?g|\.csv|\.txt|\.md|\.html?|file|files)\b/i;
-
-  function detectFileBatchTransform(message: string): boolean {
-    return FILE_BATCH_VERB_RE.test(message) && FILE_BATCH_GLOB_RE.test(message);
-  }
-
-  if (detectFileBatchTransform(goalMessage)) {
-    transparency.emit({
-      type: 'route',
-      data: {
-        level: 'MEDIUM',
-        reason: 'file batch transform detected — routing to deterministic engine',
-        path: 'file_batch_transform_engine',
-      },
-    });
-
-    const { extractFileBatchTransformSpec } = await import('./skills/file-batch-transform-spec-extractor.js');
-    const { runFileBatchTransform, renderFinalMessage } = await import('./skills/file-batch-transform.js');
-    const { runSkill } = await import('./skills/runner.js');
-
-    const spec = await extractFileBatchTransformSpec(goalMessage, llmHandler);
-
-    if (spec) {
-      const report = await runFileBatchTransform(
-        spec,
-        (name, input) => runSkill(name, input, parentCtx, signal),
-        {
-          emit: (event) => transparency.emit(event as Parameters<typeof transparency.emit>[0]),
-        },
-      );
-      return {
-        parts: [{ order: minOrder, route: 'agentic', reply: renderFinalMessage(report, spec) }],
-        plan: {
-          goal: goalMessage,
-          steps: [],
-          milestones: [],
-          goals: [],
-          complexity: 'MEDIUM',
-          needsConfirmation: false,
-          createdAt: new Date().toISOString(),
-        },
-      };
-    }
-    // Spec extraction failed — fall through to Tier 2 (QueryLoop)
-  }
-
-  // ── Pre-planner gate Tier 2: any file/download task → QueryLoop ───────────────────────────
+  // ── Pre-planner gate Tier 2: any file/download task → QueryLoop ───────────
+  // Strict fallback semantics: only fires when the dispatcher above returned
+  // { handled: false }. The file/download classifier here is intentionally
+  // broader than the dispatcher's regex — it catches single-target downloads
+  // and ad-hoc save-to-disk tasks the dedicated engine isn't designed for.
   const FILE_INTENT_PATTERNS = /\b(download|save|fetch|catalog|pdf|export|backup|collect|scrape|grab|store)\b/i;
   const MULTI_TARGET_PATTERNS = /\b(brands?|companies|sites?|sources?|targets?|each|every|all|multiple|several)\b/i;
   const DIRECT_DOWNLOAD_PATTERNS = /\b(download|save to workspace|save.*pdf|fetch.*pdf|download.*catalog)\b/i;
@@ -779,10 +723,11 @@ async function handleAgenticUnits(
       type: 'route',
       data: {
         level: 'MEDIUM',
-        reason: 'file/download intent — routing to query-loop',
+        reason: 'file/download intent — routing to query-loop (fallback path; dedicated engines did not match)',
         path: 'query_loop',
       },
     });
+    transparency.emit({ type: 'final_reply_origin', data: { origin: 'query_loop_fallback' } });
     const loopResult = await runQueryLoop(goalMessage, llmHandler, workingMemory, _history, undefined, { maxIterationsOverride: COMPLEXITY_ITERATION_CAPS['MEDIUM'] }, parentCtx, signal);
     if (loopResult.artifactContext) {
       _lastSessionArtifact = loopResult.artifactContext;
@@ -879,6 +824,7 @@ async function handleAgenticUnits(
         ? `\n\nCONSTRAINTS:\n${constraints!.map(c => `- [${c.type.toUpperCase()}] ${c.value}`).join('\n')}`
         : '';
       const codingCap = COMPLEXITY_ITERATION_CAPS[(plan.complexity ?? 'LOW') as keyof typeof COMPLEXITY_ITERATION_CAPS] ?? COMPLEXITY_ITERATION_CAPS['LOW'];
+      transparency.emit({ type: 'final_reply_origin', data: { origin: 'query_loop_fallback' } });
       const loopResult = await runQueryLoop(goalMessage + constraintBlock, llmHandler, workingMemory, _history, undefined, { maxIterationsOverride: codingCap }, parentCtx, signal);
       if (loopResult.artifactContext) {
         _lastSessionArtifact = loopResult.artifactContext;
@@ -928,6 +874,7 @@ async function handleAgenticUnits(
         },
       });
       const cap = COMPLEXITY_ITERATION_CAPS[(planComplexity as keyof typeof COMPLEXITY_ITERATION_CAPS)] ?? COMPLEXITY_ITERATION_CAPS['LOW'];
+      transparency.emit({ type: 'final_reply_origin', data: { origin: 'query_loop_fallback' } });
       const loopResult = await runQueryLoop(goalMessage, llmHandler, workingMemory, _history, undefined, { maxIterationsOverride: cap }, parentCtx, signal);
       if (loopResult.artifactContext) {
         _lastSessionArtifact = loopResult.artifactContext;
@@ -938,6 +885,7 @@ async function handleAgenticUnits(
       };
     }
 
+    transparency.emit({ type: 'final_reply_origin', data: { origin: 'simple_plan' } });
     const simpleResult = await runSimplePlan(plan, llmHandler, parentCtx, signal);
     if (simpleResult.artifactContext) {
       _lastSessionArtifact = simpleResult.artifactContext;
@@ -968,6 +916,7 @@ async function handleAgenticUnits(
     }
   }
 
+  transparency.emit({ type: 'final_reply_origin', data: { origin: 'executor' } });
   const execution = await executePlan(plan, llmHandler, workingMemory, parentCtx, signal);
   // Skip LLM synthesis call when executor already escalated (e.g. hard abort, too many failures)
   let verification: import('./schemas.js').VerificationResult;

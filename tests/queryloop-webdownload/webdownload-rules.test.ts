@@ -42,6 +42,26 @@ describe('query-loop-base.md web-download hardening rules', () => {
 
   it('consolidates status after multi-target work (no mid-loop spam)', () => {
     expect(prompt).toContain('Emit no per-target STATUS mid-loop');
-    expect(prompt).toContain('FINAL_STATUS:');
+    // Phase 25.4: the QueryLoop fallback must use QUERY_LOOP_RESULT, NOT
+    // FINAL_STATUS. FINAL_STATUS is reserved for the deterministic
+    // web_download_multi_target engine; mimicking it from QueryLoop poisons
+    // the diag's mimicry detector.
+    expect(prompt).toContain('QUERY_LOOP_RESULT');
+  });
+
+  it('does NOT teach the LLM to mimic the engine FINAL_STATUS line', () => {
+    // The fallback path produces its own report format. The LLM must not be
+    // primed to emit FINAL_STATUS (the engine label) — that defeats the
+    // mimicry detector and makes diag attribution ambiguous.
+    const lines = prompt.split('\n');
+    // It is OK to mention FINAL_STATUS in a NEGATIVE context (e.g. "do not
+    // mimic FINAL_STATUS"), so we only fail if a positive emit-instruction
+    // appears.
+    const positiveEmit = lines.find(l =>
+      /\b(emit|output|return|produce|print)\b/i.test(l) &&
+      /FINAL_STATUS\s*:/.test(l) &&
+      !/(NOT|reserved|engine|mimic)/i.test(l)
+    );
+    expect(positiveEmit).toBeUndefined();
   });
 });

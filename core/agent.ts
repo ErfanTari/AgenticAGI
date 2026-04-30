@@ -1386,6 +1386,35 @@ async function _processMessageImpl(
       }
     }
 
+    // ── Dedicated one-call engines: Tier 1 / 1b / 1c (Phase 24+25) ──
+    // Run BEFORE the quick-complexity LLM call. A message that matches a
+    // dedicated kind (multi-target download, file batch transform, API paginated
+    // collect) must take the deterministic path — it must never be downgraded
+    // to QueryLoop just because the complexity assessor thought it was simple.
+    // Whitepaper: docs/one-call-engine.md. The LLM may produce candidates;
+    // the engine decides state transitions.
+    try {
+      const { dispatchDedicatedEngine, detectAnyDedicatedEngine } = await import('./router/dedicated-engine-dispatch.js');
+      if (detectAnyDedicatedEngine(message)) {
+        const dedicatedResult = await dispatchDedicatedEngine(message, handler, { parentCtx: rootCtx, signal });
+        if (dedicatedResult.handled) {
+          return {
+            reply: findingsPrefix + dedicatedResult.reply,
+            intent: 'planned_workflow',
+            resolved: null,
+          };
+        }
+        // Detection matched but spec extraction failed — fall through to the
+        // normal pipeline. handleAgenticUnits will rerun the dispatcher as a
+        // second-line defense, and if that also fails the message ends up in
+        // QueryLoop with a sensible execution context.
+      }
+    } catch (err) {
+      // Defensive: dispatcher failures must never crash the agent. Fall through
+      // to the normal pipeline.
+      console.warn('[agent] dedicated-engine dispatch threw:', err);
+    }
+
     // FIX 4: Quick complexity pre-check for non-compound, clearly-agentic messages.
     // LOW/MEDIUM → skip intake+decomposition, go directly to queryLoop (saves ~15s).
     // HIGH/MAX   → fall through to full intake+decomposition pipeline.
@@ -1404,6 +1433,7 @@ async function _processMessageImpl(
         const quickComplexity = await assessComplexity(message, { intent: 'planned_workflow', codes: [] }, handler);
         if (quickComplexity.level === 'LOW' || quickComplexity.level === 'MEDIUM') {
           transparency.emit({ type: 'route', data: { level: quickComplexity.level, reason: quickComplexity.reason, path: 'query_loop' } });
+          transparency.emit({ type: 'final_reply_origin', data: { origin: 'query_loop_fallback' } });
           const loopResult = await runQueryLoop(message, handler, undefined, history, undefined, { maxIterationsOverride: COMPLEXITY_ITERATION_CAPS[quickComplexity.level] }, rootCtx, signal);
           return {
             reply: findingsPrefix + loopResult.reply,

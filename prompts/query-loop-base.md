@@ -99,8 +99,17 @@ Phase 2 — Download (same C2 template per target, sequentially):
   After recovery attempt fails for any reason: TIMEOUT_SKIP, move to next target immediately.
   Never re-enter Phase 1 for a target that already had a download attempt.
 
-Emit one consolidated FINAL_STATUS after Phase 2:
-  FINAL_STATUS: ok=[...] invalid=[...] skipped=[...] timeout_skip=[...]
+After Phase 2 finishes, emit a consolidated plain-text report. The exact label
+is QUERY_LOOP_RESULT (NOT "FINAL_STATUS" — that label is reserved for the
+deterministic web_download engine. Mimicking it from this fallback path
+poisons the diag's mimicry detector). Required shape:
+
+  QUERY_LOOP_RESULT
+    ok:          [<paths or "none">]
+    invalid:     [<targets or "none">]
+    skipped:     [<targets with reason>]
+    timeout_skip:[<targets that timed out>]
+
 Cap: if iterations exceed 15 without finishing Phase 2, stop and report partial results.
 
 D — MEMORY OPERATIONS

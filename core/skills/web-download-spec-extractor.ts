@@ -16,16 +16,38 @@ Return ONLY valid JSON matching this exact shape — no explanation, no markdown
 }
 
 Rules:
-- targets: extract all brand/company names mentioned
-- artifact: describe what document type to find ("2025 catalog PDF", "general brochure PDF")
-- minBytes: if user says "7MB" convert to 7000000; if not mentioned use 200000
-- destDir: if user mentions a folder use it verbatim; otherwise infer from context or use "downloads"
-- filenameTemplate: always include {BrandName}; keep it short and filesystem-safe`;
+- This engine is for finding ONE PDF artifact per target via web search. Examples
+  of supported artifact classes: brand catalogs, product brochures, lookbooks,
+  datasheets, technical specifications, reference manuals, user guides,
+  application notes, whitepapers. If the user asks for a non-PDF artifact
+  (software installer .dmg/.exe, github repository, image asset, source
+  archive .zip/.tar.gz), return an empty JSON object {} so the router falls
+  through to a more appropriate engine.
+- targets: every distinct brand / part-number / company name mentioned. May
+  include alphanumerics like "STM32F4" or "RP2040". Preserve casing.
+- artifact: short noun phrase that names what to find ("2025 catalog PDF",
+  "RP2040 datasheet", "user manual PDF").
+- minBytes: convert any size hint (e.g. "7MB" → 7000000, "1.5MB" → 1500000).
+  If unspecified default to 200000 (200 KB) — small enough to accept short
+  datasheets, large enough to reject 1-page flyers and HTML save-as-PDF noise.
+- destDir: workspace-relative folder. Use the user's exact path if given;
+  otherwise infer from context (e.g. "Catalogs/", "Datasheets/").
+- filenameTemplate: must contain {BrandName}; keep it short and filesystem-safe.`;
 
-export async function extractWebDownloadSpec(
+/**
+ * Verbose result envelope. Returned alongside the simple null-or-spec function so
+ * callers (and the diag layer) can surface WHY extraction failed — not just that
+ * it returned null. This is critical for diagnosing "engine never fired" bugs:
+ * without raw LLM output we have no idea what the model actually produced.
+ */
+export type WebDownloadSpecExtractResult =
+  | { ok: true; spec: WebDownloadSpec; raw: string; attempts: number }
+  | { ok: false; raw: string; reason: string; attempts: number };
+
+export async function extractWebDownloadSpecVerbose(
   message: string,
   llmHandler: LLMHandler,
-): Promise<WebDownloadSpec | null> {
+): Promise<WebDownloadSpecExtractResult> {
   let raw: string;
   try {
     raw = await llmHandler(
@@ -35,8 +57,8 @@ export async function extractWebDownloadSpec(
       ],
       { maxTokens: 400 },
     );
-  } catch {
-    return null;
+  } catch (err) {
+    return { ok: false, raw: '', reason: `LLM call threw: ${String(err).slice(0, 200)}`, attempts: 0 };
   }
 
   const result = await parseStructured(raw, webDownloadSpecSchema, {
@@ -45,8 +67,30 @@ export async function extractWebDownloadSpec(
     context: 'web-download-spec-extractor',
   });
 
-  if (!result.success || !result.data) return null;
-  if (result.data.targets.length < 1) return null;
+  if (!result.success || !result.data) {
+    return {
+      ok: false,
+      raw,
+      reason: result.error ?? 'parseStructured returned { success: false } with no error',
+      attempts: result.attempts,
+    };
+  }
+  if (result.data.targets.length < 1) {
+    return {
+      ok: false,
+      raw,
+      reason: 'spec.targets[] was empty after parse',
+      attempts: result.attempts,
+    };
+  }
 
-  return result.data;
+  return { ok: true, spec: result.data, raw, attempts: result.attempts };
+}
+
+export async function extractWebDownloadSpec(
+  message: string,
+  llmHandler: LLMHandler,
+): Promise<WebDownloadSpec | null> {
+  const result = await extractWebDownloadSpecVerbose(message, llmHandler);
+  return result.ok ? result.spec : null;
 }

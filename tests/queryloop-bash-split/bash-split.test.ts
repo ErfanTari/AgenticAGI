@@ -21,8 +21,12 @@ describe('queryloop-bash-split: per-brand download rules', () => {
     expect(prompt).toContain('One download_file (or fallback curl) per target');
   });
 
-  it('prompt contains FINAL_STATUS consolidated output format', () => {
-    expect(prompt).toContain('FINAL_STATUS:');
+  it('prompt contains a consolidated multi-target output format', () => {
+    // Phase 25.4: the consolidated label is QUERY_LOOP_RESULT (not
+    // FINAL_STATUS — that label is reserved for the deterministic
+    // web_download_multi_target engine and is policed by the diag mimicry
+    // detector).
+    expect(prompt).toContain('QUERY_LOOP_RESULT');
   });
 
   it('prompt does NOT contain old Phase 2 Batch Download heading', () => {

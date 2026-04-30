@@ -41,10 +41,18 @@ Rules:
 
 Pick exactly ONE transform.kind. Do not invent kinds.`;
 
-export async function extractFileBatchTransformSpec(
+/**
+ * Verbose result envelope so the dispatcher (and the diag layer) can surface WHY
+ * extraction failed. See `web-download-spec-extractor.ts` for rationale.
+ */
+export type FileBatchTransformSpecExtractResult =
+  | { ok: true; spec: FileBatchTransformSpec; raw: string; attempts: number }
+  | { ok: false; raw: string; reason: string; attempts: number };
+
+export async function extractFileBatchTransformSpecVerbose(
   message: string,
   llmHandler: LLMHandler,
-): Promise<FileBatchTransformSpec | null> {
+): Promise<FileBatchTransformSpecExtractResult> {
   let raw: string;
   try {
     raw = await llmHandler(
@@ -54,8 +62,8 @@ export async function extractFileBatchTransformSpec(
       ],
       { maxTokens: 400 },
     );
-  } catch {
-    return null;
+  } catch (err) {
+    return { ok: false, raw: '', reason: `LLM call threw: ${String(err).slice(0, 200)}`, attempts: 0 };
   }
 
   const result = await parseStructured(raw, fileBatchTransformSpecSchema, {
@@ -64,6 +72,21 @@ export async function extractFileBatchTransformSpec(
     context: 'file-batch-transform-spec-extractor',
   });
 
-  if (!result.success || !result.data) return null;
-  return result.data;
+  if (!result.success || !result.data) {
+    return {
+      ok: false,
+      raw,
+      reason: result.error ?? 'parseStructured returned { success: false } with no error',
+      attempts: result.attempts,
+    };
+  }
+  return { ok: true, spec: result.data, raw, attempts: result.attempts };
+}
+
+export async function extractFileBatchTransformSpec(
+  message: string,
+  llmHandler: LLMHandler,
+): Promise<FileBatchTransformSpec | null> {
+  const result = await extractFileBatchTransformSpecVerbose(message, llmHandler);
+  return result.ok ? result.spec : null;
 }

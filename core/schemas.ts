@@ -239,6 +239,32 @@ export const PostFlightSchema = z.object({
 export type PostFlightResult = z.infer<typeof PostFlightSchema>;
 export const postFlightJsonSchema = z.toJSONSchema(PostFlightSchema) as Record<string, unknown>;
 
+// ── Path normalization for engine specs ──────────────────────────────────────
+//
+// LLM extractors faithfully reproduce paths the user wrote. Users (and the
+// CLAUDE.md guide) always reference workspace-relative paths as `workspace/X`,
+// but the engines resolve paths INSIDE PATHS.workspace, which would double the
+// segment to `workspace/workspace/X`. Strip a leading `workspace/` (or
+// `./workspace/` or absolute path under workspace root) so paths resolve as
+// the user intended.
+//
+// This is a Zod transform applied at schema parse time so every spec is
+// normalized before it reaches an engine.
+const WORKSPACE_PREFIX_RE = /^\.?\/?workspace\/+/i;
+
+export function stripWorkspacePrefix(p: string): string {
+  let out = p.trim();
+  // Strip leading "./" repeatedly
+  while (out.startsWith('./')) out = out.slice(2);
+  // Strip leading "workspace/"
+  if (WORKSPACE_PREFIX_RE.test(out)) {
+    out = out.replace(WORKSPACE_PREFIX_RE, '');
+  }
+  return out;
+}
+
+const workspaceRelativePath = z.string().min(1).transform(stripWorkspacePrefix);
+
 // ── Phase 24: Web Download Multi-Target Spec ─────────────────────────────────
 
 export const webDownloadSpecSchema = z.object({
@@ -246,7 +272,7 @@ export const webDownloadSpecSchema = z.object({
   targets: z.array(z.string().min(1)).min(1),
   artifact: z.string().min(3),
   minBytes: z.number().int().min(0).default(200_000),
-  destDir: z.string().min(1),
+  destDir: workspaceRelativePath,
   filenameTemplate: z.string().min(1),
 });
 
@@ -274,12 +300,12 @@ export type FileBatchTransformKind = z.infer<typeof fileBatchTransformKindSchema
 export const fileBatchTransformSpecSchema = z.object({
   kind: z.literal('file_batch_transform'),
   source: z.object({
-    glob: z.string().min(1),
+    glob: z.string().min(1).transform(stripWorkspacePrefix),
   }),
   transform: z.object({
     kind: fileBatchTransformKindSchema,
   }),
-  destDir: z.string().min(1),
+  destDir: workspaceRelativePath,
   /**
    * Filename template applied to each input file. Tokens:
    *   {stem} → input basename without extension
@@ -299,4 +325,105 @@ export const fileBatchTransformSpecSchema = z.object({
 });
 
 export type FileBatchTransformSpec = z.infer<typeof fileBatchTransformSpecSchema>;
+
+// ── Phase 25.2: API Paginated Collect Spec ───────────────────────────────────
+
+/**
+ * Engine #3 in the One-Call Engine series. See docs/one-call-engine.md and
+ * docs/phase-25-plan.md.
+ *
+ * Step types (as a closed DSL — whitepaper §5):
+ *   - auth_check    (none class)        — verify the configured credential resolves
+ *   - fetch_page    (none class)        — paginated GET, returns records[]
+ *   - validate_record (none class)      — schema-check each record
+ *   - append_jsonl  (local_write class) — write deduped records to destFile
+ */
+
+const authNoneSchema = z.object({ kind: z.literal('none') });
+const authBearerSchema = z.object({
+  kind: z.literal('bearer'),
+  envVar: z.string().min(1),
+});
+const authHeaderSchema = z.object({
+  kind: z.literal('header'),
+  name: z.string().min(1),
+  envVar: z.string().min(1),
+  prefix: z.string().default(''),
+});
+const authQuerySchema = z.object({
+  kind: z.literal('query'),
+  name: z.string().min(1),
+  envVar: z.string().min(1),
+});
+
+export const apiAuthSchema = z.discriminatedUnion('kind', [
+  authNoneSchema,
+  authBearerSchema,
+  authHeaderSchema,
+  authQuerySchema,
+]);
+
+export type ApiAuth = z.infer<typeof apiAuthSchema>;
+
+const paginationLinkHeaderSchema = z.object({
+  kind: z.literal('link_header'),
+  /** Optional override for which rel value points to next; defaults to "next" (RFC 5988). */
+  rel: z.string().default('next'),
+});
+const paginationOffsetSchema = z.object({
+  kind: z.literal('offset'),
+  offsetParam: z.string().default('offset'),
+  limitParam: z.string().default('limit'),
+  limit: z.number().int().min(1).max(1000).default(100),
+});
+const paginationCursorSchema = z.object({
+  kind: z.literal('cursor'),
+  /** JSON path to the next-cursor token in the response body (e.g. "next_cursor" or "meta.next"). */
+  cursorPath: z.string().min(1),
+  /** Query parameter name to attach the cursor to on subsequent calls. */
+  cursorParam: z.string().default('cursor'),
+});
+
+export const apiPaginationSchema = z.discriminatedUnion('kind', [
+  paginationLinkHeaderSchema,
+  paginationOffsetSchema,
+  paginationCursorSchema,
+]);
+
+export type ApiPagination = z.infer<typeof apiPaginationSchema>;
+
+/**
+ * Note on shape: queryParams and extraHeaders are kept as top-level fields
+ * rather than nested under a `filter` object. The reason is that the
+ * structured-output repair chain runs `flattenSingleKeyObjects` before schema
+ * validation, which mangles `{ filter: { query: {...} } }` (single-key
+ * object containing a single-key object) into the string `"query"`. Top-level
+ * fields are immune to that flattening.
+ */
+export const apiPaginatedCollectSpecSchema = z.object({
+  kind: z.literal('api_paginated_collect'),
+  endpoint: z.string().url(),
+  method: z.enum(['GET']).default('GET'),
+  auth: apiAuthSchema.default({ kind: 'none' }),
+  pagination: apiPaginationSchema,
+  /**
+   * JSON path to the records array within each response body. Supports dotted
+   * paths (e.g. "data.items"). When undefined, the response body itself is
+   * expected to be an array.
+   */
+  recordsPath: z.string().optional(),
+  /** Extra query string params attached to every page request. */
+  queryParams: z.record(z.string(), z.string()).default({}),
+  /** Extra HTTP headers attached to every page request. */
+  extraHeaders: z.record(z.string(), z.string()).default({}),
+  destFile: workspaceRelativePath,
+  /** Field to dedup records by. Records lacking the field still pass through. */
+  dedupBy: z.string().optional(),
+  maxRecords: z.number().int().min(1).max(100_000).default(5000),
+  maxPages: z.number().int().min(1).max(500).default(50),
+  /** Per-page validation: drop records lacking these top-level fields. */
+  requireFields: z.array(z.string()).default([]),
+});
+
+export type ApiPaginatedCollectSpec = z.infer<typeof apiPaginatedCollectSpecSchema>;
 

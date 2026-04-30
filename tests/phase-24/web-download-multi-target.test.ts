@@ -233,8 +233,10 @@ describe('runWebDownloadMultiTarget', () => {
   function mockDownload(filename: string) {
     return { success: true, output: `Downloaded 8000000 bytes\nWORKSPACE_PATH: Porcelain_PDF/catalogs/${filename}\nMIME: application/pdf` };
   }
-  function mockReadPdf() {
-    return { success: true, output: '[Page 1]\nCatalog content here' };
+  function mockReadPdf(brand: string = 'Neolith') {
+    // Realistic catalog cover-page text. The new content-relevance check in
+    // validatePdf requires both the brand name AND an artifact keyword.
+    return { success: true, output: `[Page 1]\n${brand}\nGeneral Catalog 2025\nProducts and Collections` };
   }
 
   it('succeeds when search returns direct PDF URL and download validates', async () => {

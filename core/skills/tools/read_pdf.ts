@@ -6,7 +6,7 @@ import path from 'node:path';
 import { PATHS } from '../../../config/agent.config.js';
 
 const MAX_CHARS = 50_000;
-const MAX_FILE_BYTES = 20_000_000; // 20MB
+const MAX_FILE_BYTES = 100_000_000; // 100MB
 const MAX_PAGES_CAP = 50;
 
 const readPdfSkill: MCPSkill = {

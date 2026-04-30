@@ -3,9 +3,11 @@
  * State lives in TargetRecord[], never in an LLM context.
  * Counters drive all retry decisions — no prompt injections.
  */
-import { statSync } from 'node:fs';
+import { statSync, unlinkSync, existsSync } from 'node:fs';
+import path from 'node:path';
 import type { SkillResult } from './types.js';
 import type { WebDownloadSpec } from '../schemas.js';
+import { PATHS } from '../../config/agent.config.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -161,14 +163,95 @@ function extractWorkspacePath(output: string): string | null {
   return m ? m[1].trim() : null;
 }
 
+// ── Content relevance ────────────────────────────────────────────────────────
+
+/**
+ * Tokens we expect in a "catalog/brochure/lookbook"-style document. Used as
+ * a soft positive signal — if at least ONE appears in the extracted text,
+ * the document is plausibly an artifact of the requested kind.
+ */
+const ARTIFACT_KEYWORDS = [
+  // Marketing
+  'catalog', 'catalogue', 'brochure', 'lookbook', 'collection',
+  'price list', 'colour chart', 'color chart', 'finishes', 'finish guide',
+  'gallery', 'tile book', 'product book',
+  // Engineering / technical
+  'datasheet', 'data sheet', 'spec sheet', 'specification',
+  'technical sheet', 'technical specification', 'reference manual',
+  'user manual', 'user guide', 'installation guide', 'application note',
+  'whitepaper', 'white paper', 'product overview', 'product guide',
+] as const;
+
+/**
+ * Normalize a string for fuzzy substring matching: lowercase, strip
+ * non-alphanumerics so "Sapiens Stone" → "sapiensstone" matches "sapiensstone"
+ * AND "sapienstone" only via the per-word fallback in checkContentRelevance.
+ */
+function normalizeForMatch(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+/**
+ * Check that the extracted PDF text actually mentions the brand we asked for
+ * AND/OR a recognizable artifact keyword. This is the content-truth gate that
+ * stops "I downloaded a parseable PDF" from being mistaken for "I downloaded
+ * the right thing."
+ *
+ * Decision matrix (with BOTH a target hit AND a keyword check available):
+ *   - target hit + keyword hit → ok (high confidence)
+ *   - target hit, no keyword   → ok (lower confidence; brand match is strong)
+ *   - no target hit, keyword   → REJECT (could be any catalog, not necessarily ours)
+ *   - neither                  → REJECT (definitely wrong content)
+ *
+ * We sample only the first ~20k chars of extracted text so this stays cheap
+ * even for 500-page documents. Cover pages and ToC nearly always carry the
+ * brand name on a real catalog.
+ */
+export function checkContentRelevance(
+  extractedText: string,
+  target: string,
+  artifact: string,
+): { ok: boolean; reason: string } {
+  const sample = extractedText.slice(0, 20_000).toLowerCase();
+  const sampleNorm = normalizeForMatch(sample);
+  const targetNorm = normalizeForMatch(target);
+  const targetWords = target.toLowerCase().split(/\s+/).filter(w => w.length >= 4);
+  const artifactWords = artifact.toLowerCase().split(/\s+/).filter(w => w.length >= 4);
+
+  // Brand match: full slug OR all >=4-char words individually present
+  const fullSlugHit = targetNorm.length >= 4 && sampleNorm.includes(targetNorm);
+  const allWordsHit = targetWords.length > 0 && targetWords.every(w => sample.includes(w));
+  const targetHit = fullSlugHit || allWordsHit;
+
+  // Artifact keyword: any of ARTIFACT_KEYWORDS or any artifact-spec word
+  const artifactHit =
+    ARTIFACT_KEYWORDS.some(k => sample.includes(k)) ||
+    artifactWords.some(w => sample.includes(w));
+
+  if (!targetHit) {
+    return {
+      ok: false,
+      reason: `content_mismatch: brand "${target}" not found in PDF text (first 20k chars)`,
+    };
+  }
+  if (!artifactHit) {
+    return {
+      ok: false,
+      reason: `content_mismatch: PDF mentions "${target}" but no artifact keyword (catalog/brochure/etc.)`,
+    };
+  }
+  return { ok: true, reason: '' };
+}
+
 export async function validatePdf(
   filePath: string,
   minBytes: number,
   runSkill: SkillRunner,
+  options?: { target?: string; artifact?: string },
 ): Promise<{ ok: boolean; reason: string }> {
-  // Check size first (fast)
+  // Size check (fast, doesn't need PDF parser)
   try {
-    const stat = statSync(filePath.startsWith('/') ? filePath : `${process.cwd()}/workspace/${filePath}`);
+    const stat = statSync(filePath.startsWith('/') ? filePath : `${PATHS.workspace}/${filePath}`);
     if (stat.size < minBytes) {
       return { ok: false, reason: `file too small: ${stat.size} < ${minBytes}` };
     }
@@ -176,13 +259,49 @@ export async function validatePdf(
     // File may be referenced as workspace-relative; let read_pdf try
   }
 
-  // Validate via read_pdf
-  const pdfResult = await runSkill('read_pdf', { path: filePath });
+  // Structural check via read_pdf
+  const pdfResult = await runSkill('read_pdf', { path: filePath, max_pages: 30 });
   if (!pdfResult.success) {
     return { ok: false, reason: `read_pdf failed: ${pdfResult.error ?? 'unknown'}` };
   }
 
+  // Content-truth check (only when caller provides target + artifact)
+  if (options?.target && options?.artifact) {
+    const relevance = checkContentRelevance(pdfResult.output, options.target, options.artifact);
+    if (!relevance.ok) return relevance;
+  }
+
   return { ok: true, reason: '' };
+}
+
+// ── Orphan cleanup ───────────────────────────────────────────────────────────
+
+/**
+ * Delete a downloaded file that failed validation, so failed downloads do
+ * NOT accumulate across runs. Workspace-sandboxed: refuses to unlink anything
+ * outside PATHS.workspace.
+ *
+ * Returns true if a file was actually removed; false if the path didn't
+ * exist or escaped the sandbox.
+ */
+export function cleanupFailedDownload(filePath: string): boolean {
+  if (!filePath) return false;
+  const wsRoot = path.resolve(PATHS.workspace);
+  const abs = path.isAbsolute(filePath)
+    ? path.resolve(filePath)
+    : path.resolve(wsRoot, filePath.replace(/^\.?\/?workspace\//, ''));
+  // Sandbox: must be inside workspace
+  const rel = path.relative(wsRoot, abs);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  try {
+    if (existsSync(abs)) {
+      unlinkSync(abs);
+      return true;
+    }
+  } catch {
+    // Best-effort — ignore unlink errors (permissions, race, etc.)
+  }
+  return false;
 }
 
 export function buildReport(ledger: TargetRecord[], totalMs: number): DownloadReport {
@@ -322,7 +441,10 @@ export async function runWebDownloadMultiTarget(
 
       // Extract workspace-relative path from output
       const filePath = extractWorkspacePath(dlResult.output) ?? `${spec.destDir}/${filename}`;
-      const valid = await validatePdf(filePath, spec.minBytes, runSkill);
+      const valid = await validatePdf(filePath, spec.minBytes, runSkill, {
+        target: record.target,
+        artifact: spec.artifact,
+      });
 
       if (valid.ok) {
         record.status = 'ok';
@@ -331,8 +453,22 @@ export async function runWebDownloadMultiTarget(
         break;
       }
 
+      // Validation failed — ban the URL AND delete the orphan file so
+      // it can't pollute future runs (and so subsequent downloads with the
+      // same filenameTemplate don't get blocked by an existing-file check).
       record.bannedUrls.add(pdfUrl);
       record.skipReason = valid.reason;
+      const removed = cleanupFailedDownload(filePath);
+      emit({
+        type: 'web_download_validation_failed',
+        data: {
+          target: record.target,
+          url: pdfUrl,
+          reason: valid.reason,
+          filePath,
+          removed,
+        },
+      });
     }
 
     if (record.status !== 'ok') {

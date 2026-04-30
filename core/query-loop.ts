@@ -839,7 +839,7 @@ export async function runQueryLoop(
       const count = (searchQueryCounts.get(normalizedQuery) ?? 0) + 1;
       searchQueryCounts.set(normalizedQuery, count);
       if (count >= SEARCH_DUPE_THRESHOLD) {
-        const nudge = `[SYSTEM] Duplicate web_search detected (same query ×${count}). Per C3 rules, do NOT re-search a resolved target. Move to Phase 2 downloads, or mark the target SKIPPED and emit FINAL_STATUS.`;
+        const nudge = `[SYSTEM] Duplicate web_search detected (same query ×${count}). Per C3 rules, do NOT re-search a resolved target. Move to Phase 2 downloads, or mark the target SKIPPED and emit QUERY_LOOP_RESULT.`;
         transparency.emit({ type: 'query_loop_narration', data: { narration: nudge, iteration } });
         messages.push({ role: 'user', content: nudge });
       }
@@ -869,7 +869,7 @@ export async function runQueryLoop(
         const urlCount = (webFetchUrlCounts.get(normalizedUrl) ?? 0) + 1;
         webFetchUrlCounts.set(normalizedUrl, urlCount);
         if (urlCount >= WEB_FETCH_URL_THRESHOLD) {
-          const block = `[SYSTEM BLOCK] ${normalizedUrl} fetched ${urlCount} times with no downloadable PDF found. Adding to blocked list. Mark this target SKIPPED. Emit FINAL_STATUS for all brands now.`;
+          const block = `[SYSTEM BLOCK] ${normalizedUrl} fetched ${urlCount} times with no downloadable PDF found. Adding to blocked list. Mark this target SKIPPED. Emit QUERY_LOOP_RESULT for all brands now.`;
           blockedUrls.add(toolCall.input.url);
           messages.push({ role: 'user', content: block });
           transparency.emit({ type: 'query_loop_narration', data: { narration: block, iteration } });
@@ -878,20 +878,23 @@ export async function runQueryLoop(
     }
 
     // Hard enforcement at ≥80% of iteration cap on download-oriented goals:
-    // Block web_search / web_fetch and force FINAL_STATUS output.
-    // After 2 consecutive blocks, synthesize FINAL_STATUS from internal state and exit.
+    // Block web_search / web_fetch and force a plain-text result.
+    // After 2 consecutive blocks, synthesize the result from internal state and exit.
+    //
+    // The label MUST be QUERY_LOOP_RESULT (not FINAL_STATUS). FINAL_STATUS is
+    // reserved for the deterministic web_download engine and the diag layer's
+    // mimicry detector flags any QueryLoop reply that uses it.
     const hardCutoff = Math.floor(effectiveMaxIterations * 0.8);
     if (iteration >= hardCutoff && DOWNLOAD_LOOP_KEYWORDS.test(goal)) {
       if (toolCall.action === 'web_search' || toolCall.action === 'web_fetch') {
         consecutiveHaltBlocks++;
         if (consecutiveHaltBlocks >= 2) {
-          // Model keeps emitting tool calls after HALT — synthesize FINAL_STATUS and exit
           const okList = completedDownloads.length > 0 ? completedDownloads.join(', ') : 'none';
           const skippedDomains = [...domainLedger.entries()]
             .filter(([, r]) => !r.downloadSucceeded)
             .map(([d]) => d)
             .join(', ') || 'none';
-          const synthesized = `FINAL_STATUS: ok=[${okList}] skipped=[${skippedDomains}]\n\n[Runtime-synthesized after ${consecutiveHaltBlocks} blocked tool calls at iteration ${iteration}/${effectiveMaxIterations}]`;
+          const synthesized = `QUERY_LOOP_RESULT: ok=[${okList}] skipped=[${skippedDomains}]\n\n[Runtime-synthesized after ${consecutiveHaltBlocks} blocked tool calls at iteration ${iteration}/${effectiveMaxIterations}]`;
           transparency.emit({ type: 'query_loop_end', data: { reason: 'c3_force_finalized', iterations: iteration } });
           return {
             reply: synthesized,
@@ -904,7 +907,7 @@ export async function runQueryLoop(
         const completed = completedDownloads.length > 0
           ? `Downloaded so far: ${completedDownloads.join(', ')}.`
           : 'No successful downloads yet.';
-        const block = `[SYSTEM HALT] Iteration ${iteration}/${effectiveMaxIterations} — 80% of iteration budget used. web_search and web_fetch are now BLOCKED. ${completed} You MUST output plain text FINAL_STATUS right now (no JSON, no tool calls): FINAL_STATUS: ok=[...] skipped=[...] for every target. Failure to comply will force-terminate the loop.`;
+        const block = `[SYSTEM HALT] Iteration ${iteration}/${effectiveMaxIterations} — 80% of iteration budget used. web_search and web_fetch are now BLOCKED. ${completed} You MUST output a plain-text QUERY_LOOP_RESULT right now (no JSON, no tool calls): QUERY_LOOP_RESULT: ok=[...] skipped=[...] for every target. Failure to comply will force-terminate the loop.`;
         messages.push({ role: 'user', content: block });
         transparency.emit({ type: 'query_loop_narration', data: { narration: block, iteration } });
         continue;
@@ -913,11 +916,13 @@ export async function runQueryLoop(
       }
     }
 
-    // Late-loop download nudge: after iteration 15 on a download-oriented goal, remind about FINAL_STATUS
+    // Late-loop download nudge: after iteration 15 on a download-oriented goal,
+    // remind about QUERY_LOOP_RESULT (NOT FINAL_STATUS — that label belongs to
+    // the web_download engine).
     if (iteration > 15 && DOWNLOAD_LOOP_KEYWORDS.test(goal)) {
       const pendingSearches = [...searchQueryCounts.entries()].filter(([, c]) => c >= 2).length;
       if (pendingSearches > 0 && iteration % 5 === 0) {
-        const nudge = `[SYSTEM] Iteration ${iteration}/${effectiveMaxIterations}. Multiple repeated searches detected. Per C3: stop re-searching, emit FINAL_STATUS: ok=[...] invalid=[...] skipped=[...] for all targets and finish.`;
+        const nudge = `[SYSTEM] Iteration ${iteration}/${effectiveMaxIterations}. Multiple repeated searches detected. Per C3: stop re-searching, emit QUERY_LOOP_RESULT: ok=[...] invalid=[...] skipped=[...] for all targets and finish.`;
         messages.push({ role: 'user', content: nudge });
       }
     }
@@ -954,7 +959,7 @@ export async function runQueryLoop(
           rec.downloadSucceeded = true;
           domainLedger.set(domain, rec);
         } catch { /* ignore parse errors */ }
-        const doneMsg = `[SYSTEM] ✓ DOWNLOAD COMPLETE: ${savedPath}. This target is DONE — do NOT search, fetch, or download it again. Move to the next pending brand, or emit FINAL_STATUS if all brands are accounted for.`;
+        const doneMsg = `[SYSTEM] ✓ DOWNLOAD COMPLETE: ${savedPath}. This target is DONE — do NOT search, fetch, or download it again. Move to the next pending brand, or emit QUERY_LOOP_RESULT if all brands are accounted for.`;
         messages.push({ role: 'user', content: doneMsg });
         transparency.emit({ type: 'query_loop_narration', data: { narration: doneMsg, iteration } });
       }
